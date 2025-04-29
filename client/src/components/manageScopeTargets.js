@@ -6,12 +6,9 @@ function ManageScopeTargets({
   activeTarget, 
   scopeTargets, 
   getTypeIcon,
-  onQuickScan,
-  onBalancedScan,
-  onFullScan,
-  onYOLOScan,
-  isQuickScanning,
-  quickScanCurrentStep,
+  onAutoScan,
+  isAutoScanning,
+  autoScanCurrentStep,
   mostRecentGauScanStatus
 }) {
   // Helper function to display a human-readable step name
@@ -68,23 +65,20 @@ function ManageScopeTargets({
                   <Button 
                     variant="outline-danger" 
                     className="flex-fill" 
-                    onClick={onQuickScan}
-                    disabled={isQuickScanning}
+                    onClick={onAutoScan}
+                    disabled={isAutoScanning}
                   >
                     <div className="btn-content">
-                      {isQuickScanning ? (
+                      {isAutoScanning ? (
                         <>
                           <div className="spinner"></div>
-                          {quickScanCurrentStep && quickScanCurrentStep !== 'idle' && quickScanCurrentStep !== 'completed' && (
-                            <span className="ms-2">{formatStepName(quickScanCurrentStep)}</span>
+                          {autoScanCurrentStep && autoScanCurrentStep !== 'idle' && autoScanCurrentStep !== 'completed' && (
+                            <span className="ms-2">{formatStepName(autoScanCurrentStep)}</span>
                           )}
                         </>
-                      ) : 'Quick Scan'}
+                      ) : 'Auto Scan'}
                     </div>
                   </Button>
-                  <Button variant="outline-danger" className="flex-fill" onClick={onBalancedScan}>Balanced Scan</Button>
-                  <Button variant="outline-danger" className="flex-fill" onClick={onFullScan}>Full Scan</Button>
-                  <Button variant="outline-danger" className="flex-fill" onClick={onYOLOScan}>YOLO Scan</Button>
                 </div>
               </Card.Body>
             </Card>

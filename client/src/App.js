@@ -15,18 +15,18 @@ import Ars0nFrameworkHeader from './components/ars0nFrameworkHeader.js';
 import ManageScopeTargets from './components/manageScopeTargets.js';
 import fetchAmassScans from './utils/fetchAmassScans.js';
 import {
-    Container,
-    Fade,
-    Card,
-    Row,
-    Col,
-    Button,
-    ListGroup,
-    Accordion,
-    Modal,
-    Table,
-    Toast,
-    ToastContainer,
+  Container,
+  Fade,
+  Card,
+  Row,
+  Col,
+  Button,
+  ListGroup,
+  Accordion,
+  Modal,
+  Table,
+  Toast,
+  ToastContainer,
 } from 'react-bootstrap';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'bootstrap-icons/font/bootstrap-icons.css';
@@ -34,14 +34,14 @@ import initiateAmassScan from './utils/initiateAmassScan';
 import monitorScanStatus from './utils/monitorScanStatus';
 import validateInput from './utils/validateInput.js';
 import {
-    getTypeIcon,
-    getLastScanDate,
-    getLatestScanStatus,
-    getLatestScanTime,
-    getLatestScanId,
-    getExecutionTime,
-    getResultLength,
-    copyToClipboard,
+  getTypeIcon,
+  getLastScanDate,
+  getLatestScanStatus,
+  getLatestScanTime,
+  getLatestScanId,
+  getExecutionTime,
+  getResultLength,
+  copyToClipboard,
 } from './utils/miscUtils.js';
 import { MdCopyAll, MdCheckCircle } from 'react-icons/md';
 import initiateHttpxScan from './utils/initiateHttpxScan';
@@ -80,7 +80,7 @@ import MetaDataModal from './modals/MetaDataModal.js';
 import fetchHttpxScans from './utils/fetchHttpxScans';
 import ROIReport from './components/ROIReport';
 import HelpMeLearn from './components/HelpMeLearn';
-import { startQuickScan, waitForScanCompletion, QUICK_SCAN_STEPS, debugTrace } from './utils/wildcardQuickScan';
+import { waitForScanCompletion, AUTO_SCAN_STEPS, debugTrace } from './utils/wildcardAutoScan';
 
 // Add helper function
 const getHttpxResultsCount = (scan) => {
@@ -290,9 +290,9 @@ function App() {
   const [selectedTargetURL, setSelectedTargetURL] = useState(null);
   const [shuffleDNSCustomScans, setShuffleDNSCustomScans] = useState([]);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [isQuickScanning, setIsQuickScanning] = useState(false);
-  const [quickScanCurrentStep, setQuickScanCurrentStep] = useState(localStorage.getItem('quickScanCurrentStep') || QUICK_SCAN_STEPS.IDLE);
-  const [quickScanTargetId, setQuickScanTargetId] = useState(localStorage.getItem('quickScanTargetId') || null);
+  const [isAutoScanning, setIsAutoScanning] = useState(false);
+  const [autoScanCurrentStep, setAutoScanCurrentStep] = useState(localStorage.getItem('autoScanCurrentStep') || AUTO_SCAN_STEPS.IDLE);
+  const [autoScanTargetId, setAutoScanTargetId] = useState(localStorage.getItem('autoScanTargetId') || null);
 
   const handleCloseSubdomainsModal = () => setShowSubdomainsModal(false);
   const handleCloseCloudDomainsModal = () => setShowCloudDomainsModal(false);
@@ -487,37 +487,34 @@ function App() {
     mostRecentShuffleDNSCustomScanStatus
   ]);
 
-  // Add a useEffect to resume an in-progress Quick Scan after page refresh
+  // Add a useEffect to resume an in-progress Auto Scan after page refresh
   useEffect(() => {
-    const storedStep = localStorage.getItem('quickScanCurrentStep');
-    const storedTargetId = localStorage.getItem('quickScanTargetId');
+    const storedStep = localStorage.getItem('autoScanCurrentStep');
+    const storedTargetId = localStorage.getItem('autoScanTargetId');
     
-    if (storedStep && storedStep !== QUICK_SCAN_STEPS.IDLE && storedStep !== QUICK_SCAN_STEPS.COMPLETED && storedTargetId) {
-      console.log(`Detected in-progress Quick Scan (step: ${storedStep}). Attempting to resume...`);
+    if (storedStep && storedStep !== AUTO_SCAN_STEPS.IDLE && storedStep !== AUTO_SCAN_STEPS.COMPLETED && storedTargetId) {
+      console.log(`Detected in-progress Auto Scan (step: ${storedStep}). Attempting to resume...`);
       
+      // Find the target with the matching ID
       const matchingTarget = scopeTargets.find(target => target.id === storedTargetId);
       
       if (matchingTarget && matchingTarget.id === activeTarget?.id) {
-        setIsQuickScanning(true);
-        resumeQuickScan(storedStep);
+        setIsAutoScanning(true);
+        resumeAutoScan(storedStep);
       } else {
-        localStorage.removeItem('quickScanCurrentStep');
-        localStorage.removeItem('quickScanTargetId');
-        setQuickScanCurrentStep(QUICK_SCAN_STEPS.IDLE);
-        setQuickScanTargetId(null);
+        localStorage.removeItem('autoScanCurrentStep');
+        localStorage.removeItem('autoScanTargetId');
+        setAutoScanCurrentStep(AUTO_SCAN_STEPS.IDLE);
+        setAutoScanTargetId(null);
       }
     }
   }, [activeTarget, scopeTargets]);
 
-  const resumeQuickScan = async (fromStep) => {
-    if (!activeTarget) {
-      setIsQuickScanning(false);
-      return;
-    }
-        
+  const resumeAutoScan = async (fromStep) => {
     try {
+      setIsAutoScanning(false);
       let startFromIndex = 0;
-      const steps = getQuickScanSteps();
+      const steps = getAutoScanSteps();
       for (let i = 0; i < steps.length; i++) {
         if (steps[i].name === fromStep) {
           startFromIndex = i;
@@ -539,18 +536,22 @@ function App() {
       }
       
     } catch (error) {
-      debugTrace(`Error resuming Quick Scan: ${error.message}`);
+      debugTrace(`Error resuming Auto Scan: ${error.message}`);
     } finally {
-      setIsQuickScanning(false);
-      setQuickScanCurrentStep(QUICK_SCAN_STEPS.COMPLETED);
-      localStorage.setItem('quickScanCurrentStep', QUICK_SCAN_STEPS.COMPLETED);
+      setIsAutoScanning(false);
+      setAutoScanCurrentStep(AUTO_SCAN_STEPS.COMPLETED);
+      localStorage.setItem('autoScanCurrentStep', AUTO_SCAN_STEPS.COMPLETED);
     }
   };
 
-  const getQuickScanSteps = () => [
-    { name: QUICK_SCAN_STEPS.SUBLIST3R, action: async () => {
-      setQuickScanCurrentStep(QUICK_SCAN_STEPS.SUBLIST3R);
-      localStorage.setItem('quickScanCurrentStep', QUICK_SCAN_STEPS.SUBLIST3R);
+  const getAutoScanSteps = () => [
+    { name: AUTO_SCAN_STEPS.AMASS, action: async () => {
+      console.log("Starting Amass Scan...");
+      /* Add Amass Scan Logic Here */
+    }},
+    { name: AUTO_SCAN_STEPS.SUBLIST3R, action: async () => {
+      setAutoScanCurrentStep(AUTO_SCAN_STEPS.SUBLIST3R);
+      localStorage.setItem('autoScanCurrentStep', AUTO_SCAN_STEPS.SUBLIST3R);
       setIsSublist3rScanning(true);
       
       try {
@@ -634,10 +635,9 @@ function App() {
         return { success: false, error: error.message };
       }
     }},
-    { name: QUICK_SCAN_STEPS.ASSETFINDER, action: async () => {
-      setQuickScanCurrentStep(QUICK_SCAN_STEPS.ASSETFINDER);
-      localStorage.setItem('quickScanCurrentStep', QUICK_SCAN_STEPS.ASSETFINDER);
-      
+    { name: AUTO_SCAN_STEPS.ASSETFINDER, action: async () => {
+      setAutoScanCurrentStep(AUTO_SCAN_STEPS.ASSETFINDER);
+      localStorage.setItem('autoScanCurrentStep', AUTO_SCAN_STEPS.ASSETFINDER);
       setIsAssetfinderScanning(true);
       
       try {
@@ -724,37 +724,64 @@ function App() {
         return { success: false, error: error.message };
       }
     }},
-    { name: QUICK_SCAN_STEPS.GAU, action: async () => {
-      setQuickScanCurrentStep(QUICK_SCAN_STEPS.GAU);
-      localStorage.setItem('quickScanCurrentStep', QUICK_SCAN_STEPS.GAU);
+    { name: AUTO_SCAN_STEPS.GAU, action: async () => {
+      setAutoScanCurrentStep(AUTO_SCAN_STEPS.GAU);
+      localStorage.setItem('autoScanCurrentStep', AUTO_SCAN_STEPS.GAU);
       
       try {
+        // Start the scan
         await initiateGauScan(
           activeTarget,
-          null,
+          null, // Don't use the built-in monitor function
           setIsGauScanning,
           setGauScans,
           setMostRecentGauScanStatus,
           setMostRecentGauScan
         );
         
-        await waitForScanCompletion(
+        // Wait for scan completion
+        const completedScan = await waitForScanCompletion(
           'gau',
           activeTarget.id,
           setIsGauScanning,
-          setMostRecentGauScanStatus
+          setMostRecentGauScanStatus,
+          setMostRecentGauScan
         );
+        
+        // Explicitly fetch the latest results to update UI
+        const response = await fetch(
+          `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${activeTarget.id}/scans/gau`
+        );
+        
+        if (response.ok) {
+          const scans = await response.json();
+          setGauScans(scans || []);
+          
+          if (Array.isArray(scans) && scans.length > 0) {
+            // Find the most recent scan
+            const mostRecentScan = scans.reduce((latest, scan) => {
+              const scanDate = new Date(scan.created_at);
+              return scanDate > new Date(latest.created_at) ? scan : latest;
+            }, scans[0]);
+            
+            // Update the UI state
+            setMostRecentGauScan(mostRecentScan);
+            setMostRecentGauScanStatus(mostRecentScan.status);
+          }
+        }
+        
         console.log("GAU scan completed");
       } catch (error) {
         console.error("Error with GAU scan:", error);
       }
     }},
-    { name: QUICK_SCAN_STEPS.CTL, action: async () => {
+    { name: AUTO_SCAN_STEPS.CTL, action: async () => {
       console.log("Starting CTL scan...");
-      setQuickScanCurrentStep(QUICK_SCAN_STEPS.CTL);
-      localStorage.setItem('quickScanCurrentStep', QUICK_SCAN_STEPS.CTL);
+      setAutoScanCurrentStep(AUTO_SCAN_STEPS.CTL);
+      localStorage.setItem('autoScanCurrentStep', AUTO_SCAN_STEPS.CTL);
       
       try {
+        // Start the scan
         await initiateCTLScan(
           activeTarget,
           null,
@@ -764,23 +791,49 @@ function App() {
           setMostRecentCTLScan
         );
         
-        await waitForScanCompletion(
+        // Wait for scan completion
+        const completedScan = await waitForScanCompletion(
           'ctl',
           activeTarget.id,
           setIsCTLScanning,
-          setMostRecentCTLScanStatus
+          setMostRecentCTLScanStatus,
+          setMostRecentCTLScan
         );
+        
+        // Explicitly fetch the latest results to update UI
+        const response = await fetch(
+          `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${activeTarget.id}/scans/ctl`
+        );
+        
+        if (response.ok) {
+          const scans = await response.json();
+          setCTLScans(scans || []);
+          
+          if (Array.isArray(scans) && scans.length > 0) {
+            // Find the most recent scan
+            const mostRecentScan = scans.reduce((latest, scan) => {
+              const scanDate = new Date(scan.created_at);
+              return scanDate > new Date(latest.created_at) ? scan : latest;
+            }, scans[0]);
+            
+            // Update the UI state
+            setMostRecentCTLScan(mostRecentScan);
+            setMostRecentCTLScanStatus(mostRecentScan.status);
+          }
+        }
+        
         console.log("CTL scan completed");
       } catch (error) {
         console.error("Error with CTL scan:", error);
       }
     }},
-    { name: QUICK_SCAN_STEPS.SUBFINDER, action: async () => {
+    { name: AUTO_SCAN_STEPS.SUBFINDER, action: async () => {
       console.log("Starting Subfinder scan...");
-      setQuickScanCurrentStep(QUICK_SCAN_STEPS.SUBFINDER);
-      localStorage.setItem('quickScanCurrentStep', QUICK_SCAN_STEPS.SUBFINDER);
+      setAutoScanCurrentStep(AUTO_SCAN_STEPS.SUBFINDER);
+      localStorage.setItem('autoScanCurrentStep', AUTO_SCAN_STEPS.SUBFINDER);
       
       try {
+        // Start the scan
         await initiateSubfinderScan(
           activeTarget,
           null,
@@ -790,35 +843,93 @@ function App() {
           setMostRecentSubfinderScan
         );
         
-        await waitForScanCompletion(
+        // Wait for scan completion
+        const completedScan = await waitForScanCompletion(
           'subfinder',
           activeTarget.id,
           setIsSubfinderScanning,
-          setMostRecentSubfinderScanStatus
+          setMostRecentSubfinderScanStatus,
+          setMostRecentSubfinderScan
         );
+        
+        // Explicitly fetch the latest results to update UI
+        const response = await fetch(
+          `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${activeTarget.id}/scans/subfinder`
+        );
+        
+        if (response.ok) {
+          const scans = await response.json();
+          setSubfinderScans(scans || []);
+          
+          if (Array.isArray(scans) && scans.length > 0) {
+            // Find the most recent scan
+            const mostRecentScan = scans.reduce((latest, scan) => {
+              const scanDate = new Date(scan.created_at);
+              return scanDate > new Date(latest.created_at) ? scan : latest;
+            }, scans[0]);
+            
+            // Update the UI state
+            setMostRecentSubfinderScan(mostRecentScan);
+            setMostRecentSubfinderScanStatus(mostRecentScan.status);
+          }
+        }
+        
         console.log("Subfinder scan completed");
       } catch (error) {
         console.error("Error with Subfinder scan:", error);
       }
     }},
-    { name: QUICK_SCAN_STEPS.CONSOLIDATE, action: async () => {
+    { name: AUTO_SCAN_STEPS.CONSOLIDATE, action: async () => {
       console.log("Starting Consolidation process...");
-      setQuickScanCurrentStep(QUICK_SCAN_STEPS.CONSOLIDATE);
-      localStorage.setItem('quickScanCurrentStep', QUICK_SCAN_STEPS.CONSOLIDATE);
+      setAutoScanCurrentStep(AUTO_SCAN_STEPS.CONSOLIDATE);
+      localStorage.setItem('autoScanCurrentStep', AUTO_SCAN_STEPS.CONSOLIDATE);
       
       try {
+        setIsConsolidating(true);
+        
+        // Perform the consolidation
         await handleConsolidate();
+        
+        // After consolidation is complete, fetch updated data
+        try {
+          // Fetch updated subdomain data to refresh UI
+          const subdomainsResponse = await fetch(
+            `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${activeTarget.id}/subdomains`
+          );
+          
+          if (subdomainsResponse.ok) {
+            const data = await subdomainsResponse.json();
+            setSubdomains(data.subdomains || []);
+          }
+          
+          // Fetch updated scan data
+          const scansResponse = await fetch(
+            `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${activeTarget.id}/scans/consolidate`
+          );
+          
+          if (scansResponse.ok) {
+            const scans = await scansResponse.json();
+            // Update UI with consolidation results if there's state for it
+            // (You may need to add state variables for this if they don't exist)
+          }
+        } catch (error) {
+          console.error("Error fetching updated data after consolidation:", error);
+        }
+        
+        setIsConsolidating(false);
         console.log("Consolidation completed");
       } catch (error) {
         console.error("Error during Consolidation:", error);
+        setIsConsolidating(false);
       }
     }},
-    { name: QUICK_SCAN_STEPS.HTTPX, action: async () => {
+    { name: AUTO_SCAN_STEPS.HTTPX, action: async () => {
       console.log("Starting HTTPX scan for Live Web Servers...");
-      setQuickScanCurrentStep(QUICK_SCAN_STEPS.HTTPX);
-      localStorage.setItem('quickScanCurrentStep', QUICK_SCAN_STEPS.HTTPX);
+      setAutoScanCurrentStep(AUTO_SCAN_STEPS.HTTPX);
+      localStorage.setItem('autoScanCurrentStep', AUTO_SCAN_STEPS.HTTPX);
       
       try {
+        // Start the scan
         await initiateHttpxScan(
           activeTarget,
           null,
@@ -828,23 +939,50 @@ function App() {
           setMostRecentHttpxScan
         );
         
+        // Wait for scan completion
         await waitForScanCompletion(
           'httpx',
           activeTarget.id,
           setIsHttpxScanning,
           setMostRecentHttpxScanStatus
         );
+        
+        // Use the fetchHttpxScans function - this is what happens on page refresh
+        await fetchHttpxScans(
+          activeTarget, 
+          setHttpxScans, 
+          setMostRecentHttpxScan, 
+          setMostRecentHttpxScanStatus
+        );
+        
         console.log("HTTPX scan completed");
       } catch (error) {
         console.error("Error with HTTPX scan:", error);
       }
     }},
-    { name: QUICK_SCAN_STEPS.NUCLEI_SCREENSHOT, action: async () => {
+    { name: AUTO_SCAN_STEPS.SHUFFLEDNS, action: async () => {
+      console.log("Starting ShuffleDNS Scan...");
+      /* Add ShuffleDNS Scan Logic Here */
+    }},
+    { name: AUTO_SCAN_STEPS.SHUFFLEDNS_CEWL, action: async () => {
+      console.log("Starting ShuffleDNS w/ Custom Wordlist Scan...");
+      /* Add CeWL ShuffleDNS Custom Wordlist Scan Logic Here */
+    }},
+    { name: AUTO_SCAN_STEPS.GOSPIDER, action: async () => {
+      console.log("Starting GoSpider Scan...");
+      /* Add GoSpider Scan Logic Here */
+    }},
+    { name: AUTO_SCAN_STEPS.SUBDOMAINIZER, action: async () => {
+      console.log("Starting Subdomainizer Scan...");
+      /* Add Subdomainizer Scan Logic Here */
+    }},
+    { name: AUTO_SCAN_STEPS.NUCLEI_SCREENSHOT, action: async () => {
       console.log("Starting Nuclei Screenshot scan...");
-      setQuickScanCurrentStep(QUICK_SCAN_STEPS.NUCLEI_SCREENSHOT);
-      localStorage.setItem('quickScanCurrentStep', QUICK_SCAN_STEPS.NUCLEI_SCREENSHOT);
+      setAutoScanCurrentStep(AUTO_SCAN_STEPS.NUCLEI_SCREENSHOT);
+      localStorage.setItem('autoScanCurrentStep', AUTO_SCAN_STEPS.NUCLEI_SCREENSHOT);
       
       try {
+        // Start the scan
         await initiateNucleiScreenshotScan(
           activeTarget,
           null,
@@ -854,23 +992,49 @@ function App() {
           setMostRecentNucleiScreenshotScan
         );
         
-        await waitForScanCompletion(
+        // Wait for scan completion
+        const completedScan = await waitForScanCompletion(
           'nuclei-screenshot',
           activeTarget.id,
           setIsNucleiScreenshotScanning,
-          setMostRecentNucleiScreenshotScanStatus
+          setMostRecentNucleiScreenshotScanStatus,
+          setMostRecentNucleiScreenshotScan
         );
+        
+        // Explicitly fetch the latest results to update UI
+        const response = await fetch(
+          `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${activeTarget.id}/scans/nuclei-screenshot`
+        );
+        
+        if (response.ok) {
+          const scans = await response.json();
+          setNucleiScreenshotScans(scans || []);
+          
+          if (Array.isArray(scans) && scans.length > 0) {
+            // Find the most recent scan
+            const mostRecentScan = scans.reduce((latest, scan) => {
+              const scanDate = new Date(scan.created_at);
+              return scanDate > new Date(latest.created_at) ? scan : latest;
+            }, scans[0]);
+            
+            // Update the UI state
+            setMostRecentNucleiScreenshotScan(mostRecentScan);
+            setMostRecentNucleiScreenshotScanStatus(mostRecentScan.status);
+          }
+        }
+        
         console.log("Nuclei Screenshot scan completed");
       } catch (error) {
         console.error("Error with Nuclei Screenshot scan:", error);
       }
     }},
-    { name: QUICK_SCAN_STEPS.METADATA, action: async () => {
+    { name: AUTO_SCAN_STEPS.METADATA, action: async () => {
       console.log("Starting Metadata scan...");
-      setQuickScanCurrentStep(QUICK_SCAN_STEPS.METADATA);
-      localStorage.setItem('quickScanCurrentStep', QUICK_SCAN_STEPS.METADATA);
+      setAutoScanCurrentStep(AUTO_SCAN_STEPS.METADATA);
+      localStorage.setItem('autoScanCurrentStep', AUTO_SCAN_STEPS.METADATA);
       
       try {
+        // Start the scan
         await initiateMetaDataScan(
           activeTarget,
           null,
@@ -880,12 +1044,54 @@ function App() {
           setMostRecentMetaDataScan
         );
         
-        await waitForScanCompletion(
+        // Wait for scan completion
+        const completedScan = await waitForScanCompletion(
           'metadata',
           activeTarget.id,
           setIsMetaDataScanning,
-          setMostRecentMetaDataScanStatus
+          setMostRecentMetaDataScanStatus,
+          setMostRecentMetaDataScan
         );
+        
+        // Explicitly fetch the latest results to update UI
+        const response = await fetch(
+          `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${activeTarget.id}/scans/metadata`
+        );
+        
+        if (response.ok) {
+          const scans = await response.json();
+          setMetaDataScans(scans || []);
+          
+          if (Array.isArray(scans) && scans.length > 0) {
+            // Find the most recent scan
+            const mostRecentScan = scans.reduce((latest, scan) => {
+              const scanDate = new Date(scan.created_at);
+              return scanDate > new Date(latest.created_at) ? scan : latest;
+            }, scans[0]);
+            
+            // Update the UI state
+            setMostRecentMetaDataScan(mostRecentScan);
+            setMostRecentMetaDataScanStatus(mostRecentScan.status);
+            
+            // Also fetch the actual metadata results to populate UI
+            if (mostRecentScan.id) {
+              try {
+                const metadataResponse = await fetch(
+                  `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${activeTarget.id}/metadata`
+                );
+                
+                if (metadataResponse.ok) {
+                  const metadataData = await metadataResponse.json();
+                  // We don't need to set additional metadata state here
+                  // The scan object itself is already updated through setMostRecentMetaDataScan
+                }
+              } catch (metadataError) {
+                console.error("Error fetching metadata results:", metadataError);
+              }
+            }
+          }
+        }
+        
         console.log("Metadata scan completed");
       } catch (error) {
         console.error("Error with Metadata scan:", error);
@@ -1282,75 +1488,59 @@ function App() {
     initiateAmassScan(activeTarget, monitorScanStatus, setIsScanning, setAmassScans, setMostRecentAmassScanStatus, setDnsRecords, setSubdomains, setCloudDomains, setMostRecentAmassScan)
   }
 
-  // Remove the original startQuickScan definition and replace it with this wrapper function
-  const startQuickScanWrapper = async () => {
-    await startQuickScan(
-      activeTarget,
-      getQuickScanSteps,
-      setIsQuickScanning,
-      setQuickScanCurrentStep,
-      setQuickScanTargetId,
-      setIsGauScanning,
-      setMostRecentGauScan,
-      setMostRecentGauScanStatus,
-      setIsCTLScanning,
-      setMostRecentCTLScan,
-      setMostRecentCTLScanStatus,
-      setIsSubfinderScanning,
-      setMostRecentSubfinderScan,
-      setMostRecentSubfinderScanStatus,
-      setIsConsolidating,
-      handleConsolidate,
-      setIsHttpxScanning,
-      setMostRecentHttpxScan,
-      setMostRecentHttpxScanStatus,
-      setIsNucleiScreenshotScanning,
-      setMostRecentNucleiScreenshotScan,
-      setMostRecentNucleiScreenshotScanStatus,
-      setIsMetaDataScanning,
-      setMostRecentMetaDataScan,
-      setMostRecentMetaDataScanStatus,
-      startMetaDataScan,
-      initiateSubfinderScan,
-      initiateHttpxScan,
-      initiateNucleiScreenshotScan,
-      setSubfinderScans,
-      setHttpxScans,
-      setNucleiScreenshotScans,
-      setMetaDataScans,
-      monitorSubfinderScanStatus,
-      monitorHttpxScanStatus,
-      monitorNucleiScreenshotScanStatus,
-      monitorMetaDataScanStatus,
-      initiateMetaDataScan,
-      initiateCTLScan,
-      monitorCTLScanStatus,
-      setCTLScans,
-      setGauScans
-    );
+  const startAutoScan = async () => {
+    if (!activeTarget || !activeTarget.id) {
+      console.log("No active target selected.");
+      return;
+    }
+
+    setIsAutoScanning(true);
+    setAutoScanCurrentStep(AUTO_SCAN_STEPS.IDLE);
+    setAutoScanTargetId(activeTarget.id);
+    
+    localStorage.setItem('autoScanTargetId', activeTarget.id);
+    localStorage.setItem('autoScanCurrentStep', AUTO_SCAN_STEPS.IDLE);
+    debugTrace("localStorage initialized: autoScanTargetId=" + activeTarget.id + ", autoScanCurrentStep=" + AUTO_SCAN_STEPS.IDLE);
+    
+    try {
+      const steps = getAutoScanSteps();
+      
+      // Execute all scan steps in sequence
+      for (let i = 1; i < steps.length; i++) {
+        try {
+          await steps[i].action();
+        } catch (error) {
+          debugTrace(`Error in step ${steps[i].name}: ${error.message}`);
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+      
+      debugTrace("All auto scan steps completed");
+    } catch (error) {
+      debugTrace(`ERROR during Auto Scan: ${error.message}`);
+    } finally {
+      // Only clear the localStorage at the very end when we're completely done
+      debugTrace("Auto Scan session finalizing - setting state to COMPLETED");
+      setIsAutoScanning(false);
+      setAutoScanCurrentStep(AUTO_SCAN_STEPS.COMPLETED);
+      localStorage.setItem('autoScanCurrentStep', AUTO_SCAN_STEPS.COMPLETED);
+      debugTrace("localStorage updated: autoScanCurrentStep=" + AUTO_SCAN_STEPS.COMPLETED);
+      debugTrace("Auto Scan session ended");
+    }
   };
 
   const startBalancedScan = () => {
-    startAmassScan();
-    startHttpxScan();
-    startGauScan();
-    startSublist3rScan();
-    startAssetfinderScan();
-  }
+    startAutoScan();
+  };
 
   const startFullScan = () => {
-    startBalancedScan();
-    startCTLScan();
-    startSubfinderScan();
-    startShuffleDNSScan();
-    startCeWLScan();
-  }
+    startAutoScan();
+  };
 
   const startYOLOScan = () => {
-    startFullScan();
-    startGoSpiderScan();
-    startSubdomainizerScan();
-  }
+    startAutoScan();
+  };
 
   const startHttpxScan = () => {
     initiateHttpxScan(
@@ -1722,8 +1912,6 @@ function App() {
     };
   }, []);
 
- 
-
   return (
     <Container data-bs-theme="dark" className="App" style={{ padding: '20px' }}>
       <Ars0nFrameworkHeader 
@@ -1961,12 +2149,12 @@ function App() {
           activeTarget={activeTarget}
           scopeTargets={scopeTargets}
           getTypeIcon={getTypeIcon}
-          onQuickScan={startQuickScanWrapper}
+          onAutoScan={startAutoScan}
           onBalancedScan={startBalancedScan}
           onFullScan={startFullScan}
           onYOLOScan={startYOLOScan}
-          isQuickScanning={isQuickScanning}
-          quickScanCurrentStep={quickScanCurrentStep}
+          isAutoScanning={isAutoScanning}
+          autoScanCurrentStep={autoScanCurrentStep}
           mostRecentGauScanStatus={mostRecentGauScanStatus}
         />
       </Fade>

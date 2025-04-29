@@ -32,7 +32,6 @@ const MetaDataModal = ({
   };
 
   const urls = Array.isArray(targetURLs) ? targetURLs : [];
-  console.log('Rendering MetaDataModal with URLs:', urls);
 
   const getSafeValue = (value) => {
     if (!value) return '';

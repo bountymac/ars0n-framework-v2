@@ -2,26 +2,17 @@ import { Modal, Table } from 'react-bootstrap';
 
 export const HttpxResultsModal = ({ showHttpxResultsModal, handleCloseHttpxResultsModal, httpxResults }) => {
   const parseResults = (results) => {
-    console.log("[DEBUG] Modal received results:", results);
     if (!results) {
-      console.log("[DEBUG] No results provided");
       return [];
     }
 
     // Handle the new response format where result is nested in a String property
-    console.log("[DEBUG] Results structure:", {
-      hasResult: !!results.result,
-      resultType: results.result ? typeof results.result : 'N/A',
-      hasString: !!results.result?.String
-    });
     const scanResults = results.result?.String;
     if (!scanResults) {
-      console.log("[DEBUG] No result.String field in results");
       return [];
     }
 
     try {
-      console.log("[DEBUG] Parsing results string of length:", scanResults.length);
       const parsed = scanResults
         .split('\n')
         .filter(line => line.trim())
@@ -35,7 +26,6 @@ export const HttpxResultsModal = ({ showHttpxResultsModal, handleCloseHttpxResul
         })
         .filter(result => result !== null);
       
-      console.log("[DEBUG] Successfully parsed", parsed.length, "results");
       return parsed;
     } catch (error) {
       console.error("[ERROR] Error parsing httpx results:", error);
