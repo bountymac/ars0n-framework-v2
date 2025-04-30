@@ -158,4 +158,180 @@ const waitForScanCompletion = async (scanType, targetId, setIsScanning, setMostR
   ]);
 };
 
-export { waitForScanCompletion, AUTO_SCAN_STEPS, debugTrace }; 
+// Function to resume auto scan from a specific step
+const resumeAutoScan = async (
+  fromStep,
+  activeTarget,
+  getAutoScanSteps,
+  setIsAutoScanning,
+  setAutoScanCurrentStep
+) => {
+  try {
+    setIsAutoScanning(false);
+    let startFromIndex = 0;
+    const steps = getAutoScanSteps(activeTarget);
+    for (let i = 0; i < steps.length; i++) {
+      if (steps[i].name === fromStep) {
+        startFromIndex = i;
+        break;
+      }
+    }
+    
+    // Execute steps from the determined starting point
+    for (let i = startFromIndex; i < steps.length; i++) {
+      try {
+        await steps[i].action();
+      } catch (error) {
+        debugTrace(`Error in step ${i+1}/${steps.length}: ${error.message}`);
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+    
+  } catch (error) {
+    debugTrace(`Error resuming Auto Scan: ${error.message}`);
+  } finally {
+    setIsAutoScanning(false);
+    setAutoScanCurrentStep(AUTO_SCAN_STEPS.COMPLETED);
+    localStorage.setItem('autoScanCurrentStep', AUTO_SCAN_STEPS.COMPLETED);
+  }
+};
+
+// Function to start a new auto scan
+const startAutoScan = async (
+  activeTarget,
+  setIsAutoScanning,
+  setAutoScanCurrentStep,
+  setAutoScanTargetId,
+  getAutoScanSteps
+) => {
+  if (!activeTarget || !activeTarget.id) {
+    console.log("No active target selected.");
+    return;
+  }
+
+  setIsAutoScanning(true);
+  setAutoScanCurrentStep(AUTO_SCAN_STEPS.IDLE);
+  setAutoScanTargetId(activeTarget.id);
+  
+  localStorage.setItem('autoScanTargetId', activeTarget.id);
+  localStorage.setItem('autoScanCurrentStep', AUTO_SCAN_STEPS.IDLE);
+  debugTrace("localStorage initialized: autoScanTargetId=" + activeTarget.id + ", autoScanCurrentStep=" + AUTO_SCAN_STEPS.IDLE);
+  
+  try {
+    const steps = getAutoScanSteps(activeTarget);
+    
+    // Execute all scan steps in sequence
+    for (let i = 1; i < steps.length; i++) {
+      try {
+        await steps[i].action();
+      } catch (error) {
+        debugTrace(`Error in step ${steps[i].name}: ${error.message}`);
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    
+    debugTrace("All auto scan steps completed");
+  } catch (error) {
+    debugTrace(`ERROR during Auto Scan: ${error.message}`);
+  } finally {
+    // Only clear the localStorage at the very end when we're completely done
+    debugTrace("Auto Scan session finalizing - setting state to COMPLETED");
+    setIsAutoScanning(false);
+    setAutoScanCurrentStep(AUTO_SCAN_STEPS.COMPLETED);
+    localStorage.setItem('autoScanCurrentStep', AUTO_SCAN_STEPS.COMPLETED);
+    debugTrace("localStorage updated: autoScanCurrentStep=" + AUTO_SCAN_STEPS.COMPLETED);
+    debugTrace("Auto Scan session ended");
+  }
+};
+
+// Functions for different scan types that just call startAutoScan
+const startBalancedScan = (
+  activeTarget,
+  setIsAutoScanning,
+  setAutoScanCurrentStep,
+  setAutoScanTargetId,
+  getAutoScanSteps
+) => {
+  startAutoScan(
+    activeTarget,
+    setIsAutoScanning,
+    setAutoScanCurrentStep,
+    setAutoScanTargetId,
+    getAutoScanSteps
+  );
+};
+
+const startFullScan = (
+  activeTarget,
+  setIsAutoScanning,
+  setAutoScanCurrentStep,
+  setAutoScanTargetId,
+  getAutoScanSteps
+) => {
+  startAutoScan(
+    activeTarget,
+    setIsAutoScanning,
+    setAutoScanCurrentStep,
+    setAutoScanTargetId,
+    getAutoScanSteps
+  );
+};
+
+const startYOLOScan = (
+  activeTarget,
+  setIsAutoScanning,
+  setAutoScanCurrentStep,
+  setAutoScanTargetId,
+  getAutoScanSteps
+) => {
+  startAutoScan(
+    activeTarget,
+    setIsAutoScanning,
+    setAutoScanCurrentStep,
+    setAutoScanTargetId,
+    getAutoScanSteps
+  );
+};
+
+// Helper to check and resume auto scan
+const checkAndResumeAutoScan = (
+  storedStep,
+  storedTargetId,
+  scopeTargets,
+  activeTarget,
+  setIsAutoScanning,
+  setAutoScanCurrentStep,
+  setAutoScanTargetId,
+  resumeAutoScanFn
+) => {
+  if (storedStep && storedStep !== AUTO_SCAN_STEPS.IDLE && storedStep !== AUTO_SCAN_STEPS.COMPLETED && storedTargetId) {
+    console.log(`Detected in-progress Auto Scan (step: ${storedStep}). Attempting to resume...`);
+    
+    // Find the target with the matching ID
+    const matchingTarget = scopeTargets.find(target => target.id === storedTargetId);
+    
+    if (matchingTarget && matchingTarget.id === activeTarget?.id) {
+      setIsAutoScanning(true);
+      resumeAutoScanFn(storedStep);
+    } else {
+      localStorage.removeItem('autoScanCurrentStep');
+      localStorage.removeItem('autoScanTargetId');
+      setAutoScanCurrentStep(AUTO_SCAN_STEPS.IDLE);
+      setAutoScanTargetId(null);
+    }
+  }
+};
+
+export {
+  waitForScanCompletion,
+  AUTO_SCAN_STEPS,
+  debugTrace,
+  resumeAutoScan,
+  startAutoScan,
+  startBalancedScan,
+  startFullScan,
+  startYOLOScan,
+  checkAndResumeAutoScan
+}; 

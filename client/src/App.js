@@ -80,7 +80,14 @@ import MetaDataModal from './modals/MetaDataModal.js';
 import fetchHttpxScans from './utils/fetchHttpxScans';
 import ROIReport from './components/ROIReport';
 import HelpMeLearn from './components/HelpMeLearn';
-import { waitForScanCompletion, AUTO_SCAN_STEPS, debugTrace } from './utils/wildcardAutoScan';
+import {
+  waitForScanCompletion,
+  AUTO_SCAN_STEPS,
+  debugTrace,
+  resumeAutoScan as resumeAutoScanUtil,
+  startAutoScan as startAutoScanUtil,
+  checkAndResumeAutoScan
+} from './utils/wildcardAutoScan';
 
 // Add helper function
 const getHttpxResultsCount = (scan) => {
@@ -492,56 +499,26 @@ function App() {
     const storedStep = localStorage.getItem('autoScanCurrentStep');
     const storedTargetId = localStorage.getItem('autoScanTargetId');
     
-    if (storedStep && storedStep !== AUTO_SCAN_STEPS.IDLE && storedStep !== AUTO_SCAN_STEPS.COMPLETED && storedTargetId) {
-      console.log(`Detected in-progress Auto Scan (step: ${storedStep}). Attempting to resume...`);
-      
-      // Find the target with the matching ID
-      const matchingTarget = scopeTargets.find(target => target.id === storedTargetId);
-      
-      if (matchingTarget && matchingTarget.id === activeTarget?.id) {
-        setIsAutoScanning(true);
-        resumeAutoScan(storedStep);
-      } else {
-        localStorage.removeItem('autoScanCurrentStep');
-        localStorage.removeItem('autoScanTargetId');
-        setAutoScanCurrentStep(AUTO_SCAN_STEPS.IDLE);
-        setAutoScanTargetId(null);
-      }
-    }
+    checkAndResumeAutoScan(
+      storedStep,
+      storedTargetId,
+      scopeTargets,
+      activeTarget,
+      setIsAutoScanning,
+      setAutoScanCurrentStep,
+      setAutoScanTargetId,
+      resumeAutoScan
+    );
   }, [activeTarget, scopeTargets]);
 
   const resumeAutoScan = async (fromStep) => {
-    try {
-      setIsAutoScanning(false);
-      let startFromIndex = 0;
-      const steps = getAutoScanSteps();
-      for (let i = 0; i < steps.length; i++) {
-        if (steps[i].name === fromStep) {
-          startFromIndex = i;
-          break;
-        }
-      }
-      
-      
-      // Execute steps from the determined starting point
-      for (let i = startFromIndex; i < steps.length; i++) {
-        
-        try {
-          await steps[i].action();
-        } catch (error) {
-          debugTrace(`Error in step ${i+1}/${steps.length}: ${error.message}`);
-        }
-        
-        await new Promise(resolve => setTimeout(resolve, 2000));
-      }
-      
-    } catch (error) {
-      debugTrace(`Error resuming Auto Scan: ${error.message}`);
-    } finally {
-      setIsAutoScanning(false);
-      setAutoScanCurrentStep(AUTO_SCAN_STEPS.COMPLETED);
-      localStorage.setItem('autoScanCurrentStep', AUTO_SCAN_STEPS.COMPLETED);
-    }
+    resumeAutoScanUtil(
+      fromStep,
+      activeTarget,
+      getAutoScanSteps,
+      setIsAutoScanning,
+      setAutoScanCurrentStep
+    );
   };
 
   const getAutoScanSteps = () => [
@@ -1489,57 +1466,13 @@ function App() {
   }
 
   const startAutoScan = async () => {
-    if (!activeTarget || !activeTarget.id) {
-      console.log("No active target selected.");
-      return;
-    }
-
-    setIsAutoScanning(true);
-    setAutoScanCurrentStep(AUTO_SCAN_STEPS.IDLE);
-    setAutoScanTargetId(activeTarget.id);
-    
-    localStorage.setItem('autoScanTargetId', activeTarget.id);
-    localStorage.setItem('autoScanCurrentStep', AUTO_SCAN_STEPS.IDLE);
-    debugTrace("localStorage initialized: autoScanTargetId=" + activeTarget.id + ", autoScanCurrentStep=" + AUTO_SCAN_STEPS.IDLE);
-    
-    try {
-      const steps = getAutoScanSteps();
-      
-      // Execute all scan steps in sequence
-      for (let i = 1; i < steps.length; i++) {
-        try {
-          await steps[i].action();
-        } catch (error) {
-          debugTrace(`Error in step ${steps[i].name}: ${error.message}`);
-        }
-        
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-      
-      debugTrace("All auto scan steps completed");
-    } catch (error) {
-      debugTrace(`ERROR during Auto Scan: ${error.message}`);
-    } finally {
-      // Only clear the localStorage at the very end when we're completely done
-      debugTrace("Auto Scan session finalizing - setting state to COMPLETED");
-      setIsAutoScanning(false);
-      setAutoScanCurrentStep(AUTO_SCAN_STEPS.COMPLETED);
-      localStorage.setItem('autoScanCurrentStep', AUTO_SCAN_STEPS.COMPLETED);
-      debugTrace("localStorage updated: autoScanCurrentStep=" + AUTO_SCAN_STEPS.COMPLETED);
-      debugTrace("Auto Scan session ended");
-    }
-  };
-
-  const startBalancedScan = () => {
-    startAutoScan();
-  };
-
-  const startFullScan = () => {
-    startAutoScan();
-  };
-
-  const startYOLOScan = () => {
-    startAutoScan();
+    startAutoScanUtil(
+      activeTarget,
+      setIsAutoScanning,
+      setAutoScanCurrentStep, 
+      setAutoScanTargetId,
+      getAutoScanSteps
+    );
   };
 
   const startHttpxScan = () => {
@@ -2150,9 +2083,6 @@ function App() {
           scopeTargets={scopeTargets}
           getTypeIcon={getTypeIcon}
           onAutoScan={startAutoScan}
-          onBalancedScan={startBalancedScan}
-          onFullScan={startFullScan}
-          onYOLOScan={startYOLOScan}
           isAutoScanning={isAutoScanning}
           autoScanCurrentStep={autoScanCurrentStep}
           mostRecentGauScanStatus={mostRecentGauScanStatus}
