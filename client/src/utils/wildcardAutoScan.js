@@ -246,55 +246,6 @@ const startAutoScan = async (
   }
 };
 
-// Functions for different scan types that just call startAutoScan
-const startBalancedScan = (
-  activeTarget,
-  setIsAutoScanning,
-  setAutoScanCurrentStep,
-  setAutoScanTargetId,
-  getAutoScanSteps
-) => {
-  startAutoScan(
-    activeTarget,
-    setIsAutoScanning,
-    setAutoScanCurrentStep,
-    setAutoScanTargetId,
-    getAutoScanSteps
-  );
-};
-
-const startFullScan = (
-  activeTarget,
-  setIsAutoScanning,
-  setAutoScanCurrentStep,
-  setAutoScanTargetId,
-  getAutoScanSteps
-) => {
-  startAutoScan(
-    activeTarget,
-    setIsAutoScanning,
-    setAutoScanCurrentStep,
-    setAutoScanTargetId,
-    getAutoScanSteps
-  );
-};
-
-const startYOLOScan = (
-  activeTarget,
-  setIsAutoScanning,
-  setAutoScanCurrentStep,
-  setAutoScanTargetId,
-  getAutoScanSteps
-) => {
-  startAutoScan(
-    activeTarget,
-    setIsAutoScanning,
-    setAutoScanCurrentStep,
-    setAutoScanTargetId,
-    getAutoScanSteps
-  );
-};
-
 // Helper to check and resume auto scan
 const checkAndResumeAutoScan = (
   storedStep,
@@ -330,8 +281,5 @@ export {
   debugTrace,
   resumeAutoScan,
   startAutoScan,
-  startBalancedScan,
-  startFullScan,
-  startYOLOScan,
   checkAndResumeAutoScan
 }; 
