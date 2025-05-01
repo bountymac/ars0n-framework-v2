@@ -11,8 +11,12 @@ const AUTO_SCAN_STEPS = {
   HTTPX: 'httpx', // 8
   SHUFFLEDNS: 'shuffledns', // 9
   SHUFFLEDNS_CEWL: 'shuffledns_cewl', // 10
+  CONSOLIDATE_ROUND2: 'consolidate_round2', // 10.5
+  HTTPX_ROUND2: 'httpx_round2', // 10.75
   GOSPIDER: 'gospider', // 11
   SUBDOMAINIZER: 'subdomainizer', // 12
+  CONSOLIDATE_ROUND3: 'consolidate_round3', // 12.5
+  HTTPX_ROUND3: 'httpx_round3', // 12.75
   NUCLEI_SCREENSHOT: 'nuclei-screenshot', // 13
   METADATA: 'metadata', // 14
   COMPLETED: 'completed' // 15
@@ -158,6 +162,146 @@ const waitForScanCompletion = async (scanType, targetId, setIsScanning, setMostR
   ]);
 };
 
+// Custom function to wait for both CeWL and ShuffleDNS Custom scans
+const waitForCeWLAndShuffleDNSCustom = async (
+  activeTarget,
+  setIsCeWLScanning,
+  setMostRecentCeWLScanStatus,
+  setMostRecentCeWLScan,
+  setMostRecentShuffleDNSCustomScanStatus,
+  setMostRecentShuffleDNSCustomScan
+) => {
+  debugTrace(`Starting waitForCeWLAndShuffleDNSCustom for target ${activeTarget.id}`);
+  
+  // First, wait for CeWL to complete
+  debugTrace(`Waiting for CeWL scan to complete`);
+  await waitForScanCompletion(
+    'cewl',
+    activeTarget.id,
+    setIsCeWLScanning,
+    setMostRecentCeWLScanStatus,
+    setMostRecentCeWLScan
+  );
+  
+  debugTrace(`CeWL scan completed, now waiting for ShuffleDNS custom scan`);
+  
+  // Now monitor for ShuffleDNS custom completion
+  // Add a hard safety timeout in case the promise never resolves
+  return Promise.race([
+    new Promise((resolve) => {
+      const startTime = Date.now();
+      const maxWaitTime = 10 * 60 * 1000; // 10 minutes maximum wait
+      const hardMaxWaitTime = 15 * 60 * 1000; // 15 minutes absolute maximum
+      let attempts = 0;
+      
+      // Add a hard timeout as safety
+      const hardTimeout = setTimeout(() => {
+        debugTrace(`HARD TIMEOUT: ShuffleDNS custom scan exceeded maximum wait time of 15 minutes`);
+        resolve({ status: 'hard_timeout', message: 'Hard scan timeout exceeded' });
+      }, hardMaxWaitTime);
+      
+      const checkStatus = async () => {
+        attempts++;
+        debugTrace(`Checking ShuffleDNS custom scan status - attempt #${attempts}`);
+        
+        try {
+          // Check if we've been waiting too long
+          if (Date.now() - startTime > maxWaitTime) {
+            debugTrace(`ShuffleDNS custom scan taking too long (${Math.round((Date.now() - startTime)/1000)}s), proceeding with next step`);
+            clearTimeout(hardTimeout); // Clear the hard timeout
+            return resolve({ status: 'timeout', message: 'Scan timeout exceeded' });
+          }
+          
+          const url = `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/scope-targets/${activeTarget.id}/shufflednscustom-scans`;
+          debugTrace(`Fetching ShuffleDNS custom scan status from: ${url}`);
+          
+          const response = await fetch(url);
+          
+          if (!response.ok) {
+            debugTrace(`Failed to fetch ShuffleDNS custom scan status: ${response.status} ${response.statusText}`);
+            
+            // If we get a 404 or other error after multiple attempts, let's proceed rather than getting stuck
+            if (attempts > 10) {
+              debugTrace(`ShuffleDNS custom scan failed to fetch status after ${attempts} attempts, proceeding with next step`);
+              clearTimeout(hardTimeout); // Clear the hard timeout
+              return resolve({ status: 'error', message: 'Failed to fetch scan status' });
+            }
+            
+            // If we get a 404 or other error, we'll check again after a delay
+            setTimeout(checkStatus, 5000);
+            return;
+          }
+          
+          const scans = await response.json();
+          debugTrace(`Retrieved ${scans?.length || 0} ShuffleDNS custom scans`);
+          
+          // Handle case where there are no scans after multiple attempts
+          if (!scans || !Array.isArray(scans) || scans.length === 0) {
+            debugTrace(`No ShuffleDNS custom scans found, will check again`);
+            
+            if (attempts > 10) {
+              debugTrace(`ShuffleDNS custom scan returned no scans after ${attempts} attempts, proceeding with next step`);
+              clearTimeout(hardTimeout); // Clear the hard timeout
+              return resolve({ status: 'no_scans', message: 'No scans found' });
+            }
+            
+            setTimeout(checkStatus, 5000);
+            return;
+          }
+          
+          // Find the most recent scan (should be the first one since they're ordered by created_at DESC)
+          const mostRecentScan = scans[0];
+          
+          debugTrace(`Most recent ShuffleDNS custom scan status: ${mostRecentScan.status}, ID: ${mostRecentScan.id || 'unknown'}`);
+          
+          // Update status in UI
+          setMostRecentShuffleDNSCustomScanStatus(mostRecentScan.status);
+          setMostRecentShuffleDNSCustomScan(mostRecentScan);
+          
+          if (mostRecentScan.status === 'completed' || 
+              mostRecentScan.status === 'success' || 
+              mostRecentScan.status === 'failed' || 
+              mostRecentScan.status === 'error') {
+            debugTrace(`ShuffleDNS custom scan finished with status: ${mostRecentScan.status}`);
+            clearTimeout(hardTimeout); // Clear the hard timeout
+            resolve(mostRecentScan);
+          } else if (mostRecentScan.status === 'processing') {
+            // The scan is complete but still processing large results
+            debugTrace(`ShuffleDNS custom scan is still processing large results, checking again in 5 seconds`);
+            setTimeout(checkStatus, 5000);
+          } else {
+            // Still pending or another status, check again after delay
+            debugTrace(`ShuffleDNS custom scan still pending (status: ${mostRecentScan.status}), checking again in 5 seconds`);
+            setTimeout(checkStatus, 5000);
+          }
+        } catch (error) {
+          debugTrace(`Error checking ShuffleDNS custom scan status: ${error.message}\n${error.stack}`);
+          
+          // If we have persistent errors after multiple attempts, proceed rather than getting stuck
+          if (attempts > 10) {
+            debugTrace(`ShuffleDNS custom scan had persistent errors after ${attempts} attempts, proceeding with next step`);
+            clearTimeout(hardTimeout); // Clear the hard timeout
+            return resolve({ status: 'persistent_error', message: 'Persistent errors checking scan status' });
+          }
+          
+          // Don't reject immediately on errors, try again after a delay
+          setTimeout(checkStatus, 5000);
+        }
+      };
+      
+      // Start checking status immediately
+      checkStatus();
+    }),
+    // Add a separate timeout promise as a backstop
+    new Promise((resolve) => {
+      setTimeout(() => {
+        debugTrace(`BACKUP TIMEOUT: ShuffleDNS custom scan timed out at 20 minutes absolute maximum`);
+        resolve({ status: 'absolute_timeout', message: 'Absolute timeout exceeded' });
+      }, 20 * 60 * 1000); // 20 minutes absolute maximum
+    })
+  ]);
+};
+
 // Function to resume auto scan from a specific step
 const resumeAutoScan = async (
   fromStep,
@@ -219,7 +363,7 @@ const startAutoScan = async (
   debugTrace("localStorage initialized: autoScanTargetId=" + activeTarget.id + ", autoScanCurrentStep=" + AUTO_SCAN_STEPS.IDLE);
   
   try {
-    const steps = getAutoScanSteps(activeTarget);
+    const steps = getAutoScanSteps();
     
     // Execute all scan steps in sequence
     for (let i = 1; i < steps.length; i++) {
@@ -281,5 +425,6 @@ export {
   debugTrace,
   resumeAutoScan,
   startAutoScan,
-  checkAndResumeAutoScan
+  checkAndResumeAutoScan,
+  waitForCeWLAndShuffleDNSCustom
 }; 
