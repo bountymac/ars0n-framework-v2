@@ -529,25 +529,33 @@ const getAutoScanSteps = (
           setMostRecentHttpxScan
         );
         
-        // Wait for scan completion
+        // Wait for scan completion - explicitly pass setMostRecentHttpxScan
         await waitForScanCompletion(
           'httpx',
           activeTarget.id,
           setIsHttpxScanning,
-          setMostRecentHttpxScanStatus
+          setMostRecentHttpxScanStatus,
+          setMostRecentHttpxScan
         );
         
+        // Add a short buffer before fetching results
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
         // Use the fetchHttpxScans function - this is what happens on page refresh
-        await fetchHttpxScans(
+        const scanDetails = await fetchHttpxScans(
           activeTarget, 
           setHttpxScans, 
           setMostRecentHttpxScan, 
           setMostRecentHttpxScanStatus
         );
         
+        // Force a reset of the scanning state
+        setIsHttpxScanning(false);
+        
         console.log("HTTPX scan completed");
       } catch (error) {
         console.error("Error with HTTPX scan:", error);
+        setIsHttpxScanning(false);
       }
     }},
     { name: AUTO_SCAN_STEPS.SHUFFLEDNS, action: async () => {
@@ -743,25 +751,33 @@ const getAutoScanSteps = (
           setMostRecentHttpxScan
         );
         
-        // Wait for scan completion
+        // Wait for scan completion - pass setMostRecentHttpxScan so it gets updated
         await waitForScanCompletion(
           'httpx',
           activeTarget.id,
           setIsHttpxScanning,
-          setMostRecentHttpxScanStatus
+          setMostRecentHttpxScanStatus,
+          setMostRecentHttpxScan
         );
         
+        // Add a short buffer before fetching results
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
         // Use the fetchHttpxScans function - this is what happens on page refresh
-        await fetchHttpxScans(
+        const scanDetails = await fetchHttpxScans(
           activeTarget, 
           setHttpxScans, 
           setMostRecentHttpxScan, 
           setMostRecentHttpxScanStatus
         );
         
+        // Force a reset of the scanning state
+        setIsHttpxScanning(false);
+        
         console.log("HTTPX scan (Round 2) completed");
       } catch (error) {
         console.error("Error with HTTPX scan (Round 2):", error);
+        setIsHttpxScanning(false);
       }
     }},
     { name: AUTO_SCAN_STEPS.GOSPIDER, action: async () => {
@@ -1053,25 +1069,33 @@ const getAutoScanSteps = (
           setMostRecentHttpxScan
         );
         
-        // Wait for scan completion
+        // Wait for scan completion - pass setMostRecentHttpxScan so it gets updated
         await waitForScanCompletion(
           'httpx',
           activeTarget.id,
           setIsHttpxScanning,
-          setMostRecentHttpxScanStatus
+          setMostRecentHttpxScanStatus,
+          setMostRecentHttpxScan
         );
         
+        // Add a short buffer before fetching results
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
         // Use the fetchHttpxScans function - this is what happens on page refresh
-        await fetchHttpxScans(
+        const scanDetails = await fetchHttpxScans(
           activeTarget, 
           setHttpxScans, 
           setMostRecentHttpxScan, 
           setMostRecentHttpxScanStatus
         );
         
+        // Force a reset of the scanning state
+        setIsHttpxScanning(false);
+        
         console.log("HTTPX scan (Round 3) completed");
       } catch (error) {
         console.error("Error with HTTPX scan (Round 3):", error);
+        setIsHttpxScanning(false);
       }
     }},
     { name: AUTO_SCAN_STEPS.NUCLEI_SCREENSHOT, action: async () => {
