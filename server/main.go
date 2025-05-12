@@ -14,6 +14,7 @@ import (
 	"ars0n-framework-v2-server/utils"
 
 	"github.com/gorilla/mux"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -115,6 +116,8 @@ func main() {
 	r.HandleFunc("/user/settings", getUserSettings).Methods("GET", "OPTIONS")
 	r.HandleFunc("/user/settings", updateUserSettings).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/export-data", utils.HandleExportData).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/auto-scan-state/{target_id}", getAutoScanState).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/auto-scan-state/{target_id}", updateAutoScanState).Methods("POST", "OPTIONS")
 
 	log.Println("API server started on :8080")
 	http.ListenAndServe(":8080", r)
@@ -293,6 +296,87 @@ func getIntSetting(settings map[string]interface{}, key string, defaultValue int
 		}
 	}
 	return defaultValue
+}
+
+// getAutoScanState retrieves the current auto scan state for a target
+func getAutoScanState(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	targetID := vars["target_id"]
+
+	var state struct {
+		ID            string    `json:"id"`
+		ScopeTargetID string    `json:"scope_target_id"`
+		CurrentStep   string    `json:"current_step"`
+		CreatedAt     time.Time `json:"created_at"`
+		UpdatedAt     time.Time `json:"updated_at"`
+	}
+
+	err := dbPool.QueryRow(context.Background(), `
+		SELECT id, scope_target_id, current_step, created_at, updated_at
+		FROM auto_scan_state
+		WHERE scope_target_id = $1
+	`, targetID).Scan(&state.ID, &state.ScopeTargetID, &state.CurrentStep, &state.CreatedAt, &state.UpdatedAt)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			// No state found, return empty object with IDLE state
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"scope_target_id": targetID,
+				"current_step":    "IDLE",
+			})
+			return
+		}
+		log.Printf("Error fetching auto scan state: %v", err)
+		http.Error(w, "Failed to fetch auto scan state", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(state)
+}
+
+// updateAutoScanState updates the current auto scan state for a target
+func updateAutoScanState(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	targetID := vars["target_id"]
+
+	var requestData struct {
+		CurrentStep string `json:"current_step"`
+	}
+
+	err := json.NewDecoder(r.Body).Decode(&requestData)
+	if err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if requestData.CurrentStep == "" {
+		http.Error(w, "Current step is required", http.StatusBadRequest)
+		return
+	}
+
+	// Use upsert (insert or update)
+	_, err = dbPool.Exec(context.Background(), `
+		INSERT INTO auto_scan_state (scope_target_id, current_step)
+		VALUES ($1, $2)
+		ON CONFLICT (scope_target_id)
+		DO UPDATE SET current_step = $2, updated_at = NOW()
+	`, targetID, requestData.CurrentStep)
+
+	if err != nil {
+		log.Printf("Error updating auto scan state: %v", err)
+		http.Error(w, "Failed to update auto scan state", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":         true,
+		"scope_target_id": targetID,
+		"current_step":    requestData.CurrentStep,
+	})
 }
 
 // The createTables function is already defined in database.go

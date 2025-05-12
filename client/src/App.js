@@ -15,18 +15,18 @@ import Ars0nFrameworkHeader from './components/ars0nFrameworkHeader.js';
 import ManageScopeTargets from './components/manageScopeTargets.js';
 import fetchAmassScans from './utils/fetchAmassScans.js';
 import {
-  Container,
-  Fade,
-  Card,
-  Row,
-  Col,
-  Button,
-  ListGroup,
-  Accordion,
-  Modal,
-  Table,
-  Toast,
-  ToastContainer,
+    Container,
+    Fade,
+    Card,
+    Row,
+    Col,
+    Button,
+    ListGroup,
+    Accordion,
+    Modal,
+    Table,
+    Toast,
+    ToastContainer,
 } from 'react-bootstrap';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'bootstrap-icons/font/bootstrap-icons.css';
@@ -34,14 +34,14 @@ import initiateAmassScan from './utils/initiateAmassScan';
 import monitorScanStatus from './utils/monitorScanStatus';
 import validateInput from './utils/validateInput.js';
 import {
-  getTypeIcon,
-  getLastScanDate,
-  getLatestScanStatus,
-  getLatestScanTime,
-  getLatestScanId,
-  getExecutionTime,
-  getResultLength,
-  copyToClipboard,
+    getTypeIcon,
+    getLastScanDate,
+    getLatestScanStatus,
+    getLatestScanTime,
+    getLatestScanId,
+    getExecutionTime,
+    getResultLength,
+    copyToClipboard,
 } from './utils/miscUtils.js';
 import { MdCopyAll, MdCheckCircle } from 'react-icons/md';
 import initiateHttpxScan from './utils/initiateHttpxScan';
@@ -81,10 +81,9 @@ import fetchHttpxScans from './utils/fetchHttpxScans';
 import ROIReport from './components/ROIReport';
 import HelpMeLearn from './components/HelpMeLearn';
 import {
-  AUTO_SCAN_STEPS,
-  resumeAutoScan as resumeAutoScanUtil,
-  startAutoScan as startAutoScanUtil,
-  checkAndResumeAutoScan,
+    AUTO_SCAN_STEPS,
+    resumeAutoScan as resumeAutoScanUtil,
+    startAutoScan as startAutoScanUtil
 } from './utils/wildcardAutoScan';
 import getAutoScanSteps from './utils/autoScanSteps';
 
@@ -297,8 +296,8 @@ function App() {
   const [shuffleDNSCustomScans, setShuffleDNSCustomScans] = useState([]);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [isAutoScanning, setIsAutoScanning] = useState(false);
-  const [autoScanCurrentStep, setAutoScanCurrentStep] = useState(localStorage.getItem('autoScanCurrentStep') || AUTO_SCAN_STEPS.IDLE);
-  const [autoScanTargetId, setAutoScanTargetId] = useState(localStorage.getItem('autoScanTargetId') || null);
+  const [autoScanCurrentStep, setAutoScanCurrentStep] = useState(AUTO_SCAN_STEPS.IDLE);
+  const [autoScanTargetId, setAutoScanTargetId] = useState(null);
 
   const handleCloseSubdomainsModal = () => setShowSubdomainsModal(false);
   const handleCloseCloudDomainsModal = () => setShowCloudDomainsModal(false);
@@ -461,11 +460,17 @@ function App() {
         }
       };
 
-      fetchCustomShuffleDNSScans();
-      const interval = setInterval(fetchCustomShuffleDNSScans, 5000);
-      return () => clearInterval(interval);
+      // Only start polling if we're in the SHUFFLEDNS_CEWL step of auto scan
+      if (isAutoScanning && autoScanCurrentStep === AUTO_SCAN_STEPS.SHUFFLEDNS_CEWL) {
+        fetchCustomShuffleDNSScans();
+        const interval = setInterval(fetchCustomShuffleDNSScans, 5000);
+        return () => clearInterval(interval);
+      } else {
+        // If not in auto scan, just fetch once
+        fetchCustomShuffleDNSScans();
+      }
     }
-  }, [activeTarget]);
+  }, [activeTarget, isAutoScanning, autoScanCurrentStep]);
 
   // Add new useEffect for monitoring consolidated subdomains after scans complete
   useEffect(() => {
@@ -495,20 +500,32 @@ function App() {
 
   // Add a useEffect to resume an in-progress Auto Scan after page refresh
   useEffect(() => {
-    const storedStep = localStorage.getItem('autoScanCurrentStep');
-    const storedTargetId = localStorage.getItem('autoScanTargetId');
-    
-    checkAndResumeAutoScan(
-      storedStep,
-      storedTargetId,
-      scopeTargets,
-      activeTarget,
-      setIsAutoScanning,
-      setAutoScanCurrentStep,
-      setAutoScanTargetId,
-      resumeAutoScan
-    );
-  }, [activeTarget, scopeTargets]);
+    if (activeTarget && activeTarget.id) {
+      // Fetch the current step from the API
+      const fetchAndCheckAutoScanState = async () => {
+        try {
+          const response = await fetch(
+            `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/auto-scan-state/${activeTarget.id}`
+          );
+          
+          if (response.ok) {
+            const data = await response.json();
+            const currentStep = data.current_step;
+            
+            if (currentStep && currentStep !== AUTO_SCAN_STEPS.IDLE && currentStep !== AUTO_SCAN_STEPS.COMPLETED) {
+              console.log(`Detected in-progress Auto Scan (step: ${currentStep}). Attempting to resume...`);
+              setIsAutoScanning(true);
+              resumeAutoScan(currentStep);
+            }
+          }
+        } catch (error) {
+          console.error('Error checking auto scan state:', error);
+        }
+      };
+      
+      fetchAndCheckAutoScanState();
+    }
+  }, []);
 
   const resumeAutoScan = async (fromStep) => {
     resumeAutoScanUtil(
@@ -1043,7 +1060,7 @@ function App() {
         setMostRecentGoSpiderScanStatus,
         setMostRecentSubdomainizerScanStatus,
         setMostRecentNucleiScreenshotScanStatus,
-        setMostRecentMetaDataScanStatus,
+          setMostRecentMetaDataScanStatus,
         setMostRecentShuffleDNSCustomScanStatus,
         // Other functions
         handleConsolidate
@@ -1420,6 +1437,31 @@ function App() {
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
   }, []);
+
+  const fetchAutoScanState = async (targetId) => {
+    if (!targetId) return;
+    
+    try {
+      const response = await fetch(
+        `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/auto-scan-state/${targetId}`
+      );
+      
+      if (response.ok) {
+        const data = await response.json();
+        setAutoScanCurrentStep(data.current_step || AUTO_SCAN_STEPS.IDLE);
+        setAutoScanTargetId(targetId);
+      }
+    } catch (error) {
+      console.error('Error fetching auto scan state:', error);
+    }
+  };
+
+  // Fetch auto scan state whenever the active target changes
+  useEffect(() => {
+    if (activeTarget && activeTarget.id) {
+      fetchAutoScanState(activeTarget.id);
+    }
+  }, [activeTarget]);
 
   return (
     <Container data-bs-theme="dark" className="App" style={{ padding: '20px' }}>

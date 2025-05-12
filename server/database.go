@@ -261,6 +261,14 @@ func createTables() {
 			created_at TIMESTAMP DEFAULT NOW(),
 			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE
 		);`,
+		`CREATE TABLE IF NOT EXISTS auto_scan_state (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scope_target_id UUID NOT NULL REFERENCES scope_targets(id) ON DELETE CASCADE,
+			current_step TEXT NOT NULL,
+			created_at TIMESTAMP DEFAULT NOW(),
+			updated_at TIMESTAMP DEFAULT NOW(),
+			UNIQUE(scope_target_id)
+		);`,
 		`CREATE TABLE IF NOT EXISTS nuclei_screenshots (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			scan_id UUID NOT NULL UNIQUE,

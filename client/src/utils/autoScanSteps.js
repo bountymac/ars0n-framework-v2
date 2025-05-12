@@ -1,4 +1,4 @@
-import { AUTO_SCAN_STEPS, waitForScanCompletion, debugTrace, waitForCeWLAndShuffleDNSCustom } from './wildcardAutoScan';
+import { AUTO_SCAN_STEPS, waitForScanCompletion, debugTrace, waitForCeWLAndShuffleDNSCustom, updateAutoScanState } from './wildcardAutoScan';
 import initiateGauScan from './initiateGauScan';
 import initiateCTLScan from './initiateCTLScan';
 import initiateSubfinderScan from './initiateSubfinderScan';
@@ -82,7 +82,7 @@ const getAutoScanSteps = (
     { name: AUTO_SCAN_STEPS.AMASS, action: async () => {
       console.log("Starting Amass Scan...");
       setAutoScanCurrentStep(AUTO_SCAN_STEPS.AMASS);
-      localStorage.setItem('autoScanCurrentStep', AUTO_SCAN_STEPS.AMASS);
+      await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.AMASS);
       
       try {
         // Start the scan
@@ -136,7 +136,7 @@ const getAutoScanSteps = (
     }},
     { name: AUTO_SCAN_STEPS.SUBLIST3R, action: async () => {
       setAutoScanCurrentStep(AUTO_SCAN_STEPS.SUBLIST3R);
-      localStorage.setItem('autoScanCurrentStep', AUTO_SCAN_STEPS.SUBLIST3R);
+      await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.SUBLIST3R);
       setIsSublist3rScanning(true);
       
       try {
@@ -222,7 +222,7 @@ const getAutoScanSteps = (
     }},
     { name: AUTO_SCAN_STEPS.ASSETFINDER, action: async () => {
       setAutoScanCurrentStep(AUTO_SCAN_STEPS.ASSETFINDER);
-      localStorage.setItem('autoScanCurrentStep', AUTO_SCAN_STEPS.ASSETFINDER);
+      await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.ASSETFINDER);
       setIsAssetfinderScanning(true);
       
       try {
@@ -311,7 +311,7 @@ const getAutoScanSteps = (
     }},
     { name: AUTO_SCAN_STEPS.GAU, action: async () => {
       setAutoScanCurrentStep(AUTO_SCAN_STEPS.GAU);
-      localStorage.setItem('autoScanCurrentStep', AUTO_SCAN_STEPS.GAU);
+      await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.GAU);
       
       try {
         // Start the scan
@@ -363,7 +363,7 @@ const getAutoScanSteps = (
     { name: AUTO_SCAN_STEPS.CTL, action: async () => {
       console.log("Starting CTL scan...");
       setAutoScanCurrentStep(AUTO_SCAN_STEPS.CTL);
-      localStorage.setItem('autoScanCurrentStep', AUTO_SCAN_STEPS.CTL);
+      await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.CTL);
       
       try {
         // Start the scan
@@ -415,7 +415,7 @@ const getAutoScanSteps = (
     { name: AUTO_SCAN_STEPS.SUBFINDER, action: async () => {
       console.log("Starting Subfinder scan...");
       setAutoScanCurrentStep(AUTO_SCAN_STEPS.SUBFINDER);
-      localStorage.setItem('autoScanCurrentStep', AUTO_SCAN_STEPS.SUBFINDER);
+      await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.SUBFINDER);
       
       try {
         // Start the scan
@@ -467,7 +467,7 @@ const getAutoScanSteps = (
     { name: AUTO_SCAN_STEPS.CONSOLIDATE, action: async () => {
       console.log("Starting Consolidation process...");
       setAutoScanCurrentStep(AUTO_SCAN_STEPS.CONSOLIDATE);
-      localStorage.setItem('autoScanCurrentStep', AUTO_SCAN_STEPS.CONSOLIDATE);
+      await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.CONSOLIDATE);
       
       try {
         // Add a short delay before starting consolidation to ensure all previous operations are fully complete
@@ -514,9 +514,9 @@ const getAutoScanSteps = (
       }
     }},
     { name: AUTO_SCAN_STEPS.HTTPX, action: async () => {
-      console.log("Starting HTTPX scan for Live Web Servers...");
+      console.log("Starting HTTPX Scan on consolidated subdomains...");
       setAutoScanCurrentStep(AUTO_SCAN_STEPS.HTTPX);
-      localStorage.setItem('autoScanCurrentStep', AUTO_SCAN_STEPS.HTTPX);
+      await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.HTTPX);
       
       try {
         // Start the scan
@@ -561,7 +561,7 @@ const getAutoScanSteps = (
     { name: AUTO_SCAN_STEPS.SHUFFLEDNS, action: async () => {
       console.log("Starting ShuffleDNS Scan...");
       setAutoScanCurrentStep(AUTO_SCAN_STEPS.SHUFFLEDNS);
-      localStorage.setItem('autoScanCurrentStep', AUTO_SCAN_STEPS.SHUFFLEDNS);
+      await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.SHUFFLEDNS);
       
       try {
         // Start the scan
@@ -613,7 +613,7 @@ const getAutoScanSteps = (
     { name: AUTO_SCAN_STEPS.SHUFFLEDNS_CEWL, action: async () => {
       console.log("Starting ShuffleDNS w/ Custom Wordlist Scan...");
       setAutoScanCurrentStep(AUTO_SCAN_STEPS.SHUFFLEDNS_CEWL);
-      localStorage.setItem('autoScanCurrentStep', AUTO_SCAN_STEPS.SHUFFLEDNS_CEWL);
+      await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.SHUFFLEDNS_CEWL);
       
       try {
         // Start the CeWL scan
@@ -690,7 +690,7 @@ const getAutoScanSteps = (
     { name: AUTO_SCAN_STEPS.CONSOLIDATE_ROUND2, action: async () => {
       console.log("Starting Consolidation process (Round 2)...");
       setAutoScanCurrentStep(AUTO_SCAN_STEPS.CONSOLIDATE_ROUND2);
-      localStorage.setItem('autoScanCurrentStep', AUTO_SCAN_STEPS.CONSOLIDATE_ROUND2);
+      await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.CONSOLIDATE_ROUND2);
       
       try {
         // Add a short delay before starting consolidation to ensure all previous operations are fully complete
@@ -738,7 +738,7 @@ const getAutoScanSteps = (
     { name: AUTO_SCAN_STEPS.HTTPX_ROUND2, action: async () => {
       console.log("Starting HTTPX scan for Live Web Servers (Round 2)...");
       setAutoScanCurrentStep(AUTO_SCAN_STEPS.HTTPX_ROUND2);
-      localStorage.setItem('autoScanCurrentStep', AUTO_SCAN_STEPS.HTTPX_ROUND2);
+      await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.HTTPX_ROUND2);
       
       try {
         // Start the scan
@@ -783,7 +783,7 @@ const getAutoScanSteps = (
     { name: AUTO_SCAN_STEPS.GOSPIDER, action: async () => {
       console.log("Starting GoSpider Scan...");
       setAutoScanCurrentStep(AUTO_SCAN_STEPS.GOSPIDER);
-      localStorage.setItem('autoScanCurrentStep', AUTO_SCAN_STEPS.GOSPIDER);
+      await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.GOSPIDER);
       
       try {
         // Start the scan
@@ -835,7 +835,7 @@ const getAutoScanSteps = (
     { name: AUTO_SCAN_STEPS.SUBDOMAINIZER, action: async () => {
       console.log("Starting Subdomainizer Scan...");
       setAutoScanCurrentStep(AUTO_SCAN_STEPS.SUBDOMAINIZER);
-      localStorage.setItem('autoScanCurrentStep', AUTO_SCAN_STEPS.SUBDOMAINIZER);
+      await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.SUBDOMAINIZER);
       
       try {
         // Start the scan
@@ -885,9 +885,9 @@ const getAutoScanSteps = (
       }
     }},
     { name: AUTO_SCAN_STEPS.NUCLEI_SCREENSHOT, action: async () => {
-      console.log("Starting Nuclei Screenshot scan...");
+      console.log("Starting Nuclei Screenshot Scan...");
       setAutoScanCurrentStep(AUTO_SCAN_STEPS.NUCLEI_SCREENSHOT);
-      localStorage.setItem('autoScanCurrentStep', AUTO_SCAN_STEPS.NUCLEI_SCREENSHOT);
+      await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.NUCLEI_SCREENSHOT);
       
       try {
         // Start the scan
@@ -937,9 +937,9 @@ const getAutoScanSteps = (
       }
     }},
     { name: AUTO_SCAN_STEPS.METADATA, action: async () => {
-      console.log("Starting Metadata scan...");
+      console.log("Starting MetaData Scan...");
       setAutoScanCurrentStep(AUTO_SCAN_STEPS.METADATA);
-      localStorage.setItem('autoScanCurrentStep', AUTO_SCAN_STEPS.METADATA);
+      await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.METADATA);
       
       try {
         // Start the scan
@@ -1008,7 +1008,7 @@ const getAutoScanSteps = (
     { name: AUTO_SCAN_STEPS.CONSOLIDATE_ROUND3, action: async () => {
       console.log("Starting Consolidation process (Round 3)...");
       setAutoScanCurrentStep(AUTO_SCAN_STEPS.CONSOLIDATE_ROUND3);
-      localStorage.setItem('autoScanCurrentStep', AUTO_SCAN_STEPS.CONSOLIDATE_ROUND3);
+      await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.CONSOLIDATE_ROUND3);
       
       try {
         // Add a short delay before starting consolidation to ensure all previous operations are fully complete
@@ -1056,7 +1056,7 @@ const getAutoScanSteps = (
     { name: AUTO_SCAN_STEPS.HTTPX_ROUND3, action: async () => {
       console.log("Starting HTTPX scan for Live Web Servers (Round 3)...");
       setAutoScanCurrentStep(AUTO_SCAN_STEPS.HTTPX_ROUND3);
-      localStorage.setItem('autoScanCurrentStep', AUTO_SCAN_STEPS.HTTPX_ROUND3);
+      await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.HTTPX_ROUND3);
       
       try {
         // Start the scan
@@ -1099,9 +1099,9 @@ const getAutoScanSteps = (
       }
     }},
     { name: AUTO_SCAN_STEPS.NUCLEI_SCREENSHOT, action: async () => {
-      console.log("Starting Nuclei Screenshot scan...");
+      console.log("Starting Nuclei Screenshot Scan...");
       setAutoScanCurrentStep(AUTO_SCAN_STEPS.NUCLEI_SCREENSHOT);
-      localStorage.setItem('autoScanCurrentStep', AUTO_SCAN_STEPS.NUCLEI_SCREENSHOT);
+      await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.NUCLEI_SCREENSHOT);
       
       try {
         // Start the scan

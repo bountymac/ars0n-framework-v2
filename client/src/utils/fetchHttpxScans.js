@@ -6,8 +6,8 @@ const fetchHttpxScans = async (activeTarget, setHttpxScans, setMostRecentHttpxSc
     if (!response.ok) throw new Error('Failed to fetch httpx scans');
 
     const data = await response.json();
-    
-    const scans = data?.scans || [];
+    console.log('HTTPX scans API response:', data);
+    const scans = data.scans || [];
     setHttpxScans(scans);
     if (scans.length === 0) {
       return null;
