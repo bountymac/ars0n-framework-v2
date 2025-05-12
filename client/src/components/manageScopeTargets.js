@@ -1,4 +1,6 @@
 import { Row, Col, Button, Card, Alert } from 'react-bootstrap';
+import { useState } from 'react';
+import AutoScanConfigModal from '../modals/autoScanConfigModal';
 
 function ManageScopeTargets({ 
   handleOpen, 
@@ -11,6 +13,24 @@ function ManageScopeTargets({
   autoScanCurrentStep,
   mostRecentGauScanStatus
 }) {
+  const [showConfigModal, setShowConfigModal] = useState(false);
+
+  const handleConfigure = () => {
+    setShowConfigModal(true);
+  };
+
+  const handleConfigSave = (config) => {
+    console.log('Auto Scan Configuration:', config);
+  };
+
+  const handlePause = () => {
+    console.log('Pause button clicked');
+  };
+
+  const handleCancel = () => {
+    console.log('Cancel button clicked');
+  };
+
   // Helper function to display a human-readable step name
   const formatStepName = (stepKey) => {
     if (!stepKey) return "";
@@ -65,6 +85,13 @@ function ManageScopeTargets({
                   <Button 
                     variant="outline-danger" 
                     className="flex-fill" 
+                    onClick={handleConfigure}
+                  >
+                    Configure
+                  </Button>
+                  <Button 
+                    variant="outline-danger" 
+                    className="flex-fill" 
                     onClick={onAutoScan}
                     disabled={isAutoScanning}
                   >
@@ -79,6 +106,22 @@ function ManageScopeTargets({
                       ) : 'Auto Scan'}
                     </div>
                   </Button>
+                  <Button 
+                    variant="outline-danger" 
+                    className="flex-fill" 
+                    onClick={handlePause}
+                    disabled={!isAutoScanning}
+                  >
+                    Pause
+                  </Button>
+                  <Button 
+                    variant="outline-danger" 
+                    className="flex-fill" 
+                    onClick={handleCancel}
+                    disabled={!isAutoScanning}
+                  >
+                    Cancel
+                  </Button>
                 </div>
               </Card.Body>
             </Card>
@@ -90,6 +133,12 @@ function ManageScopeTargets({
           No scope targets available. Please add a new target.
         </Alert>
       )}
+
+      <AutoScanConfigModal
+        show={showConfigModal}
+        handleClose={() => setShowConfigModal(false)}
+        onSave={handleConfigSave}
+      />
     </>
   );
 }
