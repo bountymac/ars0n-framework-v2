@@ -993,79 +993,88 @@ function App() {
   }
 
   const startAutoScan = async () => {
-    startAutoScanUtil(
-      activeTarget,
-      setIsAutoScanning,
-      setAutoScanCurrentStep, 
-      setAutoScanTargetId,
-      () => getAutoScanSteps(
+    console.log('[AutoScan] Starting Auto Scan. Fetching config from backend...');
+    try {
+      const response = await fetch(
+        `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/auto-scan-config`
+      );
+      if (!response.ok) {
+        throw new Error('Failed to fetch auto scan config');
+      }
+      const config = await response.json();
+      console.log('[AutoScan] Config received from backend:', config);
+      startAutoScanUtil(
         activeTarget,
-        setAutoScanCurrentStep,
-        // Scanning states
-        setIsScanning,
-        setIsSublist3rScanning,
-        setIsAssetfinderScanning,
-        setIsGauScanning,
-        setIsCTLScanning,
-        setIsSubfinderScanning,
-        setIsConsolidating,
-        setIsHttpxScanning,
-        setIsShuffleDNSScanning,
-        setIsCeWLScanning,
-        setIsGoSpiderScanning,
-        setIsSubdomainizerScanning,
-        setIsNucleiScreenshotScanning,
-        setIsMetaDataScanning,
-        // Scans state updaters
-        setAmassScans,
-        setSublist3rScans,
-        setAssetfinderScans,
-        setGauScans,
-        setCTLScans,
-        setSubfinderScans,
-        setHttpxScans,
-        setShuffleDNSScans,
-        setCeWLScans,
-        setGoSpiderScans,
-        setSubdomainizerScans,
-        setNucleiScreenshotScans,
-        setMetaDataScans,
-        setSubdomains,
-        setShuffleDNSCustomScans,
-        // Most recent scan updaters
-        setMostRecentAmassScan,
-        setMostRecentSublist3rScan,
-        setMostRecentAssetfinderScan,
-        setMostRecentGauScan,
-        setMostRecentCTLScan,
-        setMostRecentSubfinderScan,
-        setMostRecentHttpxScan,
-        setMostRecentShuffleDNSScan,
-        setMostRecentCeWLScan,
-        setMostRecentGoSpiderScan,
-        setMostRecentSubdomainizerScan,
-        setMostRecentNucleiScreenshotScan,
-        setMostRecentMetaDataScan,
-        setMostRecentShuffleDNSCustomScan,
-        // Status updaters
-        setMostRecentAmassScanStatus,
-        setMostRecentSublist3rScanStatus,
-        setMostRecentAssetfinderScanStatus,
-        setMostRecentGauScanStatus,
-        setMostRecentCTLScanStatus,
-        setMostRecentSubfinderScanStatus,
-        setMostRecentHttpxScanStatus,
-        setMostRecentShuffleDNSScanStatus,
-        setMostRecentCeWLScanStatus,
-        setMostRecentGoSpiderScanStatus,
-        setMostRecentSubdomainizerScanStatus,
-        setMostRecentNucleiScreenshotScanStatus,
+        setIsAutoScanning,
+        setAutoScanCurrentStep, 
+        setAutoScanTargetId,
+        () => getAutoScanSteps(
+          activeTarget,
+          setAutoScanCurrentStep,
+          setIsScanning,
+          setIsSublist3rScanning,
+          setIsAssetfinderScanning,
+          setIsGauScanning,
+          setIsCTLScanning,
+          setIsSubfinderScanning,
+          setIsConsolidating,
+          setIsHttpxScanning,
+          setIsShuffleDNSScanning,
+          setIsCeWLScanning,
+          setIsGoSpiderScanning,
+          setIsSubdomainizerScanning,
+          setIsNucleiScreenshotScanning,
+          setIsMetaDataScanning,
+          setAmassScans,
+          setSublist3rScans,
+          setAssetfinderScans,
+          setGauScans,
+          setCTLScans,
+          setSubfinderScans,
+          setHttpxScans,
+          setShuffleDNSScans,
+          setCeWLScans,
+          setGoSpiderScans,
+          setSubdomainizerScans,
+          setNucleiScreenshotScans,
+          setMetaDataScans,
+          setSubdomains,
+          setShuffleDNSCustomScans,
+          setMostRecentAmassScan,
+          setMostRecentSublist3rScan,
+          setMostRecentAssetfinderScan,
+          setMostRecentGauScan,
+          setMostRecentCTLScan,
+          setMostRecentSubfinderScan,
+          setMostRecentHttpxScan,
+          setMostRecentShuffleDNSScan,
+          setMostRecentCeWLScan,
+          setMostRecentGoSpiderScan,
+          setMostRecentSubdomainizerScan,
+          setMostRecentNucleiScreenshotScan,
+          setMostRecentMetaDataScan,
+          setMostRecentShuffleDNSCustomScan,
+          setMostRecentAmassScanStatus,
+          setMostRecentSublist3rScanStatus,
+          setMostRecentAssetfinderScanStatus,
+          setMostRecentGauScanStatus,
+          setMostRecentCTLScanStatus,
+          setMostRecentSubfinderScanStatus,
+          setMostRecentHttpxScanStatus,
+          setMostRecentShuffleDNSScanStatus,
+          setMostRecentCeWLScanStatus,
+          setMostRecentGoSpiderScanStatus,
+          setMostRecentSubdomainizerScanStatus,
+          setMostRecentNucleiScreenshotScanStatus,
           setMostRecentMetaDataScanStatus,
-        setMostRecentShuffleDNSCustomScanStatus,
-        // Other functions
-        handleConsolidate
-      )
-    );
+          setMostRecentShuffleDNSCustomScanStatus,
+          handleConsolidate,
+          config // pass config to step runner
+        )
+      );
+    } catch (error) {
+      console.error('[AutoScan] Error fetching config or starting scan:', error);
+    }
   };
 
   const startHttpxScan = () => {

@@ -77,10 +77,16 @@ const getAutoScanSteps = (
   setMostRecentMetaDataScanStatus,
   setMostRecentShuffleDNSCustomScanStatus,
   // Other functions
-  handleConsolidate
-) => [
+  handleConsolidate,
+  config
+) => {
+  const steps = [
     { name: AUTO_SCAN_STEPS.AMASS, action: async () => {
-      console.log("Starting Amass Scan...");
+      if (config && config.amass === false) {
+        console.log('[AutoScan] Step: amass is DISABLED in config. Skipping.');
+        return;
+      }
+      console.log('[AutoScan] Step: amass is ENABLED. Running.');
       setAutoScanCurrentStep(AUTO_SCAN_STEPS.AMASS);
       await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.AMASS);
       
@@ -129,12 +135,17 @@ const getAutoScanSteps = (
           }
         }
         
-        console.log("Amass scan completed");
+        console.log('[AutoScan] Step: amass completed.');
       } catch (error) {
-        console.error("Error with Amass scan:", error);
+        console.error('[AutoScan] Step: amass ERROR:', error);
       }
     }},
     { name: AUTO_SCAN_STEPS.SUBLIST3R, action: async () => {
+      if (config && config.sublist3r === false) {
+        console.log('[AutoScan] Step: sublist3r is DISABLED in config. Skipping.');
+        return;
+      }
+      console.log('[AutoScan] Step: sublist3r is ENABLED. Running.');
       setAutoScanCurrentStep(AUTO_SCAN_STEPS.SUBLIST3R);
       await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.SUBLIST3R);
       setIsSublist3rScanning(true);
@@ -213,14 +224,21 @@ const getAutoScanSteps = (
         
         setIsSublist3rScanning(false);
         
+        console.log('[AutoScan] Step: sublist3r completed.');
         return { success: true };
       } catch (error) {
         debugTrace(`Error with Sublist3r scan: ${error.message}`);
         setIsSublist3rScanning(false);
+        console.error('[AutoScan] Step: sublist3r ERROR:', error);
         return { success: false, error: error.message };
       }
     }},
     { name: AUTO_SCAN_STEPS.ASSETFINDER, action: async () => {
+      if (config && config.assetfinder === false) {
+        console.log('[AutoScan] Step: assetfinder is DISABLED in config. Skipping.');
+        return;
+      }
+      console.log('[AutoScan] Step: assetfinder is ENABLED. Running.');
       setAutoScanCurrentStep(AUTO_SCAN_STEPS.ASSETFINDER);
       await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.ASSETFINDER);
       setIsAssetfinderScanning(true);
@@ -302,14 +320,21 @@ const getAutoScanSteps = (
         
         setIsAssetfinderScanning(false);
         
+        console.log('[AutoScan] Step: assetfinder completed.');
         return { success: true };
       } catch (error) {
         debugTrace(`Error with Assetfinder scan: ${error.message}`);
         setIsAssetfinderScanning(false);
+        console.error('[AutoScan] Step: assetfinder ERROR:', error);
         return { success: false, error: error.message };
       }
     }},
     { name: AUTO_SCAN_STEPS.GAU, action: async () => {
+      if (config && config.gau === false) {
+        console.log('[AutoScan] Step: gau is DISABLED in config. Skipping.');
+        return;
+      }
+      console.log('[AutoScan] Step: gau is ENABLED. Running.');
       setAutoScanCurrentStep(AUTO_SCAN_STEPS.GAU);
       await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.GAU);
       
@@ -355,12 +380,17 @@ const getAutoScanSteps = (
           }
         }
         
-        console.log("GAU scan completed");
+        console.log('[AutoScan] Step: gau completed.');
       } catch (error) {
-        console.error("Error with GAU scan:", error);
+        console.error('[AutoScan] Step: gau ERROR:', error);
       }
     }},
     { name: AUTO_SCAN_STEPS.CTL, action: async () => {
+      if (config && config.ctl === false) {
+        console.log('[AutoScan] Step: ctl is DISABLED in config. Skipping.');
+        return;
+      }
+      console.log('[AutoScan] Step: ctl is ENABLED. Running.');
       console.log("Starting CTL scan...");
       setAutoScanCurrentStep(AUTO_SCAN_STEPS.CTL);
       await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.CTL);
@@ -407,12 +437,17 @@ const getAutoScanSteps = (
           }
         }
         
-        console.log("CTL scan completed");
+        console.log('[AutoScan] Step: ctl completed.');
       } catch (error) {
-        console.error("Error with CTL scan:", error);
+        console.error('[AutoScan] Step: ctl ERROR:', error);
       }
     }},
     { name: AUTO_SCAN_STEPS.SUBFINDER, action: async () => {
+      if (config && config.subfinder === false) {
+        console.log('[AutoScan] Step: subfinder is DISABLED in config. Skipping.');
+        return;
+      }
+      console.log('[AutoScan] Step: subfinder is ENABLED. Running.');
       console.log("Starting Subfinder scan...");
       setAutoScanCurrentStep(AUTO_SCAN_STEPS.SUBFINDER);
       await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.SUBFINDER);
@@ -459,12 +494,17 @@ const getAutoScanSteps = (
           }
         }
         
-        console.log("Subfinder scan completed");
+        console.log('[AutoScan] Step: subfinder completed.');
       } catch (error) {
-        console.error("Error with Subfinder scan:", error);
+        console.error('[AutoScan] Step: subfinder ERROR:', error);
       }
     }},
     { name: AUTO_SCAN_STEPS.CONSOLIDATE, action: async () => {
+      if (config && config.consolidate_httpx_round1 === false) {
+        console.log('[AutoScan] Step: consolidate_httpx_round1 is DISABLED in config. Skipping.');
+        return;
+      }
+      console.log('[AutoScan] Step: consolidate_httpx_round1 is ENABLED. Running.');
       console.log("Starting Consolidation process...");
       setAutoScanCurrentStep(AUTO_SCAN_STEPS.CONSOLIDATE);
       await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.CONSOLIDATE);
@@ -507,13 +547,18 @@ const getAutoScanSteps = (
         }
         
         setIsConsolidating(false);
-        console.log("Consolidation completed");
+        console.log('[AutoScan] Step: consolidate_httpx_round1 completed.');
       } catch (error) {
-        console.error("Error during Consolidation:", error);
+        console.error('[AutoScan] Step: consolidate_httpx_round1 ERROR:', error);
         setIsConsolidating(false);
       }
     }},
     { name: AUTO_SCAN_STEPS.HTTPX, action: async () => {
+      if (config && config.consolidate_httpx_round1 === false) {
+        console.log('[AutoScan] Step: consolidate_httpx_round1 is DISABLED in config. Skipping.');
+        return;
+      }
+      console.log('[AutoScan] Step: consolidate_httpx_round1 is ENABLED. Running.');
       console.log("Starting HTTPX Scan on consolidated subdomains...");
       setAutoScanCurrentStep(AUTO_SCAN_STEPS.HTTPX);
       await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.HTTPX);
@@ -552,13 +597,18 @@ const getAutoScanSteps = (
         // Force a reset of the scanning state
         setIsHttpxScanning(false);
         
-        console.log("HTTPX scan completed");
+        console.log('[AutoScan] Step: consolidate_httpx_round1 completed.');
       } catch (error) {
-        console.error("Error with HTTPX scan:", error);
+        console.error('[AutoScan] Step: consolidate_httpx_round1 ERROR:', error);
         setIsHttpxScanning(false);
       }
     }},
     { name: AUTO_SCAN_STEPS.SHUFFLEDNS, action: async () => {
+      if (config && config.shuffledns === false) {
+        console.log('[AutoScan] Step: shuffledns is DISABLED in config. Skipping.');
+        return;
+      }
+      console.log('[AutoScan] Step: shuffledns is ENABLED. Running.');
       console.log("Starting ShuffleDNS Scan...");
       setAutoScanCurrentStep(AUTO_SCAN_STEPS.SHUFFLEDNS);
       await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.SHUFFLEDNS);
@@ -605,12 +655,17 @@ const getAutoScanSteps = (
           }
         }
         
-        console.log("ShuffleDNS scan completed");
+        console.log('[AutoScan] Step: shuffledns completed.');
       } catch (error) {
-        console.error("Error with ShuffleDNS scan:", error);
+        console.error('[AutoScan] Step: shuffledns ERROR:', error);
       }
     }},
     { name: AUTO_SCAN_STEPS.SHUFFLEDNS_CEWL, action: async () => {
+      if (config && config.cewl === false) {
+        console.log('[AutoScan] Step: cewl is DISABLED in config. Skipping.');
+        return;
+      }
+      console.log('[AutoScan] Step: cewl is ENABLED. Running.');
       console.log("Starting ShuffleDNS w/ Custom Wordlist Scan...");
       setAutoScanCurrentStep(AUTO_SCAN_STEPS.SHUFFLEDNS_CEWL);
       await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.SHUFFLEDNS_CEWL);
@@ -682,12 +737,17 @@ const getAutoScanSteps = (
         await new Promise(resolve => setTimeout(resolve, 5000));
         debugTrace("Buffer completed, proceeding to next step");
         
-        console.log("ShuffleDNS with Custom Wordlist scan completed");
+        console.log('[AutoScan] Step: cewl completed.');
       } catch (error) {
-        console.error("Error with ShuffleDNS Custom Wordlist scan:", error);
+        console.error('[AutoScan] Step: cewl ERROR:', error);
       }
     }},
     { name: AUTO_SCAN_STEPS.CONSOLIDATE_ROUND2, action: async () => {
+      if (config && config.consolidate_httpx_round2 === false) {
+        console.log('[AutoScan] Step: consolidate_httpx_round2 is DISABLED in config. Skipping.');
+        return;
+      }
+      console.log('[AutoScan] Step: consolidate_httpx_round2 is ENABLED. Running.');
       console.log("Starting Consolidation process (Round 2)...");
       setAutoScanCurrentStep(AUTO_SCAN_STEPS.CONSOLIDATE_ROUND2);
       await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.CONSOLIDATE_ROUND2);
@@ -729,13 +789,18 @@ const getAutoScanSteps = (
         }
         
         setIsConsolidating(false);
-        console.log("Consolidation (Round 2) completed");
+        console.log('[AutoScan] Step: consolidate_httpx_round2 completed.');
       } catch (error) {
-        console.error("Error during Consolidation (Round 2):", error);
+        console.error('[AutoScan] Step: consolidate_httpx_round2 ERROR:', error);
         setIsConsolidating(false);
       }
     }},
     { name: AUTO_SCAN_STEPS.HTTPX_ROUND2, action: async () => {
+      if (config && config.consolidate_httpx_round2 === false) {
+        console.log('[AutoScan] Step: consolidate_httpx_round2 is DISABLED in config. Skipping.');
+        return;
+      }
+      console.log('[AutoScan] Step: consolidate_httpx_round2 is ENABLED. Running.');
       console.log("Starting HTTPX scan for Live Web Servers (Round 2)...");
       setAutoScanCurrentStep(AUTO_SCAN_STEPS.HTTPX_ROUND2);
       await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.HTTPX_ROUND2);
@@ -774,13 +839,18 @@ const getAutoScanSteps = (
         // Force a reset of the scanning state
         setIsHttpxScanning(false);
         
-        console.log("HTTPX scan (Round 2) completed");
+        console.log('[AutoScan] Step: consolidate_httpx_round2 completed.');
       } catch (error) {
-        console.error("Error with HTTPX scan (Round 2):", error);
+        console.error('[AutoScan] Step: consolidate_httpx_round2 ERROR:', error);
         setIsHttpxScanning(false);
       }
     }},
     { name: AUTO_SCAN_STEPS.GOSPIDER, action: async () => {
+      if (config && config.gospider === false) {
+        console.log('[AutoScan] Step: gospider is DISABLED in config. Skipping.');
+        return;
+      }
+      console.log('[AutoScan] Step: gospider is ENABLED. Running.');
       console.log("Starting GoSpider Scan...");
       setAutoScanCurrentStep(AUTO_SCAN_STEPS.GOSPIDER);
       await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.GOSPIDER);
@@ -827,12 +897,17 @@ const getAutoScanSteps = (
           }
         }
         
-        console.log("GoSpider scan completed");
+        console.log('[AutoScan] Step: gospider completed.');
       } catch (error) {
-        console.error("Error with GoSpider scan:", error);
+        console.error('[AutoScan] Step: gospider ERROR:', error);
       }
     }},
     { name: AUTO_SCAN_STEPS.SUBDOMAINIZER, action: async () => {
+      if (config && config.subdomainizer === false) {
+        console.log('[AutoScan] Step: subdomainizer is DISABLED in config. Skipping.');
+        return;
+      }
+      console.log('[AutoScan] Step: subdomainizer is ENABLED. Running.');
       console.log("Starting Subdomainizer Scan...");
       setAutoScanCurrentStep(AUTO_SCAN_STEPS.SUBDOMAINIZER);
       await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.SUBDOMAINIZER);
@@ -879,12 +954,17 @@ const getAutoScanSteps = (
           }
         }
         
-        console.log("Subdomainizer scan completed");
+        console.log('[AutoScan] Step: subdomainizer completed.');
       } catch (error) {
-        console.error("Error with Subdomainizer scan:", error);
+        console.error('[AutoScan] Step: subdomainizer ERROR:', error);
       }
     }},
     { name: AUTO_SCAN_STEPS.NUCLEI_SCREENSHOT, action: async () => {
+      if (config && config.nuclei_screenshot === false) {
+        console.log('[AutoScan] Step: nuclei_screenshot is DISABLED in config. Skipping.');
+        return;
+      }
+      console.log('[AutoScan] Step: nuclei_screenshot is ENABLED. Running.');
       console.log("Starting Nuclei Screenshot Scan...");
       setAutoScanCurrentStep(AUTO_SCAN_STEPS.NUCLEI_SCREENSHOT);
       await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.NUCLEI_SCREENSHOT);
@@ -931,12 +1011,17 @@ const getAutoScanSteps = (
           }
         }
         
-        console.log("Nuclei Screenshot scan completed");
+        console.log('[AutoScan] Step: nuclei_screenshot completed.');
       } catch (error) {
-        console.error("Error with Nuclei Screenshot scan:", error);
+        console.error('[AutoScan] Step: nuclei_screenshot ERROR:', error);
       }
     }},
     { name: AUTO_SCAN_STEPS.METADATA, action: async () => {
+      if (config && config.metadata === false) {
+        console.log('[AutoScan] Step: metadata is DISABLED in config. Skipping.');
+        return;
+      }
+      console.log('[AutoScan] Step: metadata is ENABLED. Running.');
       console.log("Starting MetaData Scan...");
       setAutoScanCurrentStep(AUTO_SCAN_STEPS.METADATA);
       await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.METADATA);
@@ -1000,12 +1085,17 @@ const getAutoScanSteps = (
           }
         }
         
-        console.log("Metadata scan completed");
+        console.log('[AutoScan] Step: metadata completed.');
       } catch (error) {
-        console.error("Error with Metadata scan:", error);
+        console.error('[AutoScan] Step: metadata ERROR:', error);
       }
     }},
     { name: AUTO_SCAN_STEPS.CONSOLIDATE_ROUND3, action: async () => {
+      if (config && config.consolidate_httpx_round3 === false) {
+        console.log('[AutoScan] Step: consolidate_httpx_round3 is DISABLED in config. Skipping.');
+        return;
+      }
+      console.log('[AutoScan] Step: consolidate_httpx_round3 is ENABLED. Running.');
       console.log("Starting Consolidation process (Round 3)...");
       setAutoScanCurrentStep(AUTO_SCAN_STEPS.CONSOLIDATE_ROUND3);
       await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.CONSOLIDATE_ROUND3);
@@ -1047,13 +1137,18 @@ const getAutoScanSteps = (
         }
         
         setIsConsolidating(false);
-        console.log("Consolidation (Round 3) completed");
+        console.log('[AutoScan] Step: consolidate_httpx_round3 completed.');
       } catch (error) {
-        console.error("Error during Consolidation (Round 3):", error);
+        console.error('[AutoScan] Step: consolidate_httpx_round3 ERROR:', error);
         setIsConsolidating(false);
       }
     }},
     { name: AUTO_SCAN_STEPS.HTTPX_ROUND3, action: async () => {
+      if (config && config.consolidate_httpx_round3 === false) {
+        console.log('[AutoScan] Step: consolidate_httpx_round3 is DISABLED in config. Skipping.');
+        return;
+      }
+      console.log('[AutoScan] Step: consolidate_httpx_round3 is ENABLED. Running.');
       console.log("Starting HTTPX scan for Live Web Servers (Round 3)...");
       setAutoScanCurrentStep(AUTO_SCAN_STEPS.HTTPX_ROUND3);
       await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.HTTPX_ROUND3);
@@ -1092,64 +1187,17 @@ const getAutoScanSteps = (
         // Force a reset of the scanning state
         setIsHttpxScanning(false);
         
-        console.log("HTTPX scan (Round 3) completed");
+        console.log('[AutoScan] Step: consolidate_httpx_round3 completed.');
       } catch (error) {
-        console.error("Error with HTTPX scan (Round 3):", error);
+        console.error('[AutoScan] Step: consolidate_httpx_round3 ERROR:', error);
         setIsHttpxScanning(false);
-      }
-    }},
-    { name: AUTO_SCAN_STEPS.NUCLEI_SCREENSHOT, action: async () => {
-      console.log("Starting Nuclei Screenshot Scan...");
-      setAutoScanCurrentStep(AUTO_SCAN_STEPS.NUCLEI_SCREENSHOT);
-      await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.NUCLEI_SCREENSHOT);
-      
-      try {
-        // Start the scan
-        await initiateNucleiScreenshotScan(
-          activeTarget,
-          null,
-          setIsNucleiScreenshotScanning,
-          setNucleiScreenshotScans,
-          setMostRecentNucleiScreenshotScanStatus,
-          setMostRecentNucleiScreenshotScan
-        );
-        
-        // Wait for scan completion
-        const completedScan = await waitForScanCompletion(
-          'nuclei-screenshot',
-          activeTarget.id,
-          setIsNucleiScreenshotScanning,
-          setMostRecentNucleiScreenshotScanStatus,
-          setMostRecentNucleiScreenshotScan
-        );
-        
-        // Explicitly fetch the latest results to update UI
-        const response = await fetch(
-          `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${activeTarget.id}/scans/nuclei-screenshot`
-        );
-        
-        if (response.ok) {
-          const scans = await response.json();
-          setNucleiScreenshotScans(scans || []);
-          
-          if (Array.isArray(scans) && scans.length > 0) {
-            // Find the most recent scan
-            const mostRecentScan = scans.reduce((latest, scan) => {
-              const scanDate = new Date(scan.created_at);
-              return scanDate > new Date(latest.created_at) ? scan : latest;
-            }, scans[0]);
-            
-            // Update the UI state
-            setMostRecentNucleiScreenshotScan(mostRecentScan);
-            setMostRecentNucleiScreenshotScanStatus(mostRecentScan.status);
-          }
-        }
-        
-        console.log("Nuclei Screenshot scan completed");
-      } catch (error) {
-        console.error("Error with Nuclei Screenshot scan:", error);
       }
     }}
   ];
+  if (config) {
+    return steps.filter(step => config[step.name] !== false);
+  }
+  return steps;
+};
 
 export default getAutoScanSteps;

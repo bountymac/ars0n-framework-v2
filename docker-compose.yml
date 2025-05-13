@@ -112,6 +112,14 @@ services:
     build:
       context: .
       dockerfile: docker/gospider/Dockerfile
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
     depends_on:
       - api
     entrypoint: ["sleep", "infinity"]

@@ -144,11 +144,12 @@ func executeAndParseGoSpiderScan(scanID, domain string) {
 		cmd := exec.Command(
 			"docker", "exec",
 			"ars0n-framework-v2-gospider-1",
+			"timeout", "300",
 			"gospider",
 			"-s", httpxResult.URL,
-			"-c", "20",
+			"-c", "10",
 			"-d", "3",
-			"-t", "5",
+			"-t", "3",
 			"-k", "1",
 			"-K", "2",
 			"-m", "30",
@@ -546,6 +547,7 @@ func executeAndParseSubdomainizerScan(scanID, domain string) {
 		cmd := exec.Command(
 			"docker", "exec",
 			"ars0n-framework-v2-subdomainizer-1",
+			"timeout", "300",
 			"python3", "SubDomainizer.py",
 			"-u", httpxResult.URL,
 			"-k",

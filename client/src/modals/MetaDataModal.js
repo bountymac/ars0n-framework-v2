@@ -59,8 +59,6 @@ const MetaDataModal = ({
               </div>
             ) : (
               urls.map((url, urlIndex) => {
-                console.log(`Processing URL ${urlIndex}:`, url);
-                console.log('ffuf_results for this URL:', url.ffuf_results);
                 const sslIssues = [];
                 if (url.has_deprecated_tls) sslIssues.push('Deprecated TLS');
                 if (url.has_expired_ssl) sslIssues.push('Expired SSL');
@@ -74,16 +72,12 @@ const MetaDataModal = ({
                 // Process katana results
                 let katanaUrls = [];
                 if (url.katana_results) {
-                  console.log('[DEBUG] Raw katana results:', url.katana_results);
-                  console.log('[DEBUG] Katana results type:', typeof url.katana_results);
                   if (Array.isArray(url.katana_results)) {
                     katanaUrls = url.katana_results;
-                    console.log('[DEBUG] Katana results is already an array');
                   } else if (typeof url.katana_results === 'string') {
                     try {
                       const parsed = JSON.parse(url.katana_results);
                       katanaUrls = Array.isArray(parsed) ? parsed : [];
-                      console.log('[DEBUG] Parsed katana results:', katanaUrls);
                     } catch (error) {
                       console.error('Error parsing katana results:', error);
                     }
@@ -93,20 +87,14 @@ const MetaDataModal = ({
                 // Process ffuf results
                 let ffufEndpoints = [];
                 if (url.ffuf_results) {
-                  console.log('[DEBUG] Raw ffuf results:', url.ffuf_results);
-                  console.log('[DEBUG] Ffuf results type:', typeof url.ffuf_results);
                   if (typeof url.ffuf_results === 'object' && url.ffuf_results.endpoints) {
                     ffufEndpoints = url.ffuf_results.endpoints;
-                    console.log('[DEBUG] Ffuf results is already an object with endpoints:', ffufEndpoints);
                   } else if (typeof url.ffuf_results === 'string') {
                     try {
                       const parsed = JSON.parse(url.ffuf_results);
-                      console.log('[DEBUG] Parsed ffuf results:', parsed);
                       ffufEndpoints = parsed.endpoints || [];
-                      console.log('[DEBUG] Extracted endpoints:', ffufEndpoints);
                     } catch (error) {
                       console.error('Error parsing ffuf results:', error);
-                      console.log('[DEBUG] Failed to parse ffuf results string:', url.ffuf_results);
                     }
                   }
                 } else {

@@ -513,6 +513,7 @@ func ExecuteAndParseCeWLScan(scanID, domain string) {
 		cmdArgs := []string{
 			"docker", "exec",
 			"ars0n-framework-v2-cewl-1",
+			"timeout", "600",
 			"ruby", "/app/cewl.rb",
 			cleanURL,
 			"-d", "2",

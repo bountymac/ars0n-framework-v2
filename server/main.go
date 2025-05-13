@@ -118,6 +118,8 @@ func main() {
 	r.HandleFunc("/api/export-data", utils.HandleExportData).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/auto-scan-state/{target_id}", getAutoScanState).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/auto-scan-state/{target_id}", updateAutoScanState).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/auto-scan-config", getAutoScanConfig).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/auto-scan-config", updateAutoScanConfig).Methods("POST", "OPTIONS")
 
 	log.Println("API server started on :8080")
 	http.ListenAndServe(":8080", r)
@@ -419,3 +421,148 @@ func updateAutoScanState(w http.ResponseWriter, r *http.Request) {
 // 		log.Fatalf("Error creating tables: %v", err)
 // 	}
 // }
+
+func getAutoScanConfig(w http.ResponseWriter, r *http.Request) {
+	row := dbPool.QueryRow(context.Background(), `
+		SELECT amass, sublist3r, assetfinder, gau, ctl, subfinder, consolidate_httpx_round1, shuffledns, cewl, consolidate_httpx_round2, gospider, subdomainizer, consolidate_httpx_round3, nuclei_screenshot, metadata, max_consolidated_subdomains, max_live_web_servers
+		FROM auto_scan_config
+		LIMIT 1
+	`)
+	var config struct {
+		Amass                     bool `json:"amass"`
+		Sublist3r                 bool `json:"sublist3r"`
+		Assetfinder               bool `json:"assetfinder"`
+		Gau                       bool `json:"gau"`
+		Ctl                       bool `json:"ctl"`
+		Subfinder                 bool `json:"subfinder"`
+		ConsolidateHttpxRound1    bool `json:"consolidate_httpx_round1"`
+		Shuffledns                bool `json:"shuffledns"`
+		Cewl                      bool `json:"cewl"`
+		ConsolidateHttpxRound2    bool `json:"consolidate_httpx_round2"`
+		Gospider                  bool `json:"gospider"`
+		Subdomainizer             bool `json:"subdomainizer"`
+		ConsolidateHttpxRound3    bool `json:"consolidate_httpx_round3"`
+		NucleiScreenshot          bool `json:"nuclei_screenshot"`
+		Metadata                  bool `json:"metadata"`
+		MaxConsolidatedSubdomains int  `json:"maxConsolidatedSubdomains"`
+		MaxLiveWebServers         int  `json:"maxLiveWebServers"`
+	}
+	err := row.Scan(
+		&config.Amass,
+		&config.Sublist3r,
+		&config.Assetfinder,
+		&config.Gau,
+		&config.Ctl,
+		&config.Subfinder,
+		&config.ConsolidateHttpxRound1,
+		&config.Shuffledns,
+		&config.Cewl,
+		&config.ConsolidateHttpxRound2,
+		&config.Gospider,
+		&config.Subdomainizer,
+		&config.ConsolidateHttpxRound3,
+		&config.NucleiScreenshot,
+		&config.Metadata,
+		&config.MaxConsolidatedSubdomains,
+		&config.MaxLiveWebServers,
+	)
+	if err != nil {
+		// Return defaults if not found
+		config = struct {
+			Amass                     bool `json:"amass"`
+			Sublist3r                 bool `json:"sublist3r"`
+			Assetfinder               bool `json:"assetfinder"`
+			Gau                       bool `json:"gau"`
+			Ctl                       bool `json:"ctl"`
+			Subfinder                 bool `json:"subfinder"`
+			ConsolidateHttpxRound1    bool `json:"consolidate_httpx_round1"`
+			Shuffledns                bool `json:"shuffledns"`
+			Cewl                      bool `json:"cewl"`
+			ConsolidateHttpxRound2    bool `json:"consolidate_httpx_round2"`
+			Gospider                  bool `json:"gospider"`
+			Subdomainizer             bool `json:"subdomainizer"`
+			ConsolidateHttpxRound3    bool `json:"consolidate_httpx_round3"`
+			NucleiScreenshot          bool `json:"nuclei_screenshot"`
+			Metadata                  bool `json:"metadata"`
+			MaxConsolidatedSubdomains int  `json:"maxConsolidatedSubdomains"`
+			MaxLiveWebServers         int  `json:"maxLiveWebServers"`
+		}{
+			Amass: true, Sublist3r: true, Assetfinder: true, Gau: true, Ctl: true, Subfinder: true, ConsolidateHttpxRound1: true, Shuffledns: true, Cewl: true, ConsolidateHttpxRound2: true, Gospider: true, Subdomainizer: true, ConsolidateHttpxRound3: true, NucleiScreenshot: true, Metadata: true, MaxConsolidatedSubdomains: 2500, MaxLiveWebServers: 500,
+		}
+	}
+	log.Printf("[AutoScanConfig] GET: %+v", config)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(config)
+}
+
+func updateAutoScanConfig(w http.ResponseWriter, r *http.Request) {
+	var config struct {
+		Amass                     bool `json:"amass"`
+		Sublist3r                 bool `json:"sublist3r"`
+		Assetfinder               bool `json:"assetfinder"`
+		Gau                       bool `json:"gau"`
+		Ctl                       bool `json:"ctl"`
+		Subfinder                 bool `json:"subfinder"`
+		ConsolidateHttpxRound1    bool `json:"consolidate_httpx_round1"`
+		Shuffledns                bool `json:"shuffledns"`
+		Cewl                      bool `json:"cewl"`
+		ConsolidateHttpxRound2    bool `json:"consolidate_httpx_round2"`
+		Gospider                  bool `json:"gospider"`
+		Subdomainizer             bool `json:"subdomainizer"`
+		ConsolidateHttpxRound3    bool `json:"consolidate_httpx_round3"`
+		NucleiScreenshot          bool `json:"nuclei_screenshot"`
+		Metadata                  bool `json:"metadata"`
+		MaxConsolidatedSubdomains int  `json:"maxConsolidatedSubdomains"`
+		MaxLiveWebServers         int  `json:"maxLiveWebServers"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&config); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+	log.Printf("[AutoScanConfig] POST: %+v", config)
+	_, err := dbPool.Exec(context.Background(), `
+		UPDATE auto_scan_config SET
+			amass = $1,
+			sublist3r = $2,
+			assetfinder = $3,
+			gau = $4,
+			ctl = $5,
+			subfinder = $6,
+			consolidate_httpx_round1 = $7,
+			shuffledns = $8,
+			cewl = $9,
+			consolidate_httpx_round2 = $10,
+			gospider = $11,
+			subdomainizer = $12,
+			consolidate_httpx_round3 = $13,
+			nuclei_screenshot = $14,
+			metadata = $15,
+			max_consolidated_subdomains = $16,
+			max_live_web_servers = $17,
+			updated_at = NOW()
+		WHERE id = (SELECT id FROM auto_scan_config LIMIT 1)
+	`,
+		config.Amass,
+		config.Sublist3r,
+		config.Assetfinder,
+		config.Gau,
+		config.Ctl,
+		config.Subfinder,
+		config.ConsolidateHttpxRound1,
+		config.Shuffledns,
+		config.Cewl,
+		config.ConsolidateHttpxRound2,
+		config.Gospider,
+		config.Subdomainizer,
+		config.ConsolidateHttpxRound3,
+		config.NucleiScreenshot,
+		config.Metadata,
+		config.MaxConsolidatedSubdomains,
+		config.MaxLiveWebServers,
+	)
+	if err != nil {
+		http.Error(w, "Failed to update config", http.StatusInternalServerError)
+		return
+	}
+	getAutoScanConfig(w, r)
+}

@@ -408,6 +408,32 @@ func createTables() {
 				RAISE NOTICE 'Custom HTTP columns already exist in user_settings.';
 			END;
 		END $$;`,
+
+		`CREATE TABLE IF NOT EXISTS auto_scan_config (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			amass BOOLEAN DEFAULT TRUE,
+			sublist3r BOOLEAN DEFAULT TRUE,
+			assetfinder BOOLEAN DEFAULT TRUE,
+			gau BOOLEAN DEFAULT TRUE,
+			ctl BOOLEAN DEFAULT TRUE,
+			subfinder BOOLEAN DEFAULT TRUE,
+			consolidate_httpx_round1 BOOLEAN DEFAULT TRUE,
+			shuffledns BOOLEAN DEFAULT TRUE,
+			cewl BOOLEAN DEFAULT TRUE,
+			consolidate_httpx_round2 BOOLEAN DEFAULT TRUE,
+			gospider BOOLEAN DEFAULT TRUE,
+			subdomainizer BOOLEAN DEFAULT TRUE,
+			consolidate_httpx_round3 BOOLEAN DEFAULT TRUE,
+			nuclei_screenshot BOOLEAN DEFAULT TRUE,
+			metadata BOOLEAN DEFAULT TRUE,
+			max_consolidated_subdomains INTEGER DEFAULT 2500,
+			max_live_web_servers INTEGER DEFAULT 500,
+			created_at TIMESTAMP DEFAULT NOW(),
+			updated_at TIMESTAMP DEFAULT NOW()
+		);`,
+		`INSERT INTO auto_scan_config (id)
+		SELECT gen_random_uuid()
+		WHERE NOT EXISTS (SELECT 1 FROM auto_scan_config LIMIT 1);`,
 	}
 
 	for _, query := range queries {

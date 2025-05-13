@@ -1,5 +1,5 @@
 import { Row, Col, Button, Card, Alert } from 'react-bootstrap';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import AutoScanConfigModal from '../modals/autoScanConfigModal';
 
 function ManageScopeTargets({ 
@@ -14,13 +14,56 @@ function ManageScopeTargets({
   mostRecentGauScanStatus
 }) {
   const [showConfigModal, setShowConfigModal] = useState(false);
+  const [autoScanConfig, setAutoScanConfig] = useState(null);
+  const [configLoading, setConfigLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchConfig = async () => {
+      setConfigLoading(true);
+      try {
+        const response = await fetch(`${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/auto-scan-config`);
+        if (response.ok) {
+          const data = await response.json();
+          setAutoScanConfig(data);
+          console.log('[AutoScanConfig] Fetched from backend:', data);
+        }
+      } catch (e) {
+        // fallback to defaults if needed
+        const fallback = {
+          amass: true, sublist3r: true, assetfinder: true, gau: true, ctl: true, subfinder: true, consolidate_httpx_round1: true, shuffledns: true, cewl: true, consolidate_httpx_round2: true, gospider: true, subdomainizer: true, consolidate_httpx_round3: true, nuclei_screenshot: true, metadata: true, maxConsolidatedSubdomains: 2500, maxLiveWebServers: 500
+        };
+        setAutoScanConfig(fallback);
+        console.log('[AutoScanConfig] Fallback to defaults:', fallback);
+      } finally {
+        setConfigLoading(false);
+      }
+    };
+    fetchConfig();
+  }, []);
 
   const handleConfigure = () => {
     setShowConfigModal(true);
+    console.log('[AutoScanConfig] Modal opened. Current config:', autoScanConfig);
   };
 
-  const handleConfigSave = (config) => {
-    console.log('Auto Scan Configuration:', config);
+  const handleConfigSave = async (config) => {
+    setConfigLoading(true);
+    console.log('[AutoScanConfig] Saving config to backend:', config);
+    try {
+      const response = await fetch(`${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/auto-scan-config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config)
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setAutoScanConfig(data);
+        setShowConfigModal(false);
+        console.log('[AutoScanConfig] Saved and updated config from backend:', data);
+      }
+    } finally {
+      setConfigLoading(false);
+    }
   };
 
   const handlePause = () => {
@@ -138,6 +181,8 @@ function ManageScopeTargets({
         show={showConfigModal}
         handleClose={() => setShowConfigModal(false)}
         onSave={handleConfigSave}
+        config={autoScanConfig}
+        loading={configLoading}
       />
     </>
   );
