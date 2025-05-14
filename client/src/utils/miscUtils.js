@@ -66,4 +66,9 @@ const copyToClipboard = async (text) => {
   }
 };
 
+export const getHttpxResultsCount = (scan) => {
+  if (!scan?.result?.String) return 0;
+  return scan.result.String.split('\n').filter(line => line.trim()).length;
+};
+
 export { getTypeIcon, getLastScanDate, getLatestScanStatus, getLatestScanTime, getLatestScanId, getExecutionTime, getResultLength, copyToClipboard };
