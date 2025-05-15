@@ -120,6 +120,10 @@ func main() {
 	r.HandleFunc("/api/auto-scan-state/{target_id}", updateAutoScanState).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/auto-scan-config", getAutoScanConfig).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/auto-scan-config", updateAutoScanConfig).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/auto-scan/session/start", startAutoScanSession).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/auto-scan/session/{id}", getAutoScanSession).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/auto-scan/sessions", listAutoScanSessions).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/auto-scan/session/{id}/cancel", cancelAutoScanSession).Methods("POST", "OPTIONS")
 
 	log.Println("API server started on :8080")
 	http.ListenAndServe(":8080", r)
@@ -565,4 +569,99 @@ func updateAutoScanConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	getAutoScanConfig(w, r)
+}
+
+func startAutoScanSession(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ScopeTargetID  string      `json:"scope_target_id"`
+		ConfigSnapshot interface{} `json:"config_snapshot"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+	var sessionID string
+	err := dbPool.QueryRow(context.Background(), `
+		INSERT INTO auto_scan_sessions (scope_target_id, config_snapshot, status, started_at)
+		VALUES ($1, $2, 'running', NOW())
+		RETURNING id
+	`, req.ScopeTargetID, req.ConfigSnapshot).Scan(&sessionID)
+	if err != nil {
+		http.Error(w, "Failed to create session", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"session_id": sessionID})
+}
+
+func getAutoScanSession(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	sessionID := vars["id"]
+	row := dbPool.QueryRow(context.Background(), `
+		SELECT id, scope_target_id, config_snapshot, status, started_at, ended_at, steps_run, error_message
+		FROM auto_scan_sessions WHERE id = $1
+	`, sessionID)
+	var session struct {
+		ID             string      `json:"id"`
+		ScopeTargetID  string      `json:"scope_target_id"`
+		ConfigSnapshot interface{} `json:"config_snapshot"`
+		Status         string      `json:"status"`
+		StartedAt      time.Time   `json:"started_at"`
+		EndedAt        *time.Time  `json:"ended_at"`
+		StepsRun       interface{} `json:"steps_run"`
+		ErrorMessage   *string     `json:"error_message"`
+	}
+	err := row.Scan(&session.ID, &session.ScopeTargetID, &session.ConfigSnapshot, &session.Status, &session.StartedAt, &session.EndedAt, &session.StepsRun, &session.ErrorMessage)
+	if err != nil {
+		http.Error(w, "Session not found", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(session)
+}
+
+func listAutoScanSessions(w http.ResponseWriter, r *http.Request) {
+	targetID := r.URL.Query().Get("target_id")
+	rows, err := dbPool.Query(context.Background(), `
+		SELECT id, scope_target_id, config_snapshot, status, started_at, ended_at, steps_run, error_message
+		FROM auto_scan_sessions WHERE scope_target_id = $1 ORDER BY started_at DESC
+	`, targetID)
+	if err != nil {
+		http.Error(w, "Failed to list sessions", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+	var sessions []interface{}
+	for rows.Next() {
+		var session struct {
+			ID             string      `json:"id"`
+			ScopeTargetID  string      `json:"scope_target_id"`
+			ConfigSnapshot interface{} `json:"config_snapshot"`
+			Status         string      `json:"status"`
+			StartedAt      time.Time   `json:"started_at"`
+			EndedAt        *time.Time  `json:"ended_at"`
+			StepsRun       interface{} `json:"steps_run"`
+			ErrorMessage   *string     `json:"error_message"`
+		}
+		err := rows.Scan(&session.ID, &session.ScopeTargetID, &session.ConfigSnapshot, &session.Status, &session.StartedAt, &session.EndedAt, &session.StepsRun, &session.ErrorMessage)
+		if err == nil {
+			sessions = append(sessions, session)
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(sessions)
+}
+
+func cancelAutoScanSession(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	sessionID := vars["id"]
+	_, err := dbPool.Exec(context.Background(), `
+		UPDATE auto_scan_sessions SET status = 'cancelled', ended_at = NOW() WHERE id = $1
+	`, sessionID)
+	if err != nil {
+		http.Error(w, "Failed to cancel session", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"success": true}`))
 }

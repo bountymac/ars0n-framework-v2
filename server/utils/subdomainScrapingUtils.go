@@ -22,84 +22,90 @@ import (
 )
 
 type Sublist3rScanStatus struct {
-	ID            string         `json:"id"`
-	ScanID        string         `json:"scan_id"`
-	Domain        string         `json:"domain"`
-	Status        string         `json:"status"`
-	Result        sql.NullString `json:"result,omitempty"`
-	Error         sql.NullString `json:"error,omitempty"`
-	StdOut        sql.NullString `json:"stdout,omitempty"`
-	StdErr        sql.NullString `json:"stderr,omitempty"`
-	Command       sql.NullString `json:"command,omitempty"`
-	ExecTime      sql.NullString `json:"execution_time,omitempty"`
-	CreatedAt     time.Time      `json:"created_at"`
-	ScopeTargetID string         `json:"scope_target_id"`
+	ID                string         `json:"id"`
+	ScanID            string         `json:"scan_id"`
+	Domain            string         `json:"domain"`
+	Status            string         `json:"status"`
+	Result            sql.NullString `json:"result,omitempty"`
+	Error             sql.NullString `json:"error,omitempty"`
+	StdOut            sql.NullString `json:"stdout,omitempty"`
+	StdErr            sql.NullString `json:"stderr,omitempty"`
+	Command           sql.NullString `json:"command,omitempty"`
+	ExecTime          sql.NullString `json:"execution_time,omitempty"`
+	CreatedAt         time.Time      `json:"created_at"`
+	ScopeTargetID     string         `json:"scope_target_id"`
+	AutoScanSessionID sql.NullString `json:"auto_scan_session_id"`
 }
 
 type AssetfinderScanStatus struct {
-	ID            string         `json:"id"`
-	ScanID        string         `json:"scan_id"`
-	Domain        string         `json:"domain"`
-	Status        string         `json:"status"`
-	Result        sql.NullString `json:"result,omitempty"`
-	Error         sql.NullString `json:"error,omitempty"`
-	StdOut        sql.NullString `json:"stdout,omitempty"`
-	StdErr        sql.NullString `json:"stderr,omitempty"`
-	Command       sql.NullString `json:"command,omitempty"`
-	ExecTime      sql.NullString `json:"execution_time,omitempty"`
-	CreatedAt     time.Time      `json:"created_at"`
-	ScopeTargetID string         `json:"scope_target_id"`
+	ID                string         `json:"id"`
+	ScanID            string         `json:"scan_id"`
+	Domain            string         `json:"domain"`
+	Status            string         `json:"status"`
+	Result            sql.NullString `json:"result,omitempty"`
+	Error             sql.NullString `json:"error,omitempty"`
+	StdOut            sql.NullString `json:"stdout,omitempty"`
+	StdErr            sql.NullString `json:"stderr,omitempty"`
+	Command           sql.NullString `json:"command,omitempty"`
+	ExecTime          sql.NullString `json:"execution_time,omitempty"`
+	CreatedAt         time.Time      `json:"created_at"`
+	ScopeTargetID     string         `json:"scope_target_id"`
+	AutoScanSessionID sql.NullString `json:"auto_scan_session_id"`
 }
 
 type CTLScanStatus struct {
-	ID            string         `json:"id"`
-	ScanID        string         `json:"scan_id"`
-	Domain        string         `json:"domain"`
-	Status        string         `json:"status"`
-	Result        sql.NullString `json:"result,omitempty"`
-	Error         sql.NullString `json:"error,omitempty"`
-	StdOut        sql.NullString `json:"stdout,omitempty"`
-	StdErr        sql.NullString `json:"stderr,omitempty"`
-	Command       sql.NullString `json:"command,omitempty"`
-	ExecTime      sql.NullString `json:"execution_time,omitempty"`
-	CreatedAt     time.Time      `json:"created_at"`
-	ScopeTargetID string         `json:"scope_target_id"`
+	ID                string         `json:"id"`
+	ScanID            string         `json:"scan_id"`
+	Domain            string         `json:"domain"`
+	Status            string         `json:"status"`
+	Result            sql.NullString `json:"result,omitempty"`
+	Error             sql.NullString `json:"error,omitempty"`
+	StdOut            sql.NullString `json:"stdout,omitempty"`
+	StdErr            sql.NullString `json:"stderr,omitempty"`
+	Command           sql.NullString `json:"command,omitempty"`
+	ExecTime          sql.NullString `json:"execution_time,omitempty"`
+	CreatedAt         time.Time      `json:"created_at"`
+	ScopeTargetID     string         `json:"scope_target_id"`
+	AutoScanSessionID sql.NullString `json:"auto_scan_session_id"`
 }
 
 type GauScanStatus struct {
-	ID            string         `json:"id"`
-	ScanID        string         `json:"scan_id"`
-	Domain        string         `json:"domain"`
-	Status        string         `json:"status"`
-	Result        sql.NullString `json:"result,omitempty"`
-	Error         sql.NullString `json:"error,omitempty"`
-	StdOut        sql.NullString `json:"stdout,omitempty"`
-	StdErr        sql.NullString `json:"stderr,omitempty"`
-	Command       sql.NullString `json:"command,omitempty"`
-	ExecTime      sql.NullString `json:"execution_time,omitempty"`
-	CreatedAt     time.Time      `json:"created_at"`
-	ScopeTargetID string         `json:"scope_target_id"`
+	ID                string         `json:"id"`
+	ScanID            string         `json:"scan_id"`
+	Domain            string         `json:"domain"`
+	Status            string         `json:"status"`
+	Result            sql.NullString `json:"result,omitempty"`
+	Error             sql.NullString `json:"error,omitempty"`
+	StdOut            sql.NullString `json:"stdout,omitempty"`
+	StdErr            sql.NullString `json:"stderr,omitempty"`
+	Command           sql.NullString `json:"command,omitempty"`
+	ExecTime          sql.NullString `json:"execution_time,omitempty"`
+	CreatedAt         time.Time      `json:"created_at"`
+	ScopeTargetID     string         `json:"scope_target_id"`
+	AutoScanSessionID sql.NullString `json:"auto_scan_session_id"`
 }
 
 type SubfinderScanStatus struct {
-	ID            string         `json:"id"`
-	ScanID        string         `json:"scan_id"`
-	Domain        string         `json:"domain"`
-	Status        string         `json:"status"`
-	Result        sql.NullString `json:"result,omitempty"`
-	Error         sql.NullString `json:"error,omitempty"`
-	StdOut        sql.NullString `json:"stdout,omitempty"`
-	StdErr        sql.NullString `json:"stderr,omitempty"`
-	Command       sql.NullString `json:"command,omitempty"`
-	ExecTime      sql.NullString `json:"execution_time,omitempty"`
-	CreatedAt     time.Time      `json:"created_at"`
-	ScopeTargetID string         `json:"scope_target_id"`
+	ID                string         `json:"id"`
+	ScanID            string         `json:"scan_id"`
+	Domain            string         `json:"domain"`
+	Status            string         `json:"status"`
+	Result            sql.NullString `json:"result,omitempty"`
+	Error             sql.NullString `json:"error,omitempty"`
+	StdOut            sql.NullString `json:"stdout,omitempty"`
+	StdErr            sql.NullString `json:"stderr,omitempty"`
+	Command           sql.NullString `json:"command,omitempty"`
+	ExecTime          sql.NullString `json:"execution_time,omitempty"`
+	CreatedAt         time.Time      `json:"created_at"`
+	ScopeTargetID     string         `json:"scope_target_id"`
+	AutoScanSessionID sql.NullString `json:"auto_scan_session_id"`
 }
 
 func RunSublist3rScan(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[INFO] Received request to run Sublist3r scan")
 	var requestData struct {
-		FQDN string `json:"fqdn"`
+		FQDN              string  `json:"fqdn"`
+		AutoScanSessionID *string `json:"auto_scan_session_id,omitempty"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&requestData); err != nil {
@@ -125,8 +131,16 @@ func RunSublist3rScan(w http.ResponseWriter, r *http.Request) {
 	scanID := uuid.New().String()
 	log.Printf("[INFO] Generated new scan ID: %s", scanID)
 
-	insertQuery := `INSERT INTO sublist3r_scans (scan_id, domain, status, scope_target_id) VALUES ($1, $2, $3, $4)`
-	_, err = dbPool.Exec(context.Background(), insertQuery, scanID, domain, "pending", scopeTargetID)
+	var insertQuery string
+	var args []interface{}
+	if requestData.AutoScanSessionID != nil && *requestData.AutoScanSessionID != "" {
+		insertQuery = `INSERT INTO sublist3r_scans (scan_id, domain, status, scope_target_id, auto_scan_session_id) VALUES ($1, $2, $3, $4, $5)`
+		args = []interface{}{scanID, domain, "pending", scopeTargetID, *requestData.AutoScanSessionID}
+	} else {
+		insertQuery = `INSERT INTO sublist3r_scans (scan_id, domain, status, scope_target_id) VALUES ($1, $2, $3, $4)`
+		args = []interface{}{scanID, domain, "pending", scopeTargetID}
+	}
+	_, err = dbPool.Exec(context.Background(), insertQuery, args...)
 	if err != nil {
 		log.Printf("[ERROR] Failed to create Sublist3r scan record: %v", err)
 		http.Error(w, "Failed to create scan record.", http.StatusInternalServerError)
@@ -271,6 +285,7 @@ func GetSublist3rScanStatus(w http.ResponseWriter, r *http.Request) {
 		&scan.ExecTime,
 		&scan.CreatedAt,
 		&scan.ScopeTargetID,
+		&scan.AutoScanSessionID,
 	)
 
 	if err != nil {
@@ -284,18 +299,19 @@ func GetSublist3rScanStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := map[string]interface{}{
-		"id":              scan.ID,
-		"scan_id":         scan.ScanID,
-		"domain":          scan.Domain,
-		"status":          scan.Status,
-		"result":          nullStringToString(scan.Result),
-		"error":           nullStringToString(scan.Error),
-		"stdout":          nullStringToString(scan.StdOut),
-		"stderr":          nullStringToString(scan.StdErr),
-		"command":         nullStringToString(scan.Command),
-		"execution_time":  nullStringToString(scan.ExecTime),
-		"created_at":      scan.CreatedAt.Format(time.RFC3339),
-		"scope_target_id": scan.ScopeTargetID,
+		"id":                   scan.ID,
+		"scan_id":              scan.ScanID,
+		"domain":               scan.Domain,
+		"status":               scan.Status,
+		"result":               nullStringToString(scan.Result),
+		"error":                nullStringToString(scan.Error),
+		"stdout":               nullStringToString(scan.StdOut),
+		"stderr":               nullStringToString(scan.StdErr),
+		"command":              nullStringToString(scan.Command),
+		"execution_time":       nullStringToString(scan.ExecTime),
+		"created_at":           scan.CreatedAt.Format(time.RFC3339),
+		"scope_target_id":      scan.ScopeTargetID,
+		"auto_scan_session_id": nullStringToString(scan.AutoScanSessionID),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -338,6 +354,7 @@ func GetSublist3rScansForScopeTarget(w http.ResponseWriter, r *http.Request) {
 			&scan.ExecTime,
 			&scan.CreatedAt,
 			&scopeTargetID,
+			&scan.AutoScanSessionID,
 		)
 		if err != nil {
 			log.Printf("[ERROR] Failed to scan row: %v", err)
@@ -345,18 +362,19 @@ func GetSublist3rScansForScopeTarget(w http.ResponseWriter, r *http.Request) {
 		}
 
 		scans = append(scans, map[string]interface{}{
-			"id":              scan.ID,
-			"scan_id":         scan.ScanID,
-			"domain":          scan.Domain,
-			"status":          scan.Status,
-			"result":          nullStringToString(scan.Result),
-			"error":           nullStringToString(scan.Error),
-			"stdout":          nullStringToString(scan.StdOut),
-			"stderr":          nullStringToString(scan.StdErr),
-			"command":         nullStringToString(scan.Command),
-			"execution_time":  nullStringToString(scan.ExecTime),
-			"created_at":      scan.CreatedAt.Format(time.RFC3339),
-			"scope_target_id": scopeTargetID,
+			"id":                   scan.ID,
+			"scan_id":              scan.ScanID,
+			"domain":               scan.Domain,
+			"status":               scan.Status,
+			"result":               nullStringToString(scan.Result),
+			"error":                nullStringToString(scan.Error),
+			"stdout":               nullStringToString(scan.StdOut),
+			"stderr":               nullStringToString(scan.StdErr),
+			"command":              nullStringToString(scan.Command),
+			"execution_time":       nullStringToString(scan.ExecTime),
+			"created_at":           scan.CreatedAt.Format(time.RFC3339),
+			"scope_target_id":      scopeTargetID,
+			"auto_scan_session_id": nullStringToString(scan.AutoScanSessionID),
 		})
 	}
 
@@ -366,7 +384,8 @@ func GetSublist3rScansForScopeTarget(w http.ResponseWriter, r *http.Request) {
 
 func RunAssetfinderScan(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
-		FQDN string `json:"fqdn" binding:"required"`
+		FQDN              string  `json:"fqdn" binding:"required"`
+		AutoScanSessionID *string `json:"auto_scan_session_id,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || payload.FQDN == "" {
 		http.Error(w, "Invalid request body. `fqdn` is required.", http.StatusBadRequest)
@@ -386,8 +405,16 @@ func RunAssetfinderScan(w http.ResponseWriter, r *http.Request) {
 	}
 
 	scanID := uuid.New().String()
-	insertQuery := `INSERT INTO assetfinder_scans (scan_id, domain, status, scope_target_id) VALUES ($1, $2, $3, $4)`
-	_, err = dbPool.Exec(context.Background(), insertQuery, scanID, domain, "pending", scopeTargetID)
+	var insertQuery string
+	var args []interface{}
+	if payload.AutoScanSessionID != nil && *payload.AutoScanSessionID != "" {
+		insertQuery = `INSERT INTO assetfinder_scans (scan_id, domain, status, scope_target_id, auto_scan_session_id) VALUES ($1, $2, $3, $4, $5)`
+		args = []interface{}{scanID, domain, "pending", scopeTargetID, *payload.AutoScanSessionID}
+	} else {
+		insertQuery = `INSERT INTO assetfinder_scans (scan_id, domain, status, scope_target_id) VALUES ($1, $2, $3, $4)`
+		args = []interface{}{scanID, domain, "pending", scopeTargetID}
+	}
+	_, err = dbPool.Exec(context.Background(), insertQuery, args...)
 	if err != nil {
 		log.Printf("[ERROR] Failed to create scan record: %v", err)
 		http.Error(w, "Failed to create scan record.", http.StatusInternalServerError)
@@ -473,6 +500,7 @@ func GetAssetfinderScanStatus(w http.ResponseWriter, r *http.Request) {
 		&scan.ExecTime,
 		&scan.CreatedAt,
 		&scan.ScopeTargetID,
+		&scan.AutoScanSessionID,
 	)
 
 	if err != nil {
@@ -486,18 +514,19 @@ func GetAssetfinderScanStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := map[string]interface{}{
-		"id":              scan.ID,
-		"scan_id":         scan.ScanID,
-		"domain":          scan.Domain,
-		"status":          scan.Status,
-		"result":          nullStringToString(scan.Result),
-		"error":           nullStringToString(scan.Error),
-		"stdout":          nullStringToString(scan.StdOut),
-		"stderr":          nullStringToString(scan.StdErr),
-		"command":         nullStringToString(scan.Command),
-		"execution_time":  nullStringToString(scan.ExecTime),
-		"created_at":      scan.CreatedAt.Format(time.RFC3339),
-		"scope_target_id": scan.ScopeTargetID,
+		"id":                   scan.ID,
+		"scan_id":              scan.ScanID,
+		"domain":               scan.Domain,
+		"status":               scan.Status,
+		"result":               nullStringToString(scan.Result),
+		"error":                nullStringToString(scan.Error),
+		"stdout":               nullStringToString(scan.StdOut),
+		"stderr":               nullStringToString(scan.StdErr),
+		"command":              nullStringToString(scan.Command),
+		"execution_time":       nullStringToString(scan.ExecTime),
+		"created_at":           scan.CreatedAt.Format(time.RFC3339),
+		"scope_target_id":      scan.ScopeTargetID,
+		"auto_scan_session_id": nullStringToString(scan.AutoScanSessionID),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -540,6 +569,7 @@ func GetAssetfinderScansForScopeTarget(w http.ResponseWriter, r *http.Request) {
 			&scan.ExecTime,
 			&scan.CreatedAt,
 			&scopeTargetID,
+			&scan.AutoScanSessionID,
 		)
 		if err != nil {
 			log.Printf("[ERROR] Failed to scan row: %v", err)
@@ -547,18 +577,19 @@ func GetAssetfinderScansForScopeTarget(w http.ResponseWriter, r *http.Request) {
 		}
 
 		scans = append(scans, map[string]interface{}{
-			"id":              scan.ID,
-			"scan_id":         scan.ScanID,
-			"domain":          scan.Domain,
-			"status":          scan.Status,
-			"result":          nullStringToString(scan.Result),
-			"error":           nullStringToString(scan.Error),
-			"stdout":          nullStringToString(scan.StdOut),
-			"stderr":          nullStringToString(scan.StdErr),
-			"command":         nullStringToString(scan.Command),
-			"execution_time":  nullStringToString(scan.ExecTime),
-			"created_at":      scan.CreatedAt.Format(time.RFC3339),
-			"scope_target_id": scopeTargetID,
+			"id":                   scan.ID,
+			"scan_id":              scan.ScanID,
+			"domain":               scan.Domain,
+			"status":               scan.Status,
+			"result":               nullStringToString(scan.Result),
+			"error":                nullStringToString(scan.Error),
+			"stdout":               nullStringToString(scan.StdOut),
+			"stderr":               nullStringToString(scan.StdErr),
+			"command":              nullStringToString(scan.Command),
+			"execution_time":       nullStringToString(scan.ExecTime),
+			"created_at":           scan.CreatedAt.Format(time.RFC3339),
+			"scope_target_id":      scopeTargetID,
+			"auto_scan_session_id": nullStringToString(scan.AutoScanSessionID),
 		})
 	}
 
@@ -568,7 +599,8 @@ func GetAssetfinderScansForScopeTarget(w http.ResponseWriter, r *http.Request) {
 
 func RunGauScan(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
-		FQDN string `json:"fqdn" binding:"required"`
+		FQDN              string  `json:"fqdn" binding:"required"`
+		AutoScanSessionID *string `json:"auto_scan_session_id,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || payload.FQDN == "" {
 		http.Error(w, "Invalid request body. `fqdn` is required.", http.StatusBadRequest)
@@ -589,8 +621,16 @@ func RunGauScan(w http.ResponseWriter, r *http.Request) {
 	}
 
 	scanID := uuid.New().String()
-	insertQuery := `INSERT INTO gau_scans (scan_id, domain, status, scope_target_id) VALUES ($1, $2, $3, $4)`
-	_, err = dbPool.Exec(context.Background(), insertQuery, scanID, domain, "pending", scopeTargetID)
+	var insertQuery string
+	var args []interface{}
+	if payload.AutoScanSessionID != nil && *payload.AutoScanSessionID != "" {
+		insertQuery = `INSERT INTO gau_scans (scan_id, domain, status, scope_target_id, auto_scan_session_id) VALUES ($1, $2, $3, $4, $5)`
+		args = []interface{}{scanID, domain, "pending", scopeTargetID, *payload.AutoScanSessionID}
+	} else {
+		insertQuery = `INSERT INTO gau_scans (scan_id, domain, status, scope_target_id) VALUES ($1, $2, $3, $4)`
+		args = []interface{}{scanID, domain, "pending", scopeTargetID}
+	}
+	_, err = dbPool.Exec(context.Background(), insertQuery, args...)
 	if err != nil {
 		log.Printf("[ERROR] Failed to create scan record: %v", err)
 		http.Error(w, "Failed to create scan record.", http.StatusInternalServerError)
@@ -800,6 +840,7 @@ func GetGauScanStatus(w http.ResponseWriter, r *http.Request) {
 		&scan.ExecTime,
 		&scan.CreatedAt,
 		&scan.ScopeTargetID,
+		&scan.AutoScanSessionID,
 	)
 
 	if err != nil {
@@ -813,18 +854,19 @@ func GetGauScanStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := map[string]interface{}{
-		"id":              scan.ID,
-		"scan_id":         scan.ScanID,
-		"domain":          scan.Domain,
-		"status":          scan.Status,
-		"result":          nullStringToString(scan.Result),
-		"error":           nullStringToString(scan.Error),
-		"stdout":          nullStringToString(scan.StdOut),
-		"stderr":          nullStringToString(scan.StdErr),
-		"command":         nullStringToString(scan.Command),
-		"execution_time":  nullStringToString(scan.ExecTime),
-		"created_at":      scan.CreatedAt.Format(time.RFC3339),
-		"scope_target_id": scan.ScopeTargetID,
+		"id":                   scan.ID,
+		"scan_id":              scan.ScanID,
+		"domain":               scan.Domain,
+		"status":               scan.Status,
+		"result":               nullStringToString(scan.Result),
+		"error":                nullStringToString(scan.Error),
+		"stdout":               nullStringToString(scan.StdOut),
+		"stderr":               nullStringToString(scan.StdErr),
+		"command":              nullStringToString(scan.Command),
+		"execution_time":       nullStringToString(scan.ExecTime),
+		"created_at":           scan.CreatedAt.Format(time.RFC3339),
+		"scope_target_id":      scan.ScopeTargetID,
+		"auto_scan_session_id": nullStringToString(scan.AutoScanSessionID),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -867,6 +909,7 @@ func GetGauScansForScopeTarget(w http.ResponseWriter, r *http.Request) {
 			&scan.ExecTime,
 			&scan.CreatedAt,
 			&scopeTargetID,
+			&scan.AutoScanSessionID,
 		)
 		if err != nil {
 			log.Printf("[ERROR] Failed to scan row: %v", err)
@@ -874,18 +917,19 @@ func GetGauScansForScopeTarget(w http.ResponseWriter, r *http.Request) {
 		}
 
 		scans = append(scans, map[string]interface{}{
-			"id":              scan.ID,
-			"scan_id":         scan.ScanID,
-			"domain":          scan.Domain,
-			"status":          scan.Status,
-			"result":          nullStringToString(scan.Result),
-			"error":           nullStringToString(scan.Error),
-			"stdout":          nullStringToString(scan.StdOut),
-			"stderr":          nullStringToString(scan.StdErr),
-			"command":         nullStringToString(scan.Command),
-			"execution_time":  nullStringToString(scan.ExecTime),
-			"created_at":      scan.CreatedAt.Format(time.RFC3339),
-			"scope_target_id": scopeTargetID,
+			"id":                   scan.ID,
+			"scan_id":              scan.ScanID,
+			"domain":               scan.Domain,
+			"status":               scan.Status,
+			"result":               nullStringToString(scan.Result),
+			"error":                nullStringToString(scan.Error),
+			"stdout":               nullStringToString(scan.StdOut),
+			"stderr":               nullStringToString(scan.StdErr),
+			"command":              nullStringToString(scan.Command),
+			"execution_time":       nullStringToString(scan.ExecTime),
+			"created_at":           scan.CreatedAt.Format(time.RFC3339),
+			"scope_target_id":      scopeTargetID,
+			"auto_scan_session_id": nullStringToString(scan.AutoScanSessionID),
 		})
 	}
 
@@ -896,7 +940,8 @@ func GetGauScansForScopeTarget(w http.ResponseWriter, r *http.Request) {
 func RunCTLScan(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[INFO] Starting CTL scan request handling")
 	var payload struct {
-		FQDN string `json:"fqdn" binding:"required"`
+		FQDN              string  `json:"fqdn" binding:"required"`
+		AutoScanSessionID *string `json:"auto_scan_session_id,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || payload.FQDN == "" {
 		log.Printf("[ERROR] Invalid request body: %v", err)
@@ -921,8 +966,16 @@ func RunCTLScan(w http.ResponseWriter, r *http.Request) {
 
 	scanID := uuid.New().String()
 	log.Printf("[INFO] Generated new scan ID: %s", scanID)
-	insertQuery := `INSERT INTO ctl_scans (scan_id, domain, status, scope_target_id) VALUES ($1, $2, $3, $4)`
-	_, err = dbPool.Exec(context.Background(), insertQuery, scanID, domain, "pending", scopeTargetID)
+	var insertQuery string
+	var args []interface{}
+	if payload.AutoScanSessionID != nil && *payload.AutoScanSessionID != "" {
+		insertQuery = `INSERT INTO ctl_scans (scan_id, domain, status, scope_target_id, auto_scan_session_id) VALUES ($1, $2, $3, $4, $5)`
+		args = []interface{}{scanID, domain, "pending", scopeTargetID, *payload.AutoScanSessionID}
+	} else {
+		insertQuery = `INSERT INTO ctl_scans (scan_id, domain, status, scope_target_id) VALUES ($1, $2, $3, $4)`
+		args = []interface{}{scanID, domain, "pending", scopeTargetID}
+	}
+	_, err = dbPool.Exec(context.Background(), insertQuery, args...)
 	if err != nil {
 		log.Printf("[ERROR] Failed to create scan record: %v", err)
 		http.Error(w, "Failed to create scan record.", http.StatusInternalServerError)
@@ -1028,6 +1081,7 @@ func GetCTLScanStatus(w http.ResponseWriter, r *http.Request) {
 		&scan.ExecTime,
 		&scan.CreatedAt,
 		&scan.ScopeTargetID,
+		&scan.AutoScanSessionID,
 	)
 
 	if err != nil {
@@ -1047,18 +1101,19 @@ func GetCTLScanStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := map[string]interface{}{
-		"id":              scan.ID,
-		"scan_id":         scan.ScanID,
-		"domain":          scan.Domain,
-		"status":          scan.Status,
-		"result":          nullStringToString(scan.Result),
-		"error":           nullStringToString(scan.Error),
-		"stdout":          nullStringToString(scan.StdOut),
-		"stderr":          nullStringToString(scan.StdErr),
-		"command":         nullStringToString(scan.Command),
-		"execution_time":  nullStringToString(scan.ExecTime),
-		"created_at":      scan.CreatedAt.Format(time.RFC3339),
-		"scope_target_id": scan.ScopeTargetID,
+		"id":                   scan.ID,
+		"scan_id":              scan.ScanID,
+		"domain":               scan.Domain,
+		"status":               scan.Status,
+		"result":               nullStringToString(scan.Result),
+		"error":                nullStringToString(scan.Error),
+		"stdout":               nullStringToString(scan.StdOut),
+		"stderr":               nullStringToString(scan.StdErr),
+		"command":              nullStringToString(scan.Command),
+		"execution_time":       nullStringToString(scan.ExecTime),
+		"created_at":           scan.CreatedAt.Format(time.RFC3339),
+		"scope_target_id":      scan.ScopeTargetID,
+		"auto_scan_session_id": nullStringToString(scan.AutoScanSessionID),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -1105,6 +1160,7 @@ func GetCTLScansForScopeTarget(w http.ResponseWriter, r *http.Request) {
 			&scan.ExecTime,
 			&scan.CreatedAt,
 			&scopeTargetID,
+			&scan.AutoScanSessionID,
 		)
 		if err != nil {
 			log.Printf("[ERROR] Failed to scan row: %v", err)
@@ -1112,18 +1168,19 @@ func GetCTLScansForScopeTarget(w http.ResponseWriter, r *http.Request) {
 		}
 
 		scans = append(scans, map[string]interface{}{
-			"id":              scan.ID,
-			"scan_id":         scan.ScanID,
-			"domain":          scan.Domain,
-			"status":          scan.Status,
-			"result":          nullStringToString(scan.Result),
-			"error":           nullStringToString(scan.Error),
-			"stdout":          nullStringToString(scan.StdOut),
-			"stderr":          nullStringToString(scan.StdErr),
-			"command":         nullStringToString(scan.Command),
-			"execution_time":  nullStringToString(scan.ExecTime),
-			"created_at":      scan.CreatedAt.Format(time.RFC3339),
-			"scope_target_id": scopeTargetID,
+			"id":                   scan.ID,
+			"scan_id":              scan.ScanID,
+			"domain":               scan.Domain,
+			"status":               scan.Status,
+			"result":               nullStringToString(scan.Result),
+			"error":                nullStringToString(scan.Error),
+			"stdout":               nullStringToString(scan.StdOut),
+			"stderr":               nullStringToString(scan.StdErr),
+			"command":              nullStringToString(scan.Command),
+			"execution_time":       nullStringToString(scan.ExecTime),
+			"created_at":           scan.CreatedAt.Format(time.RFC3339),
+			"scope_target_id":      scopeTargetID,
+			"auto_scan_session_id": nullStringToString(scan.AutoScanSessionID),
 		})
 	}
 
@@ -1133,7 +1190,8 @@ func GetCTLScansForScopeTarget(w http.ResponseWriter, r *http.Request) {
 
 func RunSubfinderScan(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
-		FQDN string `json:"fqdn" binding:"required"`
+		FQDN              string  `json:"fqdn" binding:"required"`
+		AutoScanSessionID *string `json:"auto_scan_session_id,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || payload.FQDN == "" {
 		http.Error(w, "Invalid request body. `fqdn` is required.", http.StatusBadRequest)
@@ -1153,8 +1211,16 @@ func RunSubfinderScan(w http.ResponseWriter, r *http.Request) {
 	}
 
 	scanID := uuid.New().String()
-	insertQuery := `INSERT INTO subfinder_scans (scan_id, domain, status, scope_target_id) VALUES ($1, $2, $3, $4)`
-	_, err = dbPool.Exec(context.Background(), insertQuery, scanID, domain, "pending", scopeTargetID)
+	var insertQuery string
+	var args []interface{}
+	if payload.AutoScanSessionID != nil && *payload.AutoScanSessionID != "" {
+		insertQuery = `INSERT INTO subfinder_scans (scan_id, domain, status, scope_target_id, auto_scan_session_id) VALUES ($1, $2, $3, $4, $5)`
+		args = []interface{}{scanID, domain, "pending", scopeTargetID, *payload.AutoScanSessionID}
+	} else {
+		insertQuery = `INSERT INTO subfinder_scans (scan_id, domain, status, scope_target_id) VALUES ($1, $2, $3, $4)`
+		args = []interface{}{scanID, domain, "pending", scopeTargetID}
+	}
+	_, err = dbPool.Exec(context.Background(), insertQuery, args...)
 	if err != nil {
 		log.Printf("[ERROR] Failed to create scan record: %v", err)
 		http.Error(w, "Failed to create scan record.", http.StatusInternalServerError)
@@ -1240,6 +1306,7 @@ func GetSubfinderScanStatus(w http.ResponseWriter, r *http.Request) {
 		&scan.ExecTime,
 		&scan.CreatedAt,
 		&scan.ScopeTargetID,
+		&scan.AutoScanSessionID,
 	)
 
 	if err != nil {
@@ -1253,18 +1320,19 @@ func GetSubfinderScanStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := map[string]interface{}{
-		"id":              scan.ID,
-		"scan_id":         scan.ScanID,
-		"domain":          scan.Domain,
-		"status":          scan.Status,
-		"result":          nullStringToString(scan.Result),
-		"error":           nullStringToString(scan.Error),
-		"stdout":          nullStringToString(scan.StdOut),
-		"stderr":          nullStringToString(scan.StdErr),
-		"command":         nullStringToString(scan.Command),
-		"execution_time":  nullStringToString(scan.ExecTime),
-		"created_at":      scan.CreatedAt.Format(time.RFC3339),
-		"scope_target_id": scan.ScopeTargetID,
+		"id":                   scan.ID,
+		"scan_id":              scan.ScanID,
+		"domain":               scan.Domain,
+		"status":               scan.Status,
+		"result":               nullStringToString(scan.Result),
+		"error":                nullStringToString(scan.Error),
+		"stdout":               nullStringToString(scan.StdOut),
+		"stderr":               nullStringToString(scan.StdErr),
+		"command":              nullStringToString(scan.Command),
+		"execution_time":       nullStringToString(scan.ExecTime),
+		"created_at":           scan.CreatedAt.Format(time.RFC3339),
+		"scope_target_id":      scan.ScopeTargetID,
+		"auto_scan_session_id": nullStringToString(scan.AutoScanSessionID),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -1307,6 +1375,7 @@ func GetSubfinderScansForScopeTarget(w http.ResponseWriter, r *http.Request) {
 			&scan.ExecTime,
 			&scan.CreatedAt,
 			&scopeTargetID,
+			&scan.AutoScanSessionID,
 		)
 		if err != nil {
 			log.Printf("[ERROR] Failed to scan row: %v", err)
@@ -1314,18 +1383,19 @@ func GetSubfinderScansForScopeTarget(w http.ResponseWriter, r *http.Request) {
 		}
 
 		scans = append(scans, map[string]interface{}{
-			"id":              scan.ID,
-			"scan_id":         scan.ScanID,
-			"domain":          scan.Domain,
-			"status":          scan.Status,
-			"result":          nullStringToString(scan.Result),
-			"error":           nullStringToString(scan.Error),
-			"stdout":          nullStringToString(scan.StdOut),
-			"stderr":          nullStringToString(scan.StdErr),
-			"command":         nullStringToString(scan.Command),
-			"execution_time":  nullStringToString(scan.ExecTime),
-			"created_at":      scan.CreatedAt.Format(time.RFC3339),
-			"scope_target_id": scopeTargetID,
+			"id":                   scan.ID,
+			"scan_id":              scan.ScanID,
+			"domain":               scan.Domain,
+			"status":               scan.Status,
+			"result":               nullStringToString(scan.Result),
+			"error":                nullStringToString(scan.Error),
+			"stdout":               nullStringToString(scan.StdOut),
+			"stderr":               nullStringToString(scan.StdErr),
+			"command":              nullStringToString(scan.Command),
+			"execution_time":       nullStringToString(scan.ExecTime),
+			"created_at":           scan.CreatedAt.Format(time.RFC3339),
+			"scope_target_id":      scopeTargetID,
+			"auto_scan_session_id": nullStringToString(scan.AutoScanSessionID),
 		})
 	}
 

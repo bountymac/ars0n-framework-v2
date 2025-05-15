@@ -4,13 +4,16 @@ const initiateCTLScan = async (
   setIsCTLScanning,
   setCTLScans,
   setMostRecentCTLScanStatus,
-  setMostRecentCTLScan
+  setMostRecentCTLScan,
+  autoScanSessionId
 ) => {
   if (!activeTarget) return;
 
   const domain = activeTarget.scope_target.replace('*.', '');
 
   try {
+    const body = { fqdn: domain };
+    if (autoScanSessionId) body.auto_scan_session_id = autoScanSessionId;
     const response = await fetch(
       `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/ctl/run`,
       {
@@ -18,9 +21,7 @@ const initiateCTLScan = async (
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          fqdn: domain
-        }),
+        body: JSON.stringify(body),
       }
     );
 

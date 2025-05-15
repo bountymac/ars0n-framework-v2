@@ -4,7 +4,8 @@ const initiateSubfinderScan = async (
   setIsSubfinderScanning,
   setSubfinderScans,
   setMostRecentSubfinderScanStatus,
-  setMostRecentSubfinderScan
+  setMostRecentSubfinderScan,
+  autoScanSessionId
 ) => {
   if (!activeTarget || !activeTarget.scope_target) {
     console.error('No active target or invalid target format');
@@ -18,7 +19,8 @@ const initiateSubfinderScan = async (
   }
 
   try {
-    setIsSubfinderScanning(true);
+    const body = { fqdn: domain };
+    if (autoScanSessionId) body.auto_scan_session_id = autoScanSessionId;
     const response = await fetch(
       `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/subfinder/run`,
       {
@@ -26,9 +28,7 @@ const initiateSubfinderScan = async (
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          fqdn: domain
-        }),
+        body: JSON.stringify(body),
       }
     );
 
@@ -38,6 +38,7 @@ const initiateSubfinderScan = async (
     }
 
     const data = await response.json();
+    setIsSubfinderScanning(true);
 
     if (monitorSubfinderScanStatus) {
       monitorSubfinderScanStatus(

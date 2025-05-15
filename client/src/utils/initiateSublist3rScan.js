@@ -4,7 +4,8 @@ const initiateSublist3rScan = async (
   setIsSublist3rScanning,
   setSublist3rScans,
   setMostRecentSublist3rScanStatus,
-  setMostRecentSublist3rScan
+  setMostRecentSublist3rScan,
+  autoScanSessionId
 ) => {
   if (!activeTarget || !activeTarget.scope_target) {
     console.error('No active target or invalid target format');
@@ -19,6 +20,8 @@ const initiateSublist3rScan = async (
 
   try {
     setIsSublist3rScanning(true);
+    const body = { fqdn: domain };
+    if (autoScanSessionId) body.auto_scan_session_id = autoScanSessionId;
     const response = await fetch(
       `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/sublist3r/run`,
       {
@@ -26,9 +29,7 @@ const initiateSublist3rScan = async (
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          fqdn: domain
-        }),
+        body: JSON.stringify(body),
       }
     );
 

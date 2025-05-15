@@ -15,18 +15,18 @@ import Ars0nFrameworkHeader from './components/ars0nFrameworkHeader.js';
 import ManageScopeTargets from './components/manageScopeTargets.js';
 import fetchAmassScans from './utils/fetchAmassScans.js';
 import {
-    Container,
-    Fade,
-    Card,
-    Row,
-    Col,
-    Button,
-    ListGroup,
-    Accordion,
-    Modal,
-    Table,
-    Toast,
-    ToastContainer,
+  Container,
+  Fade,
+  Card,
+  Row,
+  Col,
+  Button,
+  ListGroup,
+  Accordion,
+  Modal,
+  Table,
+  Toast,
+  ToastContainer,
 } from 'react-bootstrap';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'bootstrap-icons/font/bootstrap-icons.css';
@@ -34,14 +34,14 @@ import initiateAmassScan from './utils/initiateAmassScan';
 import monitorScanStatus from './utils/monitorScanStatus';
 import validateInput from './utils/validateInput.js';
 import {
-    getTypeIcon,
-    getLastScanDate,
-    getLatestScanStatus,
-    getLatestScanTime,
-    getLatestScanId,
-    getExecutionTime,
-    getResultLength,
-    copyToClipboard,
+  getTypeIcon,
+  getLastScanDate,
+  getLatestScanStatus,
+  getLatestScanTime,
+  getLatestScanId,
+  getExecutionTime,
+  getResultLength,
+  copyToClipboard,
 } from './utils/miscUtils.js';
 import { MdCopyAll, MdCheckCircle } from 'react-icons/md';
 import initiateHttpxScan from './utils/initiateHttpxScan';
@@ -81,9 +81,9 @@ import fetchHttpxScans from './utils/fetchHttpxScans';
 import ROIReport from './components/ROIReport';
 import HelpMeLearn from './components/HelpMeLearn';
 import {
-    AUTO_SCAN_STEPS,
-    resumeAutoScan as resumeAutoScanUtil,
-    startAutoScan as startAutoScanUtil
+  AUTO_SCAN_STEPS,
+  resumeAutoScan as resumeAutoScanUtil,
+  startAutoScan as startAutoScanUtil
 } from './utils/wildcardAutoScan';
 import getAutoScanSteps from './utils/autoScanSteps';
 
@@ -298,6 +298,7 @@ function App() {
   const [isAutoScanning, setIsAutoScanning] = useState(false);
   const [autoScanCurrentStep, setAutoScanCurrentStep] = useState(AUTO_SCAN_STEPS.IDLE);
   const [autoScanTargetId, setAutoScanTargetId] = useState(null);
+  const [autoScanSessionId, setAutoScanSessionId] = useState(null);
 
   const handleCloseSubdomainsModal = () => setShowSubdomainsModal(false);
   const handleCloseCloudDomainsModal = () => setShowCloudDomainsModal(false);
@@ -752,7 +753,7 @@ function App() {
       }
 
       try {
-        const response = await fetch('http://localhost:8080/scopetarget/add', {
+        const response = await fetch(`${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/add`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1003,10 +1004,25 @@ function App() {
       }
       const config = await response.json();
       console.log('[AutoScan] Config received from backend:', config);
+      // Create session
+      const sessionResp = await fetch(
+        `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/auto-scan/session/start`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            scope_target_id: activeTarget.id,
+            config_snapshot: config
+          })
+        }
+      );
+      if (!sessionResp.ok) throw new Error('Failed to create auto scan session');
+      const sessionData = await sessionResp.json();
+      setAutoScanSessionId(sessionData.session_id);
       startAutoScanUtil(
         activeTarget,
         setIsAutoScanning,
-        setAutoScanCurrentStep, 
+        setAutoScanCurrentStep,
         setAutoScanTargetId,
         () => getAutoScanSteps(
           activeTarget,
@@ -1069,8 +1085,10 @@ function App() {
           setMostRecentMetaDataScanStatus,
           setMostRecentShuffleDNSCustomScanStatus,
           handleConsolidate,
-          config // pass config to step runner
-        )
+          config,
+          autoScanSessionId // pass session id
+        ),
+        autoScanSessionId // pass session id
       );
     } catch (error) {
       console.error('[AutoScan] Error fetching config or starting scan:', error);

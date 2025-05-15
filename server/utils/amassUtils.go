@@ -47,17 +47,18 @@ type ASNResponse struct {
 }
 
 type AmassScanStatus struct {
-	ID        string         `json:"id"`
-	ScanID    string         `json:"scan_id"`
-	Domain    string         `json:"domain"`
-	Status    string         `json:"status"`
-	Result    sql.NullString `json:"result,omitempty"`
-	Error     sql.NullString `json:"error,omitempty"`
-	StdOut    sql.NullString `json:"stdout,omitempty"`
-	StdErr    sql.NullString `json:"stderr,omitempty"`
-	Command   sql.NullString `json:"command,omitempty"`
-	ExecTime  sql.NullString `json:"execution_time,omitempty"`
-	CreatedAt time.Time      `json:"created_at"`
+	ID                string         `json:"id"`
+	ScanID            string         `json:"scan_id"`
+	Domain            string         `json:"domain"`
+	Status            string         `json:"status"`
+	Result            sql.NullString `json:"result,omitempty"`
+	Error             sql.NullString `json:"error,omitempty"`
+	StdOut            sql.NullString `json:"stdout,omitempty"`
+	StdErr            sql.NullString `json:"stderr,omitempty"`
+	Command           sql.NullString `json:"command,omitempty"`
+	ExecTime          sql.NullString `json:"execution_time,omitempty"`
+	CreatedAt         time.Time      `json:"created_at"`
+	AutoScanSessionID sql.NullString `json:"auto_scan_session_id"`
 }
 
 type DNSRecord struct {
@@ -172,7 +173,7 @@ func GetAmassScansForScopeTarget(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := `SELECT id, scan_id, domain, status, result, error, stdout, stderr, command, execution_time, created_at 
+	query := `SELECT id, scan_id, domain, status, result, error, stdout, stderr, command, execution_time, created_at, auto_scan_session_id 
               FROM amass_scans WHERE scope_target_id = $1`
 	rows, err := dbPool.Query(context.Background(), query, scopeTargetID)
 	if err != nil {
@@ -197,6 +198,7 @@ func GetAmassScansForScopeTarget(w http.ResponseWriter, r *http.Request) {
 			&scan.Command,
 			&scan.ExecTime,
 			&scan.CreatedAt,
+			&scan.AutoScanSessionID,
 		)
 		if err != nil {
 			log.Printf("[ERROR] Failed to scan row: %v", err)
@@ -205,17 +207,18 @@ func GetAmassScansForScopeTarget(w http.ResponseWriter, r *http.Request) {
 		}
 
 		scans = append(scans, map[string]interface{}{
-			"id":             scan.ID,
-			"scan_id":        scan.ScanID,
-			"domain":         scan.Domain,
-			"status":         scan.Status,
-			"result":         nullStringToString(scan.Result),
-			"error":          nullStringToString(scan.Error),
-			"stdout":         nullStringToString(scan.StdOut),
-			"stderr":         nullStringToString(scan.StdErr),
-			"command":        nullStringToString(scan.Command),
-			"execution_time": nullStringToString(scan.ExecTime),
-			"created_at":     scan.CreatedAt.Format(time.RFC3339),
+			"id":                   scan.ID,
+			"scan_id":              scan.ScanID,
+			"domain":               scan.Domain,
+			"status":               scan.Status,
+			"result":               nullStringToString(scan.Result),
+			"error":                nullStringToString(scan.Error),
+			"stdout":               nullStringToString(scan.StdOut),
+			"stderr":               nullStringToString(scan.StdErr),
+			"command":              nullStringToString(scan.Command),
+			"execution_time":       nullStringToString(scan.ExecTime),
+			"created_at":           scan.CreatedAt.Format(time.RFC3339),
+			"auto_scan_session_id": nullStringToString(scan.AutoScanSessionID),
 		})
 	}
 
@@ -499,7 +502,7 @@ func GetAmassScanStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var scan AmassScanStatus
-	query := `SELECT id, scan_id, domain, status, result, error, stdout, stderr, command, execution_time, created_at FROM amass_scans WHERE scan_id = $1`
+	query := `SELECT id, scan_id, domain, status, result, error, stdout, stderr, command, execution_time, created_at, auto_scan_session_id FROM amass_scans WHERE scan_id = $1`
 	err := dbPool.QueryRow(context.Background(), query, scanID).Scan(
 		&scan.ID,
 		&scan.ScanID,
@@ -512,6 +515,7 @@ func GetAmassScanStatus(w http.ResponseWriter, r *http.Request) {
 		&scan.Command,
 		&scan.ExecTime,
 		&scan.CreatedAt,
+		&scan.AutoScanSessionID,
 	)
 	if err != nil {
 		log.Printf("[ERROR] Failed to fetch scan status: %v", err)
@@ -520,17 +524,18 @@ func GetAmassScanStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := map[string]interface{}{
-		"id":             scan.ID,
-		"scan_id":        scan.ScanID,
-		"domain":         scan.Domain,
-		"status":         scan.Status,
-		"result":         nullStringToString(scan.Result),
-		"error":          nullStringToString(scan.Error),
-		"stdout":         nullStringToString(scan.StdOut),
-		"stderr":         nullStringToString(scan.StdErr),
-		"command":        nullStringToString(scan.Command),
-		"execution_time": nullStringToString(scan.ExecTime),
-		"created_at":     scan.CreatedAt.Format(time.RFC3339),
+		"id":                   scan.ID,
+		"scan_id":              scan.ScanID,
+		"domain":               scan.Domain,
+		"status":               scan.Status,
+		"result":               nullStringToString(scan.Result),
+		"error":                nullStringToString(scan.Error),
+		"stdout":               nullStringToString(scan.StdOut),
+		"stderr":               nullStringToString(scan.StdErr),
+		"command":              nullStringToString(scan.Command),
+		"execution_time":       nullStringToString(scan.ExecTime),
+		"created_at":           scan.CreatedAt.Format(time.RFC3339),
+		"auto_scan_session_id": nullStringToString(scan.AutoScanSessionID),
 	}
 
 	w.WriteHeader(http.StatusOK)
@@ -539,7 +544,8 @@ func GetAmassScanStatus(w http.ResponseWriter, r *http.Request) {
 
 func RunAmassScan(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
-		FQDN string `json:"fqdn" binding:"required"`
+		FQDN              string  `json:"fqdn" binding:"required"`
+		AutoScanSessionID *string `json:"auto_scan_session_id,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || payload.FQDN == "" {
 		http.Error(w, "Invalid request body. `fqdn` is required.", http.StatusBadRequest)
@@ -559,8 +565,16 @@ func RunAmassScan(w http.ResponseWriter, r *http.Request) {
 	}
 
 	scanID := uuid.New().String()
-	insertQuery := `INSERT INTO amass_scans (scan_id, domain, status, scope_target_id) VALUES ($1, $2, $3, $4)`
-	_, err = dbPool.Exec(context.Background(), insertQuery, scanID, domain, "pending", requestID)
+	var insertQuery string
+	var args []interface{}
+	if payload.AutoScanSessionID != nil && *payload.AutoScanSessionID != "" {
+		insertQuery = `INSERT INTO amass_scans (scan_id, domain, status, scope_target_id, auto_scan_session_id) VALUES ($1, $2, $3, $4, $5)`
+		args = []interface{}{scanID, domain, "pending", requestID, *payload.AutoScanSessionID}
+	} else {
+		insertQuery = `INSERT INTO amass_scans (scan_id, domain, status, scope_target_id) VALUES ($1, $2, $3, $4)`
+		args = []interface{}{scanID, domain, "pending", requestID}
+	}
+	_, err = dbPool.Exec(context.Background(), insertQuery, args...)
 	if err != nil {
 		log.Printf("[ERROR] Failed to create scan record: %v", err)
 		http.Error(w, "Failed to create scan record.", http.StatusInternalServerError)

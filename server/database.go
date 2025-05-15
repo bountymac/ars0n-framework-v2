@@ -18,6 +18,16 @@ func createTables() {
 			active BOOLEAN DEFAULT false,
 			created_at TIMESTAMP DEFAULT NOW()
 		);`,
+		`CREATE TABLE IF NOT EXISTS auto_scan_sessions (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scope_target_id UUID NOT NULL REFERENCES scope_targets(id) ON DELETE CASCADE,
+			config_snapshot JSONB NOT NULL,
+			status VARCHAR(32) NOT NULL DEFAULT 'pending',
+			started_at TIMESTAMP DEFAULT NOW(),
+			ended_at TIMESTAMP,
+			steps_run JSONB,
+			error_message TEXT
+		);`,
 		`CREATE TABLE IF NOT EXISTS user_settings (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			amass_rate_limit INTEGER DEFAULT 10,
@@ -39,7 +49,7 @@ func createTables() {
 		WHERE NOT EXISTS (SELECT 1 FROM user_settings LIMIT 1);`,
 		`CREATE TABLE IF NOT EXISTS amass_scans (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-			scan_id UUID NOT NULL UNIQUE, 
+			scan_id UUID NOT NULL UNIQUE,
 			domain TEXT NOT NULL,
 			status VARCHAR(50) NOT NULL,
 			result TEXT,
@@ -49,7 +59,8 @@ func createTables() {
 			command TEXT,
 			execution_time TEXT,
 			created_at TIMESTAMP DEFAULT NOW(),
-			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE
+			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
+			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
 		);`,
 		`CREATE TABLE IF NOT EXISTS dns_records (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -126,7 +137,8 @@ func createTables() {
 			command TEXT,
 			execution_time TEXT,
 			created_at TIMESTAMP DEFAULT NOW(),
-			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE
+			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
+			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
 		);`,
 		`CREATE TABLE IF NOT EXISTS sublist3r_scans (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -140,7 +152,8 @@ func createTables() {
 			command TEXT,
 			execution_time TEXT,
 			created_at TIMESTAMP DEFAULT NOW(),
-			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE
+			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
+			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
 		);`,
 		`CREATE TABLE IF NOT EXISTS assetfinder_scans (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -154,7 +167,8 @@ func createTables() {
 			command TEXT,
 			execution_time TEXT,
 			created_at TIMESTAMP DEFAULT NOW(),
-			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE
+			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
+			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
 		);`,
 		`CREATE TABLE IF NOT EXISTS ctl_scans (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -168,7 +182,8 @@ func createTables() {
 			command TEXT,
 			execution_time TEXT,
 			created_at TIMESTAMP DEFAULT NOW(),
-			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE
+			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
+			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
 		);`,
 		`CREATE TABLE IF NOT EXISTS subfinder_scans (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -182,7 +197,8 @@ func createTables() {
 			command TEXT,
 			execution_time TEXT,
 			created_at TIMESTAMP DEFAULT NOW(),
-			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE
+			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
+			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
 		);`,
 		`CREATE TABLE IF NOT EXISTS consolidated_subdomains (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -281,7 +297,8 @@ func createTables() {
 			command TEXT,
 			execution_time TEXT,
 			created_at TIMESTAMP DEFAULT NOW(),
-			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE
+			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
+			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
 		);`,
 		`CREATE TABLE IF NOT EXISTS metadata_scans (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -295,7 +312,8 @@ func createTables() {
 			command TEXT,
 			execution_time TEXT,
 			created_at TIMESTAMP DEFAULT NOW(),
-			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE
+			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
+			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
 		);`,
 		`CREATE TABLE IF NOT EXISTS target_urls (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -434,6 +452,22 @@ func createTables() {
 		`INSERT INTO auto_scan_config (id)
 		SELECT gen_random_uuid()
 		WHERE NOT EXISTS (SELECT 1 FROM auto_scan_config LIMIT 1);`,
+
+		// Add auto_scan_session_id to all scan tables
+		`DO $$ BEGIN BEGIN ALTER TABLE amass_scans ADD COLUMN IF NOT EXISTS auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL; EXCEPTION WHEN duplicate_column THEN RAISE NOTICE 'Column already exists.'; END; END $$;`,
+		`DO $$ BEGIN BEGIN ALTER TABLE httpx_scans ADD COLUMN IF NOT EXISTS auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL; EXCEPTION WHEN duplicate_column THEN RAISE NOTICE 'Column already exists.'; END; END $$;`,
+		`DO $$ BEGIN BEGIN ALTER TABLE gau_scans ADD COLUMN IF NOT EXISTS auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL; EXCEPTION WHEN duplicate_column THEN RAISE NOTICE 'Column already exists.'; END; END $$;`,
+		`DO $$ BEGIN BEGIN ALTER TABLE sublist3r_scans ADD COLUMN IF NOT EXISTS auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL; EXCEPTION WHEN duplicate_column THEN RAISE NOTICE 'Column already exists.'; END; END $$;`,
+		`DO $$ BEGIN BEGIN ALTER TABLE assetfinder_scans ADD COLUMN IF NOT EXISTS auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL; EXCEPTION WHEN duplicate_column THEN RAISE NOTICE 'Column already exists.'; END; END $$;`,
+		`DO $$ BEGIN BEGIN ALTER TABLE ctl_scans ADD COLUMN IF NOT EXISTS auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL; EXCEPTION WHEN duplicate_column THEN RAISE NOTICE 'Column already exists.'; END; END $$;`,
+		`DO $$ BEGIN BEGIN ALTER TABLE subfinder_scans ADD COLUMN IF NOT EXISTS auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL; EXCEPTION WHEN duplicate_column THEN RAISE NOTICE 'Column already exists.'; END; END $$;`,
+		`DO $$ BEGIN BEGIN ALTER TABLE shuffledns_scans ADD COLUMN IF NOT EXISTS auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL; EXCEPTION WHEN duplicate_column THEN RAISE NOTICE 'Column already exists.'; END; END $$;`,
+		`DO $$ BEGIN BEGIN ALTER TABLE cewl_scans ADD COLUMN IF NOT EXISTS auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL; EXCEPTION WHEN duplicate_column THEN RAISE NOTICE 'Column already exists.'; END; END $$;`,
+		`DO $$ BEGIN BEGIN ALTER TABLE shufflednscustom_scans ADD COLUMN IF NOT EXISTS auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL; EXCEPTION WHEN duplicate_column THEN RAISE NOTICE 'Column already exists.'; END; END $$;`,
+		`DO $$ BEGIN BEGIN ALTER TABLE gospider_scans ADD COLUMN IF NOT EXISTS auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL; EXCEPTION WHEN duplicate_column THEN RAISE NOTICE 'Column already exists.'; END; END $$;`,
+		`DO $$ BEGIN BEGIN ALTER TABLE subdomainizer_scans ADD COLUMN IF NOT EXISTS auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL; EXCEPTION WHEN duplicate_column THEN RAISE NOTICE 'Column already exists.'; END; END $$;`,
+		`DO $$ BEGIN BEGIN ALTER TABLE nuclei_screenshots ADD COLUMN IF NOT EXISTS auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL; EXCEPTION WHEN duplicate_column THEN RAISE NOTICE 'Column already exists.'; END; END $$;`,
+		`DO $$ BEGIN BEGIN ALTER TABLE metadata_scans ADD COLUMN IF NOT EXISTS auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL; EXCEPTION WHEN duplicate_column THEN RAISE NOTICE 'Column already exists.'; END; END $$;`,
 	}
 
 	for _, query := range queries {

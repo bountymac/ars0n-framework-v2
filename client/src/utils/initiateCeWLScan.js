@@ -4,7 +4,8 @@ const initiateCeWLScan = async (
   setIsCeWLScanning,
   setCeWLScans,
   setMostRecentCeWLScanStatus,
-  setMostRecentCeWLScan
+  setMostRecentCeWLScan,
+  autoScanSessionId
 ) => {
   if (!activeTarget) return;
 
@@ -14,6 +15,9 @@ const initiateCeWLScan = async (
     // Extract the domain from the scope target (remove the wildcard if present)
     const domain = activeTarget.scope_target.replace(/^\*\./, '');
 
+    const body = { fqdn: domain };
+    if (autoScanSessionId) body.auto_scan_session_id = autoScanSessionId;
+
     const response = await fetch(
       `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/cewl/run`,
       {
@@ -21,9 +25,7 @@ const initiateCeWLScan = async (
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          fqdn: domain
-        }),
+        body: JSON.stringify(body),
       }
     );
 
@@ -35,13 +37,15 @@ const initiateCeWLScan = async (
     const scanId = data.scan_id;
 
     // Start monitoring the scan status
+    if (monitorCeWLScanStatus) {
     monitorCeWLScanStatus(
       activeTarget,
       setCeWLScans,
-      setMostRecentCeWLScan,
-      setIsCeWLScanning,
-      setMostRecentCeWLScanStatus
-    );
+        setMostRecentCeWLScan,
+        setIsCeWLScanning,
+        setMostRecentCeWLScanStatus
+      );
+    };
 
   } catch (error) {
     console.error('Error initiating CeWL scan:', error);

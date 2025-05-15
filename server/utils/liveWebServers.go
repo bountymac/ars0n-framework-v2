@@ -23,18 +23,19 @@ import (
 
 // HttpxScanStatus represents the status of a httpx scan
 type HttpxScanStatus struct {
-	ID            string         `json:"id"`
-	ScanID        string         `json:"scan_id"`
-	Domain        string         `json:"domain"`
-	Status        string         `json:"status"`
-	Result        sql.NullString `json:"result"`
-	Error         sql.NullString `json:"error"`
-	StdOut        sql.NullString `json:"stdout"`
-	StdErr        sql.NullString `json:"stderr"`
-	Command       sql.NullString `json:"command"`
-	ExecTime      sql.NullString `json:"execution_time"`
-	CreatedAt     time.Time      `json:"created_at"`
-	ScopeTargetID string         `json:"scope_target_id"`
+	ID                string         `json:"id"`
+	ScanID            string         `json:"scan_id"`
+	Domain            string         `json:"domain"`
+	Status            string         `json:"status"`
+	Result            sql.NullString `json:"result"`
+	Error             sql.NullString `json:"error"`
+	StdOut            sql.NullString `json:"stdout"`
+	StdErr            sql.NullString `json:"stderr"`
+	Command           sql.NullString `json:"command"`
+	ExecTime          sql.NullString `json:"execution_time"`
+	CreatedAt         time.Time      `json:"created_at"`
+	ScopeTargetID     string         `json:"scope_target_id"`
+	AutoScanSessionID sql.NullString `json:"auto_scan_session_id"`
 }
 
 // TargetURL represents a target URL in the database
@@ -360,7 +361,7 @@ func GetHttpxScanStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var scan HttpxScanStatus
-	query := `SELECT id, scan_id, domain, status, result, error, stdout, stderr, command, execution_time, created_at, scope_target_id 
+	query := `SELECT id, scan_id, domain, status, result, error, stdout, stderr, command, execution_time, created_at, scope_target_id, auto_scan_session_id 
 		FROM httpx_scans WHERE scan_id = $1`
 	err := dbPool.QueryRow(context.Background(), query, scanID).Scan(
 		&scan.ID,
@@ -375,6 +376,7 @@ func GetHttpxScanStatus(w http.ResponseWriter, r *http.Request) {
 		&scan.ExecTime,
 		&scan.CreatedAt,
 		&scan.ScopeTargetID,
+		&scan.AutoScanSessionID,
 	)
 	if err != nil {
 		http.Error(w, "Scan not found", http.StatusNotFound)
@@ -393,7 +395,7 @@ func GetHttpxScansForScopeTarget(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := `SELECT id, scan_id, domain, status, result, error, stdout, stderr, command, execution_time, created_at, scope_target_id 
+	query := `SELECT id, scan_id, domain, status, result, error, stdout, stderr, command, execution_time, created_at, scope_target_id, auto_scan_session_id 
 		FROM httpx_scans WHERE scope_target_id = $1 ORDER BY created_at DESC`
 	rows, err := dbPool.Query(context.Background(), query, scopeTargetID)
 	if err != nil {
@@ -419,6 +421,7 @@ func GetHttpxScansForScopeTarget(w http.ResponseWriter, r *http.Request) {
 			&scan.ExecTime,
 			&scan.CreatedAt,
 			&scan.ScopeTargetID,
+			&scan.AutoScanSessionID,
 		)
 		if err != nil {
 			log.Printf("[ERROR] Failed to scan httpx row: %v", err)

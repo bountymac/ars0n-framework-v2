@@ -4,7 +4,8 @@ const initiateShuffleDNSScan = async (
   setIsShuffleDNSScanning,
   setShuffleDNSScans,
   setMostRecentShuffleDNSScanStatus,
-  setMostRecentShuffleDNSScan
+  setMostRecentShuffleDNSScan,
+  autoScanSessionId
 ) => {
   if (!activeTarget || !activeTarget.scope_target) {
     console.error('No active target or invalid target format');
@@ -18,7 +19,8 @@ const initiateShuffleDNSScan = async (
   }
 
   try {
-    setIsShuffleDNSScanning(true);
+    const body = { fqdn: domain };
+    if (autoScanSessionId) body.auto_scan_session_id = autoScanSessionId;
     const response = await fetch(
       `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/shuffledns/run`,
       {
@@ -26,9 +28,7 @@ const initiateShuffleDNSScan = async (
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          fqdn: domain
-        }),
+        body: JSON.stringify(body),
       }
     );
 
@@ -38,14 +38,17 @@ const initiateShuffleDNSScan = async (
     }
 
     const data = await response.json();
+    setIsShuffleDNSScanning(true);
 
-    monitorShuffleDNSScanStatus(
-      activeTarget,
-      setShuffleDNSScans,
-      setMostRecentShuffleDNSScan,
-      setIsShuffleDNSScanning,
-      setMostRecentShuffleDNSScanStatus
-    );
+    if (monitorShuffleDNSScanStatus) {
+      monitorShuffleDNSScanStatus(
+        activeTarget,
+        setShuffleDNSScans,
+        setMostRecentShuffleDNSScan,
+        setIsShuffleDNSScanning,
+        setMostRecentShuffleDNSScanStatus
+      );
+    }
 
     return data;
   } catch (error) {

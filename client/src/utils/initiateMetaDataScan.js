@@ -4,11 +4,14 @@ const initiateMetaDataScan = async (
   setIsMetaDataScanning,
   setMetaDataScans,
   setMostRecentMetaDataScanStatus,
-  setMostRecentMetaDataScan
+  setMostRecentMetaDataScan,
+  autoScanSessionId
 ) => {
   if (!activeTarget) return;
 
   try {
+    const body = { scope_target_id: activeTarget.id };
+    if (autoScanSessionId) body.auto_scan_session_id = autoScanSessionId;
     const response = await fetch(
       `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/metadata/run`,
       {
@@ -16,9 +19,7 @@ const initiateMetaDataScan = async (
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          scope_target_id: activeTarget.id,
-        }),
+        body: JSON.stringify(body),
       }
     );
 

@@ -4,7 +4,8 @@ const initiateGoSpiderScan = async (
   setIsGoSpiderScanning,
   setGoSpiderScans,
   setMostRecentGoSpiderScanStatus,
-  setMostRecentGoSpiderScan
+  setMostRecentGoSpiderScan,
+  autoScanSessionId
 ) => {
   if (!activeTarget || !activeTarget.scope_target) {
     console.error('No active target or invalid target format');
@@ -19,6 +20,8 @@ const initiateGoSpiderScan = async (
 
   try {
     setIsGoSpiderScanning(true);
+    const body = { fqdn: domain };
+    if (autoScanSessionId) body.auto_scan_session_id = autoScanSessionId;
     const response = await fetch(
       `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/gospider/run`,
       {
@@ -26,9 +29,7 @@ const initiateGoSpiderScan = async (
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          fqdn: domain
-        }),
+        body: JSON.stringify(body),
       }
     );
 
@@ -39,13 +40,15 @@ const initiateGoSpiderScan = async (
 
     const data = await response.json();
 
-    monitorGoSpiderScanStatus(
-      activeTarget,
-      setGoSpiderScans,
-      setMostRecentGoSpiderScan,
-      setIsGoSpiderScanning,
-      setMostRecentGoSpiderScanStatus
-    );
+    if (monitorGoSpiderScanStatus) {
+      monitorGoSpiderScanStatus(
+        activeTarget,
+        setGoSpiderScans,
+        setMostRecentGoSpiderScan,
+        setIsGoSpiderScanning,
+        setMostRecentGoSpiderScanStatus
+      );
+    };
 
     return data;
   } catch (error) {

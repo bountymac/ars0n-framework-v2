@@ -78,7 +78,8 @@ const getAutoScanSteps = (
   setMostRecentShuffleDNSCustomScanStatus,
   // Other functions
   handleConsolidate,
-  config
+  config,
+  autoScanSessionId
 ) => {
   const steps = [
     { name: AUTO_SCAN_STEPS.AMASS, action: async () => {
@@ -101,7 +102,8 @@ const getAutoScanSteps = (
           null, // setDnsRecords - not needed for Auto Scan workflow
           null, // setSubdomains - we'll consolidate later
           null, // setCloudDomains - not needed for Auto Scan workflow
-          setMostRecentAmassScan
+          setMostRecentAmassScan,
+          autoScanSessionId
         );
         
         // Wait for scan completion
@@ -160,7 +162,8 @@ const getAutoScanSteps = (
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              fqdn: domain
+              fqdn: domain,
+              auto_scan_session_id: autoScanSessionId
             }),
           }
         );
@@ -256,7 +259,8 @@ const getAutoScanSteps = (
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              fqdn: domain
+              fqdn: domain,
+              auto_scan_session_id: autoScanSessionId
             }),
           }
         );
@@ -346,7 +350,8 @@ const getAutoScanSteps = (
           setIsGauScanning,
           setGauScans,
           setMostRecentGauScanStatus,
-          setMostRecentGauScan
+          setMostRecentGauScan,
+          autoScanSessionId
         );
         
         // Wait for scan completion
@@ -403,7 +408,8 @@ const getAutoScanSteps = (
           setIsCTLScanning,
           setCTLScans,
           setMostRecentCTLScanStatus,
-          setMostRecentCTLScan
+          setMostRecentCTLScan,
+          autoScanSessionId
         );
         
         // Wait for scan completion
@@ -460,7 +466,8 @@ const getAutoScanSteps = (
           setIsSubfinderScanning,
           setSubfinderScans,
           setMostRecentSubfinderScanStatus,
-          setMostRecentSubfinderScan
+          setMostRecentSubfinderScan,
+          autoScanSessionId
         );
         
         // Wait for scan completion
@@ -524,8 +531,14 @@ const getAutoScanSteps = (
         try {
           // Fetch updated subdomain data to refresh UI
           const subdomainsResponse = await fetch(
-            `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${activeTarget.id}/subdomains`
-          );
+            `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/consolidate-subdomains/${activeTarget.id}`,
+            {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            }
+        );
           
           if (subdomainsResponse.ok) {
             const data = await subdomainsResponse.json();
@@ -534,7 +547,7 @@ const getAutoScanSteps = (
           
           // Fetch updated scan data
           const scansResponse = await fetch(
-            `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${activeTarget.id}/scans/consolidate`
+            `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${activeTarget.id}/scans`
           );
           
           if (scansResponse.ok) {
@@ -571,7 +584,8 @@ const getAutoScanSteps = (
           setIsHttpxScanning,
           setHttpxScans,
           setMostRecentHttpxScanStatus,
-          setMostRecentHttpxScan
+          setMostRecentHttpxScan,
+          autoScanSessionId
         );
         
         // Wait for scan completion - explicitly pass setMostRecentHttpxScan
@@ -621,7 +635,8 @@ const getAutoScanSteps = (
           setIsShuffleDNSScanning,
           setShuffleDNSScans,
           setMostRecentShuffleDNSScanStatus,
-          setMostRecentShuffleDNSScan
+          setMostRecentShuffleDNSScan,
+          autoScanSessionId
         );
         
         // Wait for scan completion
@@ -678,7 +693,8 @@ const getAutoScanSteps = (
           setIsCeWLScanning,
           setCeWLScans,
           setMostRecentCeWLScanStatus,
-          setMostRecentCeWLScan
+          setMostRecentCeWLScan,
+          autoScanSessionId
         );
         
         // Wait for both CeWL scan AND ShuffleDNS custom scan to complete
@@ -688,7 +704,8 @@ const getAutoScanSteps = (
           setMostRecentCeWLScanStatus,
           setMostRecentCeWLScan,
           setMostRecentShuffleDNSCustomScanStatus,
-          setMostRecentShuffleDNSCustomScan
+          setMostRecentShuffleDNSCustomScan,
+          autoScanSessionId
         );
         
         // Explicitly fetch the latest CeWL results to update UI
@@ -767,7 +784,7 @@ const getAutoScanSteps = (
         try {
           // Fetch updated subdomain data to refresh UI
           const subdomainsResponse = await fetch(
-            `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${activeTarget.id}/subdomains`
+            `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/consolidated-subdomains/${activeTarget.id}`
           );
           
           if (subdomainsResponse.ok) {
@@ -777,7 +794,7 @@ const getAutoScanSteps = (
           
           // Fetch updated scan data
           const scansResponse = await fetch(
-            `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${activeTarget.id}/scans/consolidate`
+            `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${activeTarget.id}/scans`
           );
           
           if (scansResponse.ok) {
@@ -813,7 +830,8 @@ const getAutoScanSteps = (
           setIsHttpxScanning,
           setHttpxScans,
           setMostRecentHttpxScanStatus,
-          setMostRecentHttpxScan
+          setMostRecentHttpxScan,
+          autoScanSessionId
         );
         
         // Wait for scan completion - pass setMostRecentHttpxScan so it gets updated
@@ -863,7 +881,8 @@ const getAutoScanSteps = (
           setIsGoSpiderScanning,
           setGoSpiderScans,
           setMostRecentGoSpiderScanStatus,
-          setMostRecentGoSpiderScan
+          setMostRecentGoSpiderScan,
+          autoScanSessionId
         );
         
         // Wait for scan completion
@@ -920,7 +939,8 @@ const getAutoScanSteps = (
           setIsSubdomainizerScanning,
           setSubdomainizerScans,
           setMostRecentSubdomainizerScanStatus,
-          setMostRecentSubdomainizerScan
+          setMostRecentSubdomainizerScan,
+          autoScanSessionId
         );
         
         // Wait for scan completion
@@ -959,6 +979,110 @@ const getAutoScanSteps = (
         console.error('[AutoScan] Step: subdomainizer ERROR:', error);
       }
     }},
+    { name: AUTO_SCAN_STEPS.CONSOLIDATE_ROUND3, action: async () => {
+      if (config && config.consolidate_httpx_round3 === false) {
+        console.log('[AutoScan] Step: consolidate_httpx_round3 is DISABLED in config. Skipping.');
+        return;
+      }
+      console.log('[AutoScan] Step: consolidate_httpx_round3 is ENABLED. Running.');
+      console.log("Starting Consolidation process (Round 3)...");
+      setAutoScanCurrentStep(AUTO_SCAN_STEPS.CONSOLIDATE_ROUND3);
+      await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.CONSOLIDATE_ROUND3);
+      
+      try {
+        // Add a short delay before starting consolidation to ensure all previous operations are fully complete
+        debugTrace("Adding a 3-second buffer before starting consolidation (Round 3)...");
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        debugTrace("Buffer completed, starting consolidation (Round 3)");
+        
+        setIsConsolidating(true);
+        
+        // Perform the consolidation
+        await handleConsolidate();
+        
+        // After consolidation is complete, fetch updated data
+        try {
+          // Fetch updated subdomain data to refresh UI
+          const subdomainsResponse = await fetch(
+            `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/consolidated-subdomains/${activeTarget.id}`
+          );
+          
+          if (subdomainsResponse.ok) {
+            const data = await subdomainsResponse.json();
+            setSubdomains(data.subdomains || []);
+          }
+          
+          // Fetch updated scan data
+          const scansResponse = await fetch(
+            `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${activeTarget.id}/scans`
+          );
+          
+          if (scansResponse.ok) {
+            const scans = await scansResponse.json();
+            // Update UI with consolidation results if there's state for it
+          }
+        } catch (error) {
+          console.error("Error fetching updated data after consolidation (Round 3):", error);
+        }
+        
+        setIsConsolidating(false);
+        console.log('[AutoScan] Step: consolidate_httpx_round3 completed.');
+      } catch (error) {
+        console.error('[AutoScan] Step: consolidate_httpx_round3 ERROR:', error);
+        setIsConsolidating(false);
+      }
+    }},
+    { name: AUTO_SCAN_STEPS.HTTPX_ROUND3, action: async () => {
+      if (config && config.consolidate_httpx_round3 === false) {
+        console.log('[AutoScan] Step: consolidate_httpx_round3 is DISABLED in config. Skipping.');
+        return;
+      }
+      console.log('[AutoScan] Step: consolidate_httpx_round3 is ENABLED. Running.');
+      console.log("Starting HTTPX scan for Live Web Servers (Round 3)...");
+      setAutoScanCurrentStep(AUTO_SCAN_STEPS.HTTPX_ROUND3);
+      await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.HTTPX_ROUND3);
+      
+      try {
+        // Start the scan
+        await initiateHttpxScan(
+          activeTarget,
+          null,
+          setIsHttpxScanning,
+          setHttpxScans,
+          setMostRecentHttpxScanStatus,
+          setMostRecentHttpxScan,
+          autoScanSessionId
+        );
+        
+        // Wait for scan completion - pass setMostRecentHttpxScan so it gets updated
+        await waitForScanCompletion(
+          'httpx',
+          activeTarget.id,
+          setIsHttpxScanning,
+          setMostRecentHttpxScanStatus,
+          setMostRecentHttpxScan
+        );
+        
+        // Add a short buffer before fetching results
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Use the fetchHttpxScans function - this is what happens on page refresh
+        const scanDetails = await fetchHttpxScans(
+          activeTarget, 
+          setHttpxScans, 
+          setMostRecentHttpxScan, 
+          setMostRecentHttpxScanStatus
+        );
+        
+        // Force a reset of the scanning state
+        setIsHttpxScanning(false);
+        
+        console.log('[AutoScan] Step: consolidate_httpx_round3 completed.');
+      } catch (error) {
+        console.error('[AutoScan] Step: consolidate_httpx_round3 ERROR:', error);
+        setIsHttpxScanning(false);
+      }
+    }},
     { name: AUTO_SCAN_STEPS.NUCLEI_SCREENSHOT, action: async () => {
       if (config && config.nuclei_screenshot === false) {
         console.log('[AutoScan] Step: nuclei_screenshot is DISABLED in config. Skipping.');
@@ -977,7 +1101,8 @@ const getAutoScanSteps = (
           setIsNucleiScreenshotScanning,
           setNucleiScreenshotScans,
           setMostRecentNucleiScreenshotScanStatus,
-          setMostRecentNucleiScreenshotScan
+          setMostRecentNucleiScreenshotScan,
+          autoScanSessionId
         );
         
         // Wait for scan completion
@@ -1034,7 +1159,8 @@ const getAutoScanSteps = (
           setIsMetaDataScanning,
           setMetaDataScans,
           setMostRecentMetaDataScanStatus,
-          setMostRecentMetaDataScan
+          setMostRecentMetaDataScan,
+          autoScanSessionId
         );
         
         // Wait for scan completion
@@ -1088,109 +1214,6 @@ const getAutoScanSteps = (
         console.log('[AutoScan] Step: metadata completed.');
       } catch (error) {
         console.error('[AutoScan] Step: metadata ERROR:', error);
-      }
-    }},
-    { name: AUTO_SCAN_STEPS.CONSOLIDATE_ROUND3, action: async () => {
-      if (config && config.consolidate_httpx_round3 === false) {
-        console.log('[AutoScan] Step: consolidate_httpx_round3 is DISABLED in config. Skipping.');
-        return;
-      }
-      console.log('[AutoScan] Step: consolidate_httpx_round3 is ENABLED. Running.');
-      console.log("Starting Consolidation process (Round 3)...");
-      setAutoScanCurrentStep(AUTO_SCAN_STEPS.CONSOLIDATE_ROUND3);
-      await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.CONSOLIDATE_ROUND3);
-      
-      try {
-        // Add a short delay before starting consolidation to ensure all previous operations are fully complete
-        debugTrace("Adding a 3-second buffer before starting consolidation (Round 3)...");
-        await new Promise(resolve => setTimeout(resolve, 3000));
-        debugTrace("Buffer completed, starting consolidation (Round 3)");
-        
-        setIsConsolidating(true);
-        
-        // Perform the consolidation
-        await handleConsolidate();
-        
-        // After consolidation is complete, fetch updated data
-        try {
-          // Fetch updated subdomain data to refresh UI
-          const subdomainsResponse = await fetch(
-            `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${activeTarget.id}/subdomains`
-          );
-          
-          if (subdomainsResponse.ok) {
-            const data = await subdomainsResponse.json();
-            setSubdomains(data.subdomains || []);
-          }
-          
-          // Fetch updated scan data
-          const scansResponse = await fetch(
-            `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${activeTarget.id}/scans/consolidate`
-          );
-          
-          if (scansResponse.ok) {
-            const scans = await scansResponse.json();
-            // Update UI with consolidation results if there's state for it
-          }
-        } catch (error) {
-          console.error("Error fetching updated data after consolidation (Round 3):", error);
-        }
-        
-        setIsConsolidating(false);
-        console.log('[AutoScan] Step: consolidate_httpx_round3 completed.');
-      } catch (error) {
-        console.error('[AutoScan] Step: consolidate_httpx_round3 ERROR:', error);
-        setIsConsolidating(false);
-      }
-    }},
-    { name: AUTO_SCAN_STEPS.HTTPX_ROUND3, action: async () => {
-      if (config && config.consolidate_httpx_round3 === false) {
-        console.log('[AutoScan] Step: consolidate_httpx_round3 is DISABLED in config. Skipping.');
-        return;
-      }
-      console.log('[AutoScan] Step: consolidate_httpx_round3 is ENABLED. Running.');
-      console.log("Starting HTTPX scan for Live Web Servers (Round 3)...");
-      setAutoScanCurrentStep(AUTO_SCAN_STEPS.HTTPX_ROUND3);
-      await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.HTTPX_ROUND3);
-      
-      try {
-        // Start the scan
-        await initiateHttpxScan(
-          activeTarget,
-          null,
-          setIsHttpxScanning,
-          setHttpxScans,
-          setMostRecentHttpxScanStatus,
-          setMostRecentHttpxScan
-        );
-        
-        // Wait for scan completion - pass setMostRecentHttpxScan so it gets updated
-        await waitForScanCompletion(
-          'httpx',
-          activeTarget.id,
-          setIsHttpxScanning,
-          setMostRecentHttpxScanStatus,
-          setMostRecentHttpxScan
-        );
-        
-        // Add a short buffer before fetching results
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Use the fetchHttpxScans function - this is what happens on page refresh
-        const scanDetails = await fetchHttpxScans(
-          activeTarget, 
-          setHttpxScans, 
-          setMostRecentHttpxScan, 
-          setMostRecentHttpxScanStatus
-        );
-        
-        // Force a reset of the scanning state
-        setIsHttpxScanning(false);
-        
-        console.log('[AutoScan] Step: consolidate_httpx_round3 completed.');
-      } catch (error) {
-        console.error('[AutoScan] Step: consolidate_httpx_round3 ERROR:', error);
-        setIsHttpxScanning(false);
       }
     }}
   ];
