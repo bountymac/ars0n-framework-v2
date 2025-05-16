@@ -224,7 +224,10 @@ const startAutoScan = async (
   setIsAutoScanning,
   setAutoScanCurrentStep,
   setAutoScanTargetId,
-  getAutoScanSteps
+  getAutoScanSteps,
+  consolidatedSubdomains,
+  mostRecentHttpxScan,
+  autoScanSessionId
 ) => {
   if (!activeTarget || !activeTarget.id) {
     console.log("No active target selected.");
@@ -235,35 +238,49 @@ const startAutoScan = async (
   setAutoScanCurrentStep(AUTO_SCAN_STEPS.IDLE);
   setAutoScanTargetId(activeTarget.id);
   
-  // Save the auto scan state to the server
   await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.IDLE);
   
   try {
     const steps = getAutoScanSteps();
-    
-    // Execute all scan steps in sequence
     for (let i = 0; i < steps.length; i++) {
       try {
         await steps[i].action();
       } catch (error) {
         debugTrace(`Error in step ${steps[i].name}: ${error.message}`);
       }
-      
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
-    
     debugTrace("All auto scan steps completed");
   } catch (error) {
     debugTrace(`ERROR during Auto Scan: ${error.message}`);
   } finally {
-    // Update the API with completed status
     debugTrace("Auto Scan session finalizing - setting state to COMPLETED");
     setIsAutoScanning(false);
     setAutoScanCurrentStep(AUTO_SCAN_STEPS.COMPLETED);
-    
     await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.COMPLETED);
-    
     debugTrace("Auto Scan session ended");
+    if (autoScanSessionId) {
+      let finalConsolidatedSubdomains = Array.isArray(consolidatedSubdomains) ? consolidatedSubdomains.length : 0;
+      let finalLiveWebServers = 0;
+      if (mostRecentHttpxScan && mostRecentHttpxScan.result && typeof mostRecentHttpxScan.result.String === 'string') {
+        finalLiveWebServers = mostRecentHttpxScan.result.String.split('\n').filter(line => line.trim()).length;
+      }
+      try {
+        await fetch(
+          `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/auto-scan/session/${autoScanSessionId}/final-stats`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              final_consolidated_subdomains: finalConsolidatedSubdomains,
+              final_live_web_servers: finalLiveWebServers
+            })
+          }
+        );
+      } catch (err) {
+        debugTrace('Failed to update final stats for auto scan session: ' + err.message);
+      }
+    }
   }
 };
 

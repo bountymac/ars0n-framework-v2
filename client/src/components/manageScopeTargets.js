@@ -14,7 +14,8 @@ function ManageScopeTargets({
   autoScanCurrentStep,
   mostRecentGauScanStatus,
   consolidatedSubdomains = [],
-  mostRecentHttpxScan
+  mostRecentHttpxScan,
+  onOpenAutoScanHistory
 }) {
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [autoScanConfig, setAutoScanConfig] = useState(null);
@@ -224,6 +225,13 @@ function ManageScopeTargets({
                   </div>
                 </div>
                 <div className="d-flex justify-content-between gap-2 mt-3">
+                  <Button 
+                    variant="outline-danger" 
+                    className="flex-fill" 
+                    onClick={onOpenAutoScanHistory}
+                  >
+                    Scan History
+                  </Button>
                   <Button 
                     variant="outline-danger" 
                     className="flex-fill" 

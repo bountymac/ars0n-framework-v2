@@ -299,6 +299,8 @@ function App() {
   const [autoScanCurrentStep, setAutoScanCurrentStep] = useState(AUTO_SCAN_STEPS.IDLE);
   const [autoScanTargetId, setAutoScanTargetId] = useState(null);
   const [autoScanSessionId, setAutoScanSessionId] = useState(null);
+  const [showAutoScanHistoryModal, setShowAutoScanHistoryModal] = useState(false);
+  const [autoScanSessions, setAutoScanSessions] = useState([]);
 
   const handleCloseSubdomainsModal = () => setShowSubdomainsModal(false);
   const handleCloseCloudDomainsModal = () => setShowCloudDomainsModal(false);
@@ -1490,6 +1492,26 @@ function App() {
     }
   }, [activeTarget]);
 
+  const handleOpenAutoScanHistoryModal = async () => {
+    if (!activeTarget || !activeTarget.id) return;
+    try {
+      const response = await fetch(
+        `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/auto-scan/sessions?target_id=${activeTarget.id}`
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setAutoScanSessions(Array.isArray(data) ? data : []);
+      } else {
+        setAutoScanSessions([]);
+      }
+    } catch (error) {
+      setAutoScanSessions([]);
+    }
+    setShowAutoScanHistoryModal(true);
+  };
+
+  const handleCloseAutoScanHistoryModal = () => setShowAutoScanHistoryModal(false);
+
   return (
     <Container data-bs-theme="dark" className="App" style={{ padding: '20px' }}>
       <Ars0nFrameworkHeader 
@@ -1731,6 +1753,9 @@ function App() {
           isAutoScanning={isAutoScanning}
           autoScanCurrentStep={autoScanCurrentStep}
           mostRecentGauScanStatus={mostRecentGauScanStatus}
+          consolidatedSubdomains={consolidatedSubdomains}
+          mostRecentHttpxScan={mostRecentHttpxScan}
+          onOpenAutoScanHistory={handleOpenAutoScanHistoryModal}
         />
       </Fade>
 
@@ -2499,6 +2524,47 @@ function App() {
         onHide={handleCloseROIReport}
         targetURLs={targetURLs}
       />
+      <Modal data-bs-theme="dark" show={showAutoScanHistoryModal} onHide={handleCloseAutoScanHistoryModal} size="xl">
+        <Modal.Header closeButton>
+          <Modal.Title className='text-danger'>Auto Scan History</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <Table striped bordered hover>
+            <thead>
+              <tr>
+                <th>Session ID</th>
+                <th>Start Time</th>
+                <th>End Time</th>
+                <th>Duration</th>
+                <th>Status</th>
+                <th>Final Consolidated Subdomains</th>
+                <th>Final Live Web Servers</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(!autoScanSessions || autoScanSessions.length === 0) ? (
+                <tr>
+                  <td colSpan={7} className="text-center text-white-50">
+                    No auto scan sessions found for this target.
+                  </td>
+                </tr>
+              ) : (
+                autoScanSessions.map((session) => (
+                  <tr key={session.session_id}>
+                    <td>{session.session_id}</td>
+                    <td>{session.start_time}</td>
+                    <td>{session.end_time}</td>
+                    <td>{session.duration}</td>
+                    <td>{session.status}</td>
+                    <td>{session.final_consolidated_subdomains}</td>
+                    <td>{session.final_live_web_servers}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </Table>
+        </Modal.Body>
+      </Modal>
     </Container>
   );
 }

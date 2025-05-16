@@ -26,7 +26,9 @@ func createTables() {
 			started_at TIMESTAMP DEFAULT NOW(),
 			ended_at TIMESTAMP,
 			steps_run JSONB,
-			error_message TEXT
+			error_message TEXT,
+			final_consolidated_subdomains INTEGER,
+			final_live_web_servers INTEGER
 		);`,
 		`CREATE TABLE IF NOT EXISTS user_settings (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

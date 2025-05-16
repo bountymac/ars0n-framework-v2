@@ -124,6 +124,7 @@ func main() {
 	r.HandleFunc("/api/auto-scan/session/{id}", getAutoScanSession).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/auto-scan/sessions", listAutoScanSessions).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/auto-scan/session/{id}/cancel", cancelAutoScanSession).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/auto-scan/session/{id}/final-stats", updateAutoScanSessionFinalStats).Methods("POST", "OPTIONS")
 
 	log.Println("API server started on :8080")
 	http.ListenAndServe(":8080", r)
@@ -598,20 +599,22 @@ func getAutoScanSession(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	sessionID := vars["id"]
 	row := dbPool.QueryRow(context.Background(), `
-		SELECT id, scope_target_id, config_snapshot, status, started_at, ended_at, steps_run, error_message
+		SELECT id, scope_target_id, config_snapshot, status, started_at, ended_at, steps_run, error_message, final_consolidated_subdomains, final_live_web_servers
 		FROM auto_scan_sessions WHERE id = $1
 	`, sessionID)
 	var session struct {
-		ID             string      `json:"id"`
-		ScopeTargetID  string      `json:"scope_target_id"`
-		ConfigSnapshot interface{} `json:"config_snapshot"`
-		Status         string      `json:"status"`
-		StartedAt      time.Time   `json:"started_at"`
-		EndedAt        *time.Time  `json:"ended_at"`
-		StepsRun       interface{} `json:"steps_run"`
-		ErrorMessage   *string     `json:"error_message"`
+		ID                          string      `json:"id"`
+		ScopeTargetID               string      `json:"scope_target_id"`
+		ConfigSnapshot              interface{} `json:"config_snapshot"`
+		Status                      string      `json:"status"`
+		StartedAt                   time.Time   `json:"started_at"`
+		EndedAt                     *time.Time  `json:"ended_at"`
+		StepsRun                    interface{} `json:"steps_run"`
+		ErrorMessage                *string     `json:"error_message"`
+		FinalConsolidatedSubdomains *int        `json:"final_consolidated_subdomains"`
+		FinalLiveWebServers         *int        `json:"final_live_web_servers"`
 	}
-	err := row.Scan(&session.ID, &session.ScopeTargetID, &session.ConfigSnapshot, &session.Status, &session.StartedAt, &session.EndedAt, &session.StepsRun, &session.ErrorMessage)
+	err := row.Scan(&session.ID, &session.ScopeTargetID, &session.ConfigSnapshot, &session.Status, &session.StartedAt, &session.EndedAt, &session.StepsRun, &session.ErrorMessage, &session.FinalConsolidatedSubdomains, &session.FinalLiveWebServers)
 	if err != nil {
 		http.Error(w, "Session not found", http.StatusNotFound)
 		return
@@ -623,7 +626,7 @@ func getAutoScanSession(w http.ResponseWriter, r *http.Request) {
 func listAutoScanSessions(w http.ResponseWriter, r *http.Request) {
 	targetID := r.URL.Query().Get("target_id")
 	rows, err := dbPool.Query(context.Background(), `
-		SELECT id, scope_target_id, config_snapshot, status, started_at, ended_at, steps_run, error_message
+		SELECT id, scope_target_id, config_snapshot, status, started_at, ended_at, steps_run, error_message, final_consolidated_subdomains, final_live_web_servers
 		FROM auto_scan_sessions WHERE scope_target_id = $1 ORDER BY started_at DESC
 	`, targetID)
 	if err != nil {
@@ -634,16 +637,18 @@ func listAutoScanSessions(w http.ResponseWriter, r *http.Request) {
 	var sessions []interface{}
 	for rows.Next() {
 		var session struct {
-			ID             string      `json:"id"`
-			ScopeTargetID  string      `json:"scope_target_id"`
-			ConfigSnapshot interface{} `json:"config_snapshot"`
-			Status         string      `json:"status"`
-			StartedAt      time.Time   `json:"started_at"`
-			EndedAt        *time.Time  `json:"ended_at"`
-			StepsRun       interface{} `json:"steps_run"`
-			ErrorMessage   *string     `json:"error_message"`
+			ID                          string      `json:"id"`
+			ScopeTargetID               string      `json:"scope_target_id"`
+			ConfigSnapshot              interface{} `json:"config_snapshot"`
+			Status                      string      `json:"status"`
+			StartedAt                   time.Time   `json:"started_at"`
+			EndedAt                     *time.Time  `json:"ended_at"`
+			StepsRun                    interface{} `json:"steps_run"`
+			ErrorMessage                *string     `json:"error_message"`
+			FinalConsolidatedSubdomains *int        `json:"final_consolidated_subdomains"`
+			FinalLiveWebServers         *int        `json:"final_live_web_servers"`
 		}
-		err := rows.Scan(&session.ID, &session.ScopeTargetID, &session.ConfigSnapshot, &session.Status, &session.StartedAt, &session.EndedAt, &session.StepsRun, &session.ErrorMessage)
+		err := rows.Scan(&session.ID, &session.ScopeTargetID, &session.ConfigSnapshot, &session.Status, &session.StartedAt, &session.EndedAt, &session.StepsRun, &session.ErrorMessage, &session.FinalConsolidatedSubdomains, &session.FinalLiveWebServers)
 		if err == nil {
 			sessions = append(sessions, session)
 		}
@@ -663,5 +668,29 @@ func cancelAutoScanSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"success": true}`))
+}
+
+func updateAutoScanSessionFinalStats(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	sessionID := vars["id"]
+	var payload struct {
+		FinalConsolidatedSubdomains *int `json:"final_consolidated_subdomains"`
+		FinalLiveWebServers         *int `json:"final_live_web_servers"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+	_, err := dbPool.Exec(context.Background(), `
+		UPDATE auto_scan_sessions
+		SET final_consolidated_subdomains = $1, final_live_web_servers = $2, ended_at = COALESCE(ended_at, NOW())
+		WHERE id = $3
+	`, payload.FinalConsolidatedSubdomains, payload.FinalLiveWebServers, sessionID)
+	if err != nil {
+		http.Error(w, "Failed to update session stats", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte(`{"success": true}`))
 }
