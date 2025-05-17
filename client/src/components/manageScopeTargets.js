@@ -448,8 +448,21 @@ function ManageScopeTargets({
     return Math.min(progress, 95);
   };
 
+  // Add CSS for flashing text
+  const flashingTextStyle = `
+    @keyframes flash {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    .flashing-text {
+      animation: flash 1s linear infinite;
+      font-weight: bold;
+    }
+  `;
+
   return (
     <>
+      <style>{flashingTextStyle}</style>
       <Row className="mb-3">
         <Col>
           <h3 className="text-secondary">Active Scope Target</h3>
@@ -503,10 +516,20 @@ function ManageScopeTargets({
                       )}
                     </div>
                     <div className="text-end" style={{ minWidth: 180 }}>
-                      <div className="text-white-50 mb-2">
+                      <div className={
+                        isAutoScanPaused && 
+                        consolidatedSubdomains.length > (autoScanConfig?.maxConsolidatedSubdomains ?? 2500) 
+                          ? "text-danger mb-2 flashing-text" 
+                          : "text-white-50 mb-2"
+                      }>
                         Consolidated Subdomains: {consolidatedSubdomains.length} / {autoScanConfig?.maxConsolidatedSubdomains ?? 2500}
                       </div>
-                      <div className="text-white-50 mb-2">
+                      <div className={
+                        isAutoScanPaused && 
+                        getHttpxResultsCount(mostRecentHttpxScan) > (autoScanConfig?.maxLiveWebServers ?? 500) 
+                          ? "text-danger mb-2 flashing-text" 
+                          : "text-white-50 mb-2"
+                      }>
                         Live Web Servers: {getHttpxResultsCount(mostRecentHttpxScan)} / {autoScanConfig?.maxLiveWebServers ?? 500}
                       </div>
                     </div>
@@ -523,6 +546,16 @@ function ManageScopeTargets({
                         ) : displayStatus === 'completed' ? (
                           <>
                             <span className="text-success">●</span> Scan completed
+                          </>
+                        ) : displayStatus === 'paused' ? (
+                          <>
+                            <span className="text-warning">●</span> Scan paused {
+                              (isAutoScanPaused && 
+                               ((consolidatedSubdomains.length > (autoScanConfig?.maxConsolidatedSubdomains ?? 2500)) || 
+                                (getHttpxResultsCount(mostRecentHttpxScan) > (autoScanConfig?.maxLiveWebServers ?? 500)))) ? 
+                                <span className="text-warning ms-2">(Limits exceeded)</span> : 
+                                null
+                            }
                           </>
                         ) : (
                           <>

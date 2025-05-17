@@ -235,8 +235,47 @@ const resumeAutoScan = async (
     const config = await configResponse.json();
     debugTrace("Auto scan config retrieved for resume");
     
+    // Get the current state for checking limits
+    let consolidatedSubdomains = [];
+    let mostRecentHttpxScan = null;
+    
+    try {
+      // Fetch current consolidated subdomains
+      const subdomainsResponse = await fetch(
+        `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/consolidated-subdomains/${activeTarget.id}`
+      );
+      if (subdomainsResponse.ok) {
+        const data = await subdomainsResponse.json();
+        consolidatedSubdomains = data.subdomains || [];
+      }
+      
+      // Fetch current HTTPX scan
+      const httpxResponse = await fetch(
+        `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${activeTarget.id}/scans/httpx`
+      );
+      if (httpxResponse.ok) {
+        const scans = await httpxResponse.json();
+        if (Array.isArray(scans) && scans.length > 0) {
+          mostRecentHttpxScan = scans.reduce((latest, scan) => {
+            const scanDate = new Date(scan.created_at);
+            return scanDate > new Date(latest.created_at) ? scan : latest;
+          }, scans[0]);
+        }
+      }
+    } catch (error) {
+      debugTrace("Error fetching current state for limit checks: " + error.message);
+    }
+    
     let startFromIndex = 0;
-    const steps = getAutoScanSteps(activeTarget);
+    const steps = getAutoScanSteps(activeTarget, undefined, undefined, undefined, undefined, undefined, undefined, 
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, 
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, 
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, 
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, 
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, 
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, config, undefined, 
+      mostRecentHttpxScan, consolidatedSubdomains);
+      
     for (let i = 0; i < steps.length; i++) {
       if (steps[i].name === fromStep) {
         startFromIndex = i;
@@ -391,7 +430,14 @@ const startAutoScan = async (
     const config = await configResponse.json();
     debugTrace("Auto scan config retrieved");
     
-    const steps = getAutoScanSteps();
+    const steps = getAutoScanSteps(undefined, undefined, undefined, undefined, undefined, undefined, undefined, 
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, 
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, 
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, 
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, 
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, 
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, config, autoScanSessionId, 
+      mostRecentHttpxScan, consolidatedSubdomains);
     for (let i = 0; i < steps.length; i++) {
       try {
         // Update current step - skip UI update if step is disabled

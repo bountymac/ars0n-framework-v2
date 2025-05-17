@@ -11,6 +11,7 @@ import fetchHttpxScans from './fetchHttpxScans';
 import initiateGoSpiderScan from './initiateGoSpiderScan';
 import initiateSubdomainizerScan from './initiateSubdomainizerScan';
 import initiateAmassScan from './initiateAmassScan';
+import { getHttpxResultsCount } from './miscUtils';
 
 const getAutoScanSteps = (
   activeTarget,
@@ -531,7 +532,7 @@ const getAutoScanSteps = (
         try {
           // Fetch updated subdomain data to refresh UI
           const subdomainsResponse = await fetch(
-            `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/consolidate-subdomains/${activeTarget.id}`,
+            `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/consolidated-subdomains/${activeTarget.id}`,
             {
                 method: 'GET',
                 headers: {
@@ -543,6 +544,30 @@ const getAutoScanSteps = (
           if (subdomainsResponse.ok) {
             const data = await subdomainsResponse.json();
             setSubdomains(data.subdomains || []);
+            
+            // Check if consolidated subdomains exceed the limit
+            if (data.subdomains && 
+                Array.isArray(data.subdomains) && 
+                config && 
+                config.maxConsolidatedSubdomains && 
+                data.subdomains.length > config.maxConsolidatedSubdomains) {
+              
+              console.log(`[AutoScan] Consolidated subdomains (${data.subdomains.length}) exceed the configured limit (${config.maxConsolidatedSubdomains}). Pausing the scan.`);
+              
+              // Pause the scan by updating the server state
+              await fetch(
+                `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/auto-scan-state/${activeTarget.id}`,
+                {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ 
+                    current_step: AUTO_SCAN_STEPS.CONSOLIDATE,
+                    is_paused: true,
+                    is_cancelled: false
+                  })
+                }
+              );
+            }
           }
           
           // Fetch updated scan data
@@ -607,6 +632,105 @@ const getAutoScanSteps = (
           setMostRecentHttpxScan, 
           setMostRecentHttpxScanStatus
         );
+        
+        // Directly fetch the latest HTTPX scans to ensure we have the most recent data
+        console.log("[AutoScan] DEBUG: Starting live web servers check");
+        console.log("[AutoScan] DEBUG: Active target ID:", activeTarget?.id);
+        console.log("[AutoScan] DEBUG: Config:", JSON.stringify(config));
+        
+        const httpxResponse = await fetch(
+          `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${activeTarget.id}/scans/httpx`
+        );
+        
+        console.log("[AutoScan] DEBUG: HTTPX response status:", httpxResponse.status);
+        
+        let liveWebServersCount = 0;
+        if (httpxResponse.ok) {
+          const httpxScans = await httpxResponse.json();
+          console.log("[AutoScan] DEBUG: HTTPX scans count:", httpxScans?.length || 0);
+          
+          if (httpxScans && httpxScans.length > 0) {
+            // Find the most recent scan
+            const mostRecent = httpxScans.reduce((latest, scan) => {
+              const scanDate = new Date(scan.created_at);
+              return scanDate > new Date(latest.created_at) ? scan : latest;
+            }, httpxScans[0]);
+            
+            console.log("[AutoScan] DEBUG: Most recent scan ID:", mostRecent?.id);
+            console.log("[AutoScan] DEBUG: Most recent scan status:", mostRecent?.status);
+            console.log("[AutoScan] DEBUG: Most recent scan result type:", typeof mostRecent?.result);
+            
+            // Log raw result for inspection
+            console.log("[AutoScan] DEBUG: Result preview:", 
+              typeof mostRecent?.result === 'object' ? 
+                JSON.stringify(mostRecent?.result).substring(0, 200) + "..." : 
+                String(mostRecent?.result).substring(0, 200) + "..."
+            );
+            
+            // Get the count of live web servers
+            liveWebServersCount = getHttpxResultsCount(mostRecent);
+            console.log("[AutoScan] DEBUG: getHttpxResultsCount returned:", liveWebServersCount);
+            
+            // TEMPORARY TEST: Force pause by setting count very high
+            liveWebServersCount = 9999;
+            console.log("[AutoScan] DEBUG: FORCING test count to:", liveWebServersCount);
+          }
+        } else {
+          console.log("[AutoScan] DEBUG: Failed to fetch HTTPX scans:", await httpxResponse.text());
+        }
+        
+        console.log(`[AutoScan] Live web servers check: count=${liveWebServersCount}, limit=${config?.maxLiveWebServers}`);
+        console.log("[AutoScan] DEBUG: Full config object:", config);
+        console.log("[AutoScan] DEBUG: maxLiveWebServers value:", config?.maxLiveWebServers);
+        console.log("[AutoScan] DEBUG: MaxLiveWebServers value:", config?.MaxLiveWebServers);
+        console.log("[AutoScan] DEBUG: maxLiveWebServers type:", typeof config?.maxLiveWebServers);
+        
+        // Fix config if it's using PascalCase instead of camelCase
+        if (config && config.MaxLiveWebServers !== undefined && config.maxLiveWebServers === undefined) {
+          console.log("[AutoScan] DEBUG: Converting MaxLiveWebServers to maxLiveWebServers");
+          config.maxLiveWebServers = config.MaxLiveWebServers;
+        }
+        
+        // FORCE TEST: Override the server count for testing
+        const originalServerCount = liveWebServersCount;
+        liveWebServersCount = 999;
+        console.log("[AutoScan] DEBUG: FORCING server count from", originalServerCount, "to", liveWebServersCount);
+        
+        console.log("[AutoScan] DEBUG: Explicit comparison:", `${liveWebServersCount} > ${config?.maxLiveWebServers} = ${liveWebServersCount > config?.maxLiveWebServers}`);
+        console.log("[AutoScan] DEBUG: Should pause?", (liveWebServersCount > (config?.maxLiveWebServers || 500)));
+        
+        if (config && 
+            config.maxLiveWebServers && 
+            liveWebServersCount > config.maxLiveWebServers) {
+          
+          console.log(`[AutoScan] Live web servers (${liveWebServersCount}) exceed the configured limit (${config.maxLiveWebServers}). Pausing the scan.`);
+          
+          // Pause the scan by updating the server state
+          try {
+            console.log("[AutoScan] DEBUG: Sending pause request to server");
+            const pauseResponse = await fetch(
+              `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/auto-scan-state/${activeTarget.id}`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                  current_step: AUTO_SCAN_STEPS.HTTPX,
+                  is_paused: true,
+                  is_cancelled: false
+                })
+              }
+            );
+            
+            console.log("[AutoScan] DEBUG: Pause request status:", pauseResponse.status);
+            if (!pauseResponse.ok) {
+              console.log("[AutoScan] DEBUG: Pause request failed:", await pauseResponse.text());
+            } else {
+              console.log("[AutoScan] DEBUG: Pause request successful");
+            }
+          } catch (error) {
+            console.log("[AutoScan] DEBUG: Error sending pause request:", error);
+          }
+        }
         
         // Force a reset of the scanning state
         setIsHttpxScanning(false);
@@ -790,6 +914,30 @@ const getAutoScanSteps = (
           if (subdomainsResponse.ok) {
             const data = await subdomainsResponse.json();
             setSubdomains(data.subdomains || []);
+            
+            // Check if consolidated subdomains exceed the limit
+            if (data.subdomains && 
+                Array.isArray(data.subdomains) && 
+                config && 
+                config.maxConsolidatedSubdomains && 
+                data.subdomains.length > config.maxConsolidatedSubdomains) {
+              
+              console.log(`[AutoScan] Consolidated subdomains (${data.subdomains.length}) exceed the configured limit (${config.maxConsolidatedSubdomains}). Pausing the scan.`);
+              
+              // Pause the scan by updating the server state
+              await fetch(
+                `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/auto-scan-state/${activeTarget.id}`,
+                {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ 
+                    current_step: AUTO_SCAN_STEPS.CONSOLIDATE_ROUND2,
+                    is_paused: true,
+                    is_cancelled: false
+                  })
+                }
+              );
+            }
           }
           
           // Fetch updated scan data
@@ -853,6 +1001,49 @@ const getAutoScanSteps = (
           setMostRecentHttpxScan, 
           setMostRecentHttpxScanStatus
         );
+        
+        // Directly fetch the latest HTTPX scans to ensure we have the most recent data
+        const httpxResponse = await fetch(
+          `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${activeTarget.id}/scans/httpx`
+        );
+        
+        let liveWebServersCount = 0;
+        if (httpxResponse.ok) {
+          const httpxScans = await httpxResponse.json();
+          if (httpxScans && httpxScans.length > 0) {
+            // Find the most recent scan
+            const mostRecent = httpxScans.reduce((latest, scan) => {
+              const scanDate = new Date(scan.created_at);
+              return scanDate > new Date(latest.created_at) ? scan : latest;
+            }, httpxScans[0]);
+            
+            // Get the count of live web servers
+            liveWebServersCount = getHttpxResultsCount(mostRecent);
+          }
+        }
+        
+        console.log(`[AutoScan] Live web servers check (Round 2): count=${liveWebServersCount}, limit=${config?.maxLiveWebServers}`);
+        
+        if (config && 
+            config.maxLiveWebServers && 
+            liveWebServersCount > config.maxLiveWebServers) {
+          
+          console.log(`[AutoScan] Live web servers (${liveWebServersCount}) exceed the configured limit (${config.maxLiveWebServers}). Pausing the scan.`);
+          
+          // Pause the scan by updating the server state
+          await fetch(
+            `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/auto-scan-state/${activeTarget.id}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ 
+                current_step: AUTO_SCAN_STEPS.HTTPX_ROUND2,
+                is_paused: true,
+                is_cancelled: false
+              })
+            }
+          );
+        }
         
         // Force a reset of the scanning state
         setIsHttpxScanning(false);
@@ -1010,6 +1201,30 @@ const getAutoScanSteps = (
           if (subdomainsResponse.ok) {
             const data = await subdomainsResponse.json();
             setSubdomains(data.subdomains || []);
+            
+            // Check if consolidated subdomains exceed the limit
+            if (data.subdomains && 
+                Array.isArray(data.subdomains) && 
+                config && 
+                config.maxConsolidatedSubdomains && 
+                data.subdomains.length > config.maxConsolidatedSubdomains) {
+              
+              console.log(`[AutoScan] Consolidated subdomains (${data.subdomains.length}) exceed the configured limit (${config.maxConsolidatedSubdomains}). Pausing the scan.`);
+              
+              // Pause the scan by updating the server state
+              await fetch(
+                `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/auto-scan-state/${activeTarget.id}`,
+                {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ 
+                    current_step: AUTO_SCAN_STEPS.CONSOLIDATE_ROUND3,
+                    is_paused: true,
+                    is_cancelled: false
+                  })
+                }
+              );
+            }
           }
           
           // Fetch updated scan data
@@ -1073,6 +1288,49 @@ const getAutoScanSteps = (
           setMostRecentHttpxScan, 
           setMostRecentHttpxScanStatus
         );
+        
+        // Directly fetch the latest HTTPX scans to ensure we have the most recent data
+        const httpxResponse = await fetch(
+          `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${activeTarget.id}/scans/httpx`
+        );
+        
+        let liveWebServersCount = 0;
+        if (httpxResponse.ok) {
+          const httpxScans = await httpxResponse.json();
+          if (httpxScans && httpxScans.length > 0) {
+            // Find the most recent scan
+            const mostRecent = httpxScans.reduce((latest, scan) => {
+              const scanDate = new Date(scan.created_at);
+              return scanDate > new Date(latest.created_at) ? scan : latest;
+            }, httpxScans[0]);
+            
+            // Get the count of live web servers
+            liveWebServersCount = getHttpxResultsCount(mostRecent);
+          }
+        }
+        
+        console.log(`[AutoScan] Live web servers check (Round 3): count=${liveWebServersCount}, limit=${config?.maxLiveWebServers}`);
+        
+        if (config && 
+            config.maxLiveWebServers && 
+            liveWebServersCount > config.maxLiveWebServers) {
+          
+          console.log(`[AutoScan] Live web servers (${liveWebServersCount}) exceed the configured limit (${config.maxLiveWebServers}). Pausing the scan.`);
+          
+          // Pause the scan by updating the server state
+          await fetch(
+            `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/auto-scan-state/${activeTarget.id}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ 
+                current_step: AUTO_SCAN_STEPS.HTTPX_ROUND3,
+                is_paused: true,
+                is_cancelled: false
+              })
+            }
+          );
+        }
         
         // Force a reset of the scanning state
         setIsHttpxScanning(false);
