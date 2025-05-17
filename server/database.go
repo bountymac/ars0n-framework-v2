@@ -285,7 +285,9 @@ func createTables() {
 			current_step TEXT NOT NULL,
 			created_at TIMESTAMP DEFAULT NOW(),
 			updated_at TIMESTAMP DEFAULT NOW(),
-			UNIQUE(scope_target_id)
+			UNIQUE(scope_target_id),
+			is_paused BOOLEAN DEFAULT false,
+			is_cancelled BOOLEAN DEFAULT false
 		);`,
 		`CREATE TABLE IF NOT EXISTS nuclei_screenshots (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -503,4 +505,14 @@ func createTables() {
 		log.Fatalf("[ERROR] Failed to delete pending scans: %v", err)
 	}
 	log.Println("[INFO] Deleted any scans with status 'pending'")
+
+	_, err = dbPool.Exec(context.Background(), `
+		-- Add new columns to auto_scan_state table
+		ALTER TABLE auto_scan_state 
+		ADD COLUMN IF NOT EXISTS is_paused BOOLEAN DEFAULT false,
+		ADD COLUMN IF NOT EXISTS is_cancelled BOOLEAN DEFAULT false;
+	`)
+	if err != nil {
+		log.Printf("Error adding columns to auto_scan_state: %v", err)
+	}
 }

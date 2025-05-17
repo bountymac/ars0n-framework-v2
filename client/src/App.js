@@ -15,18 +15,18 @@ import Ars0nFrameworkHeader from './components/ars0nFrameworkHeader.js';
 import ManageScopeTargets from './components/manageScopeTargets.js';
 import fetchAmassScans from './utils/fetchAmassScans.js';
 import {
-  Container,
-  Fade,
-  Card,
-  Row,
-  Col,
-  Button,
-  ListGroup,
-  Accordion,
-  Modal,
-  Table,
-  Toast,
-  ToastContainer,
+    Container,
+    Fade,
+    Card,
+    Row,
+    Col,
+    Button,
+    ListGroup,
+    Accordion,
+    Modal,
+    Table,
+    Toast,
+    ToastContainer,
 } from 'react-bootstrap';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'bootstrap-icons/font/bootstrap-icons.css';
@@ -34,14 +34,14 @@ import initiateAmassScan from './utils/initiateAmassScan';
 import monitorScanStatus from './utils/monitorScanStatus';
 import validateInput from './utils/validateInput.js';
 import {
-  getTypeIcon,
-  getLastScanDate,
-  getLatestScanStatus,
-  getLatestScanTime,
-  getLatestScanId,
-  getExecutionTime,
-  getResultLength,
-  copyToClipboard,
+    getTypeIcon,
+    getLastScanDate,
+    getLatestScanStatus,
+    getLatestScanTime,
+    getLatestScanId,
+    getExecutionTime,
+    getResultLength,
+    copyToClipboard,
 } from './utils/miscUtils.js';
 import { MdCopyAll, MdCheckCircle } from 'react-icons/md';
 import initiateHttpxScan from './utils/initiateHttpxScan';
@@ -81,9 +81,9 @@ import fetchHttpxScans from './utils/fetchHttpxScans';
 import ROIReport from './components/ROIReport';
 import HelpMeLearn from './components/HelpMeLearn';
 import {
-  AUTO_SCAN_STEPS,
-  resumeAutoScan as resumeAutoScanUtil,
-  startAutoScan as startAutoScanUtil
+    AUTO_SCAN_STEPS,
+    resumeAutoScan as resumeAutoScanUtil,
+    startAutoScan as startAutoScanUtil
 } from './utils/wildcardAutoScan';
 import getAutoScanSteps from './utils/autoScanSteps';
 
@@ -301,6 +301,10 @@ function App() {
   const [autoScanSessionId, setAutoScanSessionId] = useState(null);
   const [showAutoScanHistoryModal, setShowAutoScanHistoryModal] = useState(false);
   const [autoScanSessions, setAutoScanSessions] = useState([]);
+  // Add these state variables near the other auto scan related states
+  const [isAutoScanPaused, setIsAutoScanPaused] = useState(false);
+  const [isAutoScanPausing, setIsAutoScanPausing] = useState(false);
+  const [isAutoScanCancelling, setIsAutoScanCancelling] = useState(false);
 
   const handleCloseSubdomainsModal = () => setShowSubdomainsModal(false);
   const handleCloseCloudDomainsModal = () => setShowCloudDomainsModal(false);
@@ -1546,6 +1550,53 @@ function App() {
 
   const handleCloseAutoScanHistoryModal = () => setShowAutoScanHistoryModal(false);
 
+  // Add this useEffect to poll for auto scan state changes
+  useEffect(() => {
+    if (isAutoScanning && activeTarget && activeTarget.id) {
+      const interval = setInterval(async () => {
+        try {
+          const response = await fetch(
+            `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/auto-scan-state/${activeTarget.id}`
+          );
+          
+          if (response.ok) {
+            const data = await response.json();
+            
+            // Update pause state
+            if (data.is_paused && !isAutoScanPaused) {
+              setIsAutoScanPaused(true);
+              setIsAutoScanPausing(false);
+            } else if (!data.is_paused && isAutoScanPaused) {
+              setIsAutoScanPaused(false);
+            }
+            
+            // Update cancel state - reset to false when the scan is no longer running
+            // This will switch the button back to "Cancel" after successful cancellation
+            if (data.is_cancelled && !isAutoScanCancelling) {
+              setIsAutoScanCancelling(true);
+            } else if (!isAutoScanning && isAutoScanCancelling) {
+              setIsAutoScanCancelling(false);
+            }
+            
+            // If scan completed, reset states
+            if (data.current_step === AUTO_SCAN_STEPS.COMPLETED) {
+              setIsAutoScanPaused(false);
+              setIsAutoScanPausing(false);
+              setIsAutoScanCancelling(false);
+            }
+          }
+        } catch (error) {
+          console.error('Error polling auto scan state:', error);
+        }
+      }, 2000);
+      
+      return () => clearInterval(interval);
+    } else if (!isAutoScanning && isAutoScanCancelling) {
+      // Reset the cancelling state when the scan is no longer running
+      setIsAutoScanCancelling(false);
+    }
+  }, [isAutoScanning, activeTarget, isAutoScanPaused, isAutoScanPausing, isAutoScanCancelling]);
+
   return (
     <Container data-bs-theme="dark" className="App" style={{ padding: '20px' }}>
       <Ars0nFrameworkHeader 
@@ -1785,6 +1836,11 @@ function App() {
           getTypeIcon={getTypeIcon}
           onAutoScan={startAutoScan}
           isAutoScanning={isAutoScanning}
+          isAutoScanPaused={isAutoScanPaused}
+          isAutoScanPausing={isAutoScanPausing}
+          isAutoScanCancelling={isAutoScanCancelling}
+          setIsAutoScanPausing={setIsAutoScanPausing}
+          setIsAutoScanCancelling={setIsAutoScanCancelling}
           autoScanCurrentStep={autoScanCurrentStep}
           mostRecentGauScanStatus={mostRecentGauScanStatus}
           consolidatedSubdomains={consolidatedSubdomains}

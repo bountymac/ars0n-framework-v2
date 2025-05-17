@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"ars0n-framework-v2-server/utils"
@@ -310,19 +311,25 @@ func getAutoScanState(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	targetID := vars["target_id"]
 
+	// First try with new columns
 	var state struct {
 		ID            string    `json:"id"`
 		ScopeTargetID string    `json:"scope_target_id"`
 		CurrentStep   string    `json:"current_step"`
+		IsPaused      bool      `json:"is_paused"`
+		IsCancelled   bool      `json:"is_cancelled"`
 		CreatedAt     time.Time `json:"created_at"`
 		UpdatedAt     time.Time `json:"updated_at"`
 	}
 
 	err := dbPool.QueryRow(context.Background(), `
-		SELECT id, scope_target_id, current_step, created_at, updated_at
+		SELECT id, scope_target_id, current_step, 
+		COALESCE((SELECT column_name FROM information_schema.columns WHERE table_name='auto_scan_state' AND column_name='is_paused') IS NOT NULL AND is_paused, false) as is_paused,
+		COALESCE((SELECT column_name FROM information_schema.columns WHERE table_name='auto_scan_state' AND column_name='is_cancelled') IS NOT NULL AND is_cancelled, false) as is_cancelled,
+		created_at, updated_at
 		FROM auto_scan_state
 		WHERE scope_target_id = $1
-	`, targetID).Scan(&state.ID, &state.ScopeTargetID, &state.CurrentStep, &state.CreatedAt, &state.UpdatedAt)
+	`, targetID).Scan(&state.ID, &state.ScopeTargetID, &state.CurrentStep, &state.IsPaused, &state.IsCancelled, &state.CreatedAt, &state.UpdatedAt)
 
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -331,9 +338,56 @@ func getAutoScanState(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(map[string]interface{}{
 				"scope_target_id": targetID,
 				"current_step":    "IDLE",
+				"is_paused":       false,
+				"is_cancelled":    false,
 			})
 			return
 		}
+
+		// If the error is about missing columns, try the fallback query
+		if strings.Contains(err.Error(), "column") && (strings.Contains(err.Error(), "is_paused") || strings.Contains(err.Error(), "is_cancelled")) {
+			var basicState struct {
+				ID            string    `json:"id"`
+				ScopeTargetID string    `json:"scope_target_id"`
+				CurrentStep   string    `json:"current_step"`
+				CreatedAt     time.Time `json:"created_at"`
+				UpdatedAt     time.Time `json:"updated_at"`
+			}
+
+			fallbackErr := dbPool.QueryRow(context.Background(), `
+				SELECT id, scope_target_id, current_step, created_at, updated_at
+				FROM auto_scan_state
+				WHERE scope_target_id = $1
+			`, targetID).Scan(&basicState.ID, &basicState.ScopeTargetID, &basicState.CurrentStep, &basicState.CreatedAt, &basicState.UpdatedAt)
+
+			if fallbackErr == nil {
+				// Successfully got basic state, return it with default pause/cancel values
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"id":              basicState.ID,
+					"scope_target_id": basicState.ScopeTargetID,
+					"current_step":    basicState.CurrentStep,
+					"is_paused":       false,
+					"is_cancelled":    false,
+					"created_at":      basicState.CreatedAt,
+					"updated_at":      basicState.UpdatedAt,
+				})
+				return
+			}
+
+			// If even the fallback failed with no rows, return idle state
+			if fallbackErr == pgx.ErrNoRows {
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"scope_target_id": targetID,
+					"current_step":    "IDLE",
+					"is_paused":       false,
+					"is_cancelled":    false,
+				})
+				return
+			}
+		}
+
 		log.Printf("Error fetching auto scan state: %v", err)
 		http.Error(w, "Failed to fetch auto scan state", http.StatusInternalServerError)
 		return
@@ -350,6 +404,8 @@ func updateAutoScanState(w http.ResponseWriter, r *http.Request) {
 
 	var requestData struct {
 		CurrentStep string `json:"current_step"`
+		IsPaused    bool   `json:"is_paused"`
+		IsCancelled bool   `json:"is_cancelled"`
 	}
 
 	err := json.NewDecoder(r.Body).Decode(&requestData)
@@ -363,16 +419,57 @@ func updateAutoScanState(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Use upsert (insert or update)
-	_, err = dbPool.Exec(context.Background(), `
-		INSERT INTO auto_scan_state (scope_target_id, current_step)
-		VALUES ($1, $2)
-		ON CONFLICT (scope_target_id)
-		DO UPDATE SET current_step = $2, updated_at = NOW()
-	`, targetID, requestData.CurrentStep)
+	// First check if columns exist
+	var hasPausedColumn, hasCancelledColumn bool
+	err = dbPool.QueryRow(context.Background(), `
+		SELECT 
+			EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='auto_scan_state' AND column_name='is_paused') as has_paused,
+			EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='auto_scan_state' AND column_name='is_cancelled') as has_cancelled
+	`).Scan(&hasPausedColumn, &hasCancelledColumn)
 
 	if err != nil {
-		log.Printf("Error updating auto scan state: %v", err)
+		log.Printf("Error checking for columns: %v", err)
+		http.Error(w, "Failed to update auto scan state", http.StatusInternalServerError)
+		return
+	}
+
+	var execErr error
+	if hasPausedColumn && hasCancelledColumn {
+		// Use upsert with all columns
+		_, execErr = dbPool.Exec(context.Background(), `
+			INSERT INTO auto_scan_state (scope_target_id, current_step, is_paused, is_cancelled)
+			VALUES ($1, $2, $3, $4)
+			ON CONFLICT (scope_target_id)
+			DO UPDATE SET 
+				current_step = $2, 
+				is_paused = $3, 
+				is_cancelled = $4, 
+				updated_at = NOW()
+		`, targetID, requestData.CurrentStep, requestData.IsPaused, requestData.IsCancelled)
+	} else {
+		// Use upsert with only current_step
+		_, execErr = dbPool.Exec(context.Background(), `
+			INSERT INTO auto_scan_state (scope_target_id, current_step)
+			VALUES ($1, $2)
+			ON CONFLICT (scope_target_id)
+			DO UPDATE SET 
+				current_step = $2, 
+				updated_at = NOW()
+		`, targetID, requestData.CurrentStep)
+
+		// Try to add the missing columns
+		_, alterErr := dbPool.Exec(context.Background(), `
+			ALTER TABLE auto_scan_state 
+			ADD COLUMN IF NOT EXISTS is_paused BOOLEAN DEFAULT false,
+			ADD COLUMN IF NOT EXISTS is_cancelled BOOLEAN DEFAULT false;
+		`)
+		if alterErr != nil {
+			log.Printf("Error adding missing columns: %v", alterErr)
+		}
+	}
+
+	if execErr != nil {
+		log.Printf("Error updating auto scan state: %v", execErr)
 		http.Error(w, "Failed to update auto scan state", http.StatusInternalServerError)
 		return
 	}
@@ -383,6 +480,8 @@ func updateAutoScanState(w http.ResponseWriter, r *http.Request) {
 		"success":         true,
 		"scope_target_id": targetID,
 		"current_step":    requestData.CurrentStep,
+		"is_paused":       requestData.IsPaused,
+		"is_cancelled":    requestData.IsCancelled,
 	})
 }
 

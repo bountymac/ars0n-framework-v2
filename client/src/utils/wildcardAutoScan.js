@@ -28,7 +28,7 @@ const debugTrace = (message) => {
 };
 
 // Utility function to update the auto scan state on the server
-const updateAutoScanState = async (targetId, currentStep) => {
+const updateAutoScanState = async (targetId, currentStep, isPaused = false, isCancelled = false) => {
   try {
     const response = await fetch(
       `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/auto-scan-state/${targetId}`,
@@ -37,7 +37,11 @@ const updateAutoScanState = async (targetId, currentStep) => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ current_step: currentStep }),
+        body: JSON.stringify({ 
+          current_step: currentStep,
+          is_paused: isPaused,
+          is_cancelled: isCancelled
+        }),
       }
     );
     
@@ -45,7 +49,7 @@ const updateAutoScanState = async (targetId, currentStep) => {
       throw new Error(`Failed to update auto scan state: ${response.statusText}`);
     }
     
-    debugTrace(`API updated: current_step=${currentStep}`);
+    debugTrace(`API updated: current_step=${currentStep}, is_paused=${isPaused}, is_cancelled=${isCancelled}`);
     return true;
   } catch (error) {
     debugTrace(`Error updating auto scan state: ${error.message}`);
@@ -186,7 +190,7 @@ const resumeAutoScan = async (
   setAutoScanCurrentStep
 ) => {
   try {
-    setIsAutoScanning(false);
+    setIsAutoScanning(true);
     let startFromIndex = 0;
     const steps = getAutoScanSteps(activeTarget);
     for (let i = 0; i < steps.length; i++) {
@@ -199,7 +203,66 @@ const resumeAutoScan = async (
     // Execute steps from the determined starting point
     for (let i = startFromIndex; i < steps.length; i++) {
       try {
+        // Check if cancelled before starting the step
+        const stateResponse = await fetch(
+          `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/auto-scan-state/${activeTarget.id}`
+        );
+        if (stateResponse.ok) {
+          const state = await stateResponse.json();
+          // If cancelled, exit the loop
+          if (state.is_cancelled) {
+            debugTrace("Auto scan was cancelled, ending early");
+            await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.COMPLETED, false, false);
+            break;
+          }
+        }
+        
+        // Run the current step
         await steps[i].action();
+        
+        // Check if paused or cancelled after step completes
+        const pauseResponse = await fetch(
+          `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/auto-scan-state/${activeTarget.id}`
+        );
+        if (pauseResponse.ok) {
+          const state = await pauseResponse.json();
+          // If cancelled, exit the loop
+          if (state.is_cancelled) {
+            debugTrace("Auto scan was cancelled after step completion, ending early");
+            await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.COMPLETED, false, false);
+            break;
+          }
+          
+          // If paused, wait until unpaused
+          if (state.is_paused) {
+            debugTrace(`Auto scan paused after step ${steps[i].name}`);
+            // Mark the current step as paused
+            setAutoScanCurrentStep(`${steps[i].name}`);
+            
+            // Wait until unpaused
+            let isPaused = true;
+            while (isPaused) {
+              await new Promise(resolve => setTimeout(resolve, 2000));
+              const checkResponse = await fetch(
+                `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/auto-scan-state/${activeTarget.id}`
+              );
+              if (checkResponse.ok) {
+                const checkState = await checkResponse.json();
+                // If cancelled while paused, exit the loop
+                if (checkState.is_cancelled) {
+                  debugTrace("Auto scan was cancelled while paused");
+                  await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.COMPLETED, false, false);
+                  return;
+                }
+                // If unpaused, continue
+                if (!checkState.is_paused) {
+                  debugTrace("Auto scan resumed");
+                  isPaused = false;
+                }
+              }
+            }
+          }
+        }
       } catch (error) {
         debugTrace(`Error in step ${i+1}/${steps.length}: ${error.message}`);
       }
@@ -244,7 +307,68 @@ const startAutoScan = async (
     const steps = getAutoScanSteps();
     for (let i = 0; i < steps.length; i++) {
       try {
+        // Update current step
+        setAutoScanCurrentStep(steps[i].name);
+        await updateAutoScanState(activeTarget.id, steps[i].name);
+        
+        // Check if cancelled before starting the step
+        const stateResponse = await fetch(
+          `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/auto-scan-state/${activeTarget.id}`
+        );
+        if (stateResponse.ok) {
+          const state = await stateResponse.json();
+          // If cancelled, exit the loop
+          if (state.is_cancelled) {
+            debugTrace("Auto scan was cancelled, ending early");
+            await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.COMPLETED, false, false);
+            break;
+          }
+        }
+        
+        // Run the step
         await steps[i].action();
+        
+        // Check if paused or cancelled after step completes
+        const pauseResponse = await fetch(
+          `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/auto-scan-state/${activeTarget.id}`
+        );
+        if (pauseResponse.ok) {
+          const state = await pauseResponse.json();
+          // If cancelled, exit the loop
+          if (state.is_cancelled) {
+            debugTrace("Auto scan was cancelled after step completion, ending early");
+            await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.COMPLETED, false, false);
+            break;
+          }
+          
+          // If paused, wait until unpaused
+          if (state.is_paused) {
+            debugTrace(`Auto scan paused after step ${steps[i].name}`);
+            
+            // Wait until unpaused
+            let isPaused = true;
+            while (isPaused) {
+              await new Promise(resolve => setTimeout(resolve, 2000));
+              const checkResponse = await fetch(
+                `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/auto-scan-state/${activeTarget.id}`
+              );
+              if (checkResponse.ok) {
+                const checkState = await checkResponse.json();
+                // If cancelled while paused, exit the loop
+                if (checkState.is_cancelled) {
+                  debugTrace("Auto scan was cancelled while paused");
+                  await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.COMPLETED, false, false);
+                  return;
+                }
+                // If unpaused, continue
+                if (!checkState.is_paused) {
+                  debugTrace("Auto scan resumed");
+                  isPaused = false;
+                }
+              }
+            }
+          }
+        }
       } catch (error) {
         debugTrace(`Error in step ${steps[i].name}: ${error.message}`);
       }

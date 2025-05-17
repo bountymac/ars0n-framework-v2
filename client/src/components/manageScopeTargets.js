@@ -11,6 +11,11 @@ function ManageScopeTargets({
   getTypeIcon,
   onAutoScan,
   isAutoScanning,
+  isAutoScanPaused,
+  isAutoScanPausing,
+  isAutoScanCancelling,
+  setIsAutoScanPausing,
+  setIsAutoScanCancelling,
   autoScanCurrentStep,
   mostRecentGauScanStatus,
   consolidatedSubdomains = [],
@@ -28,6 +33,7 @@ function ManageScopeTargets({
   const intervalRef = useRef(null);
   const [displayStatus, setDisplayStatus] = useState('idle');
   const resetTimeoutRef = useRef(null);
+  const [isResuming, setIsResuming] = useState(false);
 
   useEffect(() => {
     const fetchConfig = async () => {
@@ -84,8 +90,16 @@ function ManageScopeTargets({
         console.log('Reset to idle status after 5-second delay');
       }, 5000);
     }
+    
+    // Update displayStatus based on pause state
+    if (isAutoScanning && isAutoScanPaused) {
+      setDisplayStatus('paused');
+    } else if (isAutoScanning && !isAutoScanPaused) {
+      setDisplayStatus('running');
+    }
+    
     prevIsAutoScanning.current = isAutoScanning;
-  }, [isAutoScanning, scanStartTime]);
+  }, [isAutoScanning, scanStartTime, isAutoScanPaused]);
 
   // Clean up timeout on unmount
   useEffect(() => {
@@ -150,12 +164,135 @@ function ManageScopeTargets({
     }
   };
 
-  const handlePause = () => {
-    console.log('Pause button clicked');
+  const handlePause = async () => {
+    if (!activeTarget || !activeTarget.id) return;
+    
+    if (!isAutoScanPaused) {
+      // Pause the scan
+      setIsAutoScanPausing(true);
+      try {
+        const response = await fetch(
+          `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/auto-scan-state/${activeTarget.id}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              current_step: autoScanCurrentStep,
+              is_paused: true,
+              is_cancelled: false
+            })
+          }
+        );
+        if (!response.ok) {
+          console.error('Error pausing auto scan:', await response.text());
+          setIsAutoScanPausing(false);
+        }
+      } catch (error) {
+        console.error('Error pausing auto scan:', error);
+        setIsAutoScanPausing(false);
+      }
+    } else {
+      // Resume the scan - set resuming state immediately
+      setIsResuming(true);
+      try {
+        const response = await fetch(
+          `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/auto-scan-state/${activeTarget.id}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              current_step: autoScanCurrentStep,
+              is_paused: false,
+              is_cancelled: false
+            })
+          }
+        );
+        if (!response.ok) {
+          console.error('Error resuming auto scan:', await response.text());
+          setIsResuming(false);
+        }
+        
+        // Poll to detect when the scan actually resumes
+        const checkInterval = setInterval(async () => {
+          try {
+            const statusResponse = await fetch(
+              `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/auto-scan-state/${activeTarget.id}`
+            );
+            
+            if (statusResponse.ok) {
+              const data = await statusResponse.json();
+              if (!data.is_paused) {
+                setIsResuming(false);
+                clearInterval(checkInterval);
+              }
+            }
+          } catch (error) {
+            console.error('Error checking auto scan state:', error);
+          }
+        }, 1000);
+        
+        // Clear the interval after 10 seconds maximum
+        setTimeout(() => {
+          clearInterval(checkInterval);
+          setIsResuming(false); // Reset resuming state after timeout
+        }, 10000);
+      } catch (error) {
+        console.error('Error resuming auto scan:', error);
+        setIsResuming(false);
+      }
+    }
   };
 
-  const handleCancel = () => {
-    console.log('Cancel button clicked');
+  const handleCancel = async () => {
+    if (!activeTarget || !activeTarget.id) return;
+    
+    setIsAutoScanCancelling(true);
+    try {
+      const response = await fetch(
+        `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/auto-scan-state/${activeTarget.id}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            current_step: autoScanCurrentStep,
+            is_paused: false,
+            is_cancelled: true
+          })
+        }
+      );
+      
+      if (!response.ok) {
+        console.error('Error cancelling auto scan:', await response.text());
+        setIsAutoScanCancelling(false);
+      } else {
+        // Poll status to check if scan has already completed
+        const checkInterval = setInterval(async () => {
+          try {
+            const statusResponse = await fetch(
+              `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/auto-scan-state/${activeTarget.id}`
+            );
+            
+            if (statusResponse.ok) {
+              const data = await statusResponse.json();
+              if (data.current_step === 'completed' || !isAutoScanning) {
+                setIsAutoScanCancelling(false);
+                clearInterval(checkInterval);
+              }
+            }
+          } catch (error) {
+            console.error('Error checking auto scan state:', error);
+          }
+        }, 1000);
+        
+        // Clear the interval after 10 seconds maximum
+        setTimeout(() => {
+          clearInterval(checkInterval);
+        }, 10000);
+      }
+    } catch (error) {
+      console.error('Error cancelling auto scan:', error);
+      setIsAutoScanCancelling(false);
+    }
   };
 
   const formatStepName = (stepKey) => {
@@ -200,6 +337,7 @@ function ManageScopeTargets({
   const getAutoScanStatusMessage = (step) => {
     if (!step || step === 'idle') return "Ready to start";
     if (step === 'completed') return "Scan completed";
+    if (isAutoScanPaused) return "Scan paused";
     
     const stepName = formatStepName(step);
     
@@ -391,21 +529,47 @@ function ManageScopeTargets({
                       ) : 'Auto Scan'}
                     </div>
                   </Button>
-                  <Button 
-                    variant="outline-danger" 
-                    className="flex-fill" 
-                    onClick={handlePause}
-                    disabled={!isAutoScanning}
-                  >
-                    Pause
-                  </Button>
+                  {isAutoScanPaused ? (
+                    <Button 
+                      variant="outline-danger" 
+                      className="flex-fill" 
+                      onClick={handlePause}
+                      disabled={!isAutoScanning || isResuming}
+                    >
+                      {isResuming ? (
+                        <div className="btn-content">
+                          <span className="me-1">Resuming</span>
+                          <Spinner animation="border" size="sm" />
+                        </div>
+                      ) : 'Resume'}
+                    </Button>
+                  ) : (
+                    <Button 
+                      variant="outline-danger" 
+                      className="flex-fill" 
+                      onClick={handlePause}
+                      disabled={!isAutoScanning || isAutoScanCancelling}
+                    >
+                      {isAutoScanPausing ? (
+                        <div className="btn-content">
+                          <span className="me-1">Pausing</span>
+                          <Spinner animation="border" size="sm" />
+                        </div>
+                      ) : 'Pause'}
+                    </Button>
+                  )}
                   <Button 
                     variant="outline-danger" 
                     className="flex-fill" 
                     onClick={handleCancel}
-                    disabled={!isAutoScanning}
+                    disabled={!isAutoScanning || isAutoScanPaused}
                   >
-                    Cancel
+                    {isAutoScanCancelling ? (
+                      <div className="btn-content">
+                        <span className="me-1">Cancelling</span>
+                        <Spinner animation="border" size="sm" />
+                      </div>
+                    ) : 'Cancel'}
                   </Button>
                 </div>
               </Card.Body>
