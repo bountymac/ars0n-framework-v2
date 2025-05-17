@@ -15,18 +15,18 @@ import Ars0nFrameworkHeader from './components/ars0nFrameworkHeader.js';
 import ManageScopeTargets from './components/manageScopeTargets.js';
 import fetchAmassScans from './utils/fetchAmassScans.js';
 import {
-    Container,
-    Fade,
-    Card,
-    Row,
-    Col,
-    Button,
-    ListGroup,
-    Accordion,
-    Modal,
-    Table,
-    Toast,
-    ToastContainer,
+  Container,
+  Fade,
+  Card,
+  Row,
+  Col,
+  Button,
+  ListGroup,
+  Accordion,
+  Modal,
+  Table,
+  Toast,
+  ToastContainer,
 } from 'react-bootstrap';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'bootstrap-icons/font/bootstrap-icons.css';
@@ -34,14 +34,14 @@ import initiateAmassScan from './utils/initiateAmassScan';
 import monitorScanStatus from './utils/monitorScanStatus';
 import validateInput from './utils/validateInput.js';
 import {
-    getTypeIcon,
-    getLastScanDate,
-    getLatestScanStatus,
-    getLatestScanTime,
-    getLatestScanId,
-    getExecutionTime,
-    getResultLength,
-    copyToClipboard,
+  getTypeIcon,
+  getLastScanDate,
+  getLatestScanStatus,
+  getLatestScanTime,
+  getLatestScanId,
+  getExecutionTime,
+  getResultLength,
+  copyToClipboard,
 } from './utils/miscUtils.js';
 import { MdCopyAll, MdCheckCircle } from 'react-icons/md';
 import initiateHttpxScan from './utils/initiateHttpxScan';
@@ -81,9 +81,9 @@ import fetchHttpxScans from './utils/fetchHttpxScans';
 import ROIReport from './components/ROIReport';
 import HelpMeLearn from './components/HelpMeLearn';
 import {
-    AUTO_SCAN_STEPS,
-    resumeAutoScan as resumeAutoScanUtil,
-    startAutoScan as startAutoScanUtil
+  AUTO_SCAN_STEPS,
+  resumeAutoScan as resumeAutoScanUtil,
+  startAutoScan as startAutoScanUtil
 } from './utils/wildcardAutoScan';
 import getAutoScanSteps from './utils/autoScanSteps';
 
@@ -1001,6 +1001,36 @@ function App() {
 
   const startAutoScan = async () => {
     console.log('[AutoScan] Starting Auto Scan. Fetching config from backend...');
+    
+    // Reset all scan-related states to avoid state persistence between scans
+    setAutoScanCurrentStep(AUTO_SCAN_STEPS.IDLE);
+    setIsAutoScanning(false);
+    setIsAutoScanPaused(false);
+    setIsAutoScanPausing(false);
+    setIsAutoScanCancelling(false);
+    
+    // Reset consolidation states
+    setConsolidatedSubdomains([]);
+    setIsConsolidating(false);
+    
+    // Reset individual scan states
+    setIsScanning(false);
+    setIsSublist3rScanning(false);
+    setIsAssetfinderScanning(false);
+    setIsGauScanning(false);
+    setIsCTLScanning(false);
+    setIsSubfinderScanning(false);
+    setIsHttpxScanning(false);
+    setIsShuffleDNSScanning(false);
+    setIsCeWLScanning(false);
+    setIsGoSpiderScanning(false);
+    setIsSubdomainizerScanning(false);
+    setIsNucleiScreenshotScanning(false);
+    setIsMetaDataScanning(false);
+    
+    // Add a small delay to ensure state is fully reset
+    await new Promise(resolve => setTimeout(resolve, 100));
+
     try {
       const response = await fetch(
         `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/auto-scan-config`
@@ -1025,6 +1055,10 @@ function App() {
       if (!sessionResp.ok) throw new Error('Failed to create auto scan session');
       const sessionData = await sessionResp.json();
       setAutoScanSessionId(sessionData.session_id);
+      
+      // Now set isAutoScanning to true after all resets and config fetching
+      setIsAutoScanning(true);
+      
       startAutoScanUtil(
         activeTarget,
         setIsAutoScanning,

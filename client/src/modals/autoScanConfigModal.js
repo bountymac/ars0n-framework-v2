@@ -1,7 +1,7 @@
 import { Modal, Button, Form, Spinner } from 'react-bootstrap';
 import { useState, useEffect } from 'react';
 
-function AutoScanConfigModal({ show, handleClose, config }) {
+function AutoScanConfigModal({ show, handleClose, config, onSave, loading: externalLoading }) {
   const tools = [
     { id: 'amass', name: 'Amass' },
     { id: 'sublist3r', name: 'Sublist3r' },
@@ -28,6 +28,9 @@ function AutoScanConfigModal({ show, handleClose, config }) {
   const [loading, setLoading] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [error, setError] = useState(null);
+
+  // Use external loading state if provided
+  const isLoading = externalLoading || loading;
 
   useEffect(() => {
     if (config) {
@@ -73,6 +76,13 @@ function AutoScanConfigModal({ show, handleClose, config }) {
       if (!response.ok) {
         throw new Error('Failed to save configuration');
       }
+      const savedConfig = await response.json();
+      
+      // Call the onSave callback with the saved configuration
+      if (onSave) {
+        onSave(savedConfig);
+      }
+      
       setSaveSuccess(true);
       setTimeout(() => {
         handleClose();
@@ -136,11 +146,11 @@ function AutoScanConfigModal({ show, handleClose, config }) {
           </Form.Group>
         </Modal.Body>
         <Modal.Footer className="border-secondary">
-          <Button variant="outline-secondary" onClick={handleClose} disabled={loading}>
+          <Button variant="outline-secondary" onClick={handleClose} disabled={isLoading}>
             Cancel
           </Button>
-          <Button variant="outline-danger" type="submit" disabled={loading || saveSuccess}>
-            {loading ? 'Saving...' : saveSuccess ? 'Saved!' : 'Save Configuration'}
+          <Button variant="outline-danger" type="submit" disabled={isLoading || saveSuccess}>
+            {isLoading ? 'Saving...' : saveSuccess ? 'Saved!' : 'Save Configuration'}
           </Button>
         </Modal.Footer>
       </Form>

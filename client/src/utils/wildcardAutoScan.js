@@ -28,8 +28,39 @@ const debugTrace = (message) => {
 };
 
 // Utility function to update the auto scan state on the server
-const updateAutoScanState = async (targetId, currentStep, isPaused = false, isCancelled = false) => {
+const updateAutoScanState = async (targetId, currentStep, isPaused = false, isCancelled = false, config = null) => {
   try {
+    // Skip updating disabled steps in the server state
+    if (config && currentStep !== AUTO_SCAN_STEPS.IDLE && currentStep !== AUTO_SCAN_STEPS.COMPLETED) {
+      const stepConfigMapping = {
+        [AUTO_SCAN_STEPS.AMASS]: 'amass',
+        [AUTO_SCAN_STEPS.SUBLIST3R]: 'sublist3r',
+        [AUTO_SCAN_STEPS.ASSETFINDER]: 'assetfinder',
+        [AUTO_SCAN_STEPS.GAU]: 'gau',
+        [AUTO_SCAN_STEPS.CTL]: 'ctl',
+        [AUTO_SCAN_STEPS.SUBFINDER]: 'subfinder',
+        [AUTO_SCAN_STEPS.CONSOLIDATE]: 'consolidate_httpx_round1',
+        [AUTO_SCAN_STEPS.HTTPX]: 'consolidate_httpx_round1',
+        [AUTO_SCAN_STEPS.SHUFFLEDNS]: 'shuffledns',
+        [AUTO_SCAN_STEPS.SHUFFLEDNS_CEWL]: 'cewl',
+        [AUTO_SCAN_STEPS.CONSOLIDATE_ROUND2]: 'consolidate_httpx_round2',
+        [AUTO_SCAN_STEPS.HTTPX_ROUND2]: 'consolidate_httpx_round2',
+        [AUTO_SCAN_STEPS.GOSPIDER]: 'gospider',
+        [AUTO_SCAN_STEPS.SUBDOMAINIZER]: 'subdomainizer',
+        [AUTO_SCAN_STEPS.CONSOLIDATE_ROUND3]: 'consolidate_httpx_round3',
+        [AUTO_SCAN_STEPS.HTTPX_ROUND3]: 'consolidate_httpx_round3',
+        [AUTO_SCAN_STEPS.NUCLEI_SCREENSHOT]: 'nuclei_screenshot',
+        [AUTO_SCAN_STEPS.METADATA]: 'metadata'
+      };
+      
+      const configKey = stepConfigMapping[currentStep];
+      if (configKey && config[configKey] === false) {
+        // This step is disabled in config, skip updating the state
+        debugTrace(`Skipping update of disabled step "${currentStep}" in server state`);
+        return true;
+      }
+    }
+
     const response = await fetch(
       `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/auto-scan-state/${targetId}`,
       {
@@ -191,6 +222,19 @@ const resumeAutoScan = async (
 ) => {
   try {
     setIsAutoScanning(true);
+    
+    // Get the config for this auto scan
+    const configResponse = await fetch(
+      `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/auto-scan-config`
+    );
+    
+    if (!configResponse.ok) {
+      throw new Error("Failed to fetch auto scan config");
+    }
+    
+    const config = await configResponse.json();
+    debugTrace("Auto scan config retrieved for resume");
+    
     let startFromIndex = 0;
     const steps = getAutoScanSteps(activeTarget);
     for (let i = 0; i < steps.length; i++) {
@@ -212,9 +256,40 @@ const resumeAutoScan = async (
           // If cancelled, exit the loop
           if (state.is_cancelled) {
             debugTrace("Auto scan was cancelled, ending early");
-            await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.COMPLETED, false, false);
+            await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.COMPLETED, false, false, config);
             break;
           }
+        }
+        
+        // Update current step - skip if disabled
+        const stepConfigMapping = {
+          [AUTO_SCAN_STEPS.AMASS]: 'amass',
+          [AUTO_SCAN_STEPS.SUBLIST3R]: 'sublist3r',
+          [AUTO_SCAN_STEPS.ASSETFINDER]: 'assetfinder',
+          [AUTO_SCAN_STEPS.GAU]: 'gau',
+          [AUTO_SCAN_STEPS.CTL]: 'ctl',
+          [AUTO_SCAN_STEPS.SUBFINDER]: 'subfinder',
+          [AUTO_SCAN_STEPS.CONSOLIDATE]: 'consolidate_httpx_round1',
+          [AUTO_SCAN_STEPS.HTTPX]: 'consolidate_httpx_round1',
+          [AUTO_SCAN_STEPS.SHUFFLEDNS]: 'shuffledns',
+          [AUTO_SCAN_STEPS.SHUFFLEDNS_CEWL]: 'cewl',
+          [AUTO_SCAN_STEPS.CONSOLIDATE_ROUND2]: 'consolidate_httpx_round2',
+          [AUTO_SCAN_STEPS.HTTPX_ROUND2]: 'consolidate_httpx_round2',
+          [AUTO_SCAN_STEPS.GOSPIDER]: 'gospider',
+          [AUTO_SCAN_STEPS.SUBDOMAINIZER]: 'subdomainizer',
+          [AUTO_SCAN_STEPS.CONSOLIDATE_ROUND3]: 'consolidate_httpx_round3',
+          [AUTO_SCAN_STEPS.HTTPX_ROUND3]: 'consolidate_httpx_round3',
+          [AUTO_SCAN_STEPS.NUCLEI_SCREENSHOT]: 'nuclei_screenshot',
+          [AUTO_SCAN_STEPS.METADATA]: 'metadata'
+        };
+        
+        const stepName = steps[i].name;
+        const configKey = stepConfigMapping[stepName];
+        
+        // Only update UI state if the step is enabled or it's a system step
+        if (!configKey || stepName === AUTO_SCAN_STEPS.IDLE || stepName === AUTO_SCAN_STEPS.COMPLETED || config[configKey] !== false) {
+          setAutoScanCurrentStep(stepName);
+          await updateAutoScanState(activeTarget.id, stepName, false, false, config);
         }
         
         // Run the current step
@@ -229,7 +304,7 @@ const resumeAutoScan = async (
           // If cancelled, exit the loop
           if (state.is_cancelled) {
             debugTrace("Auto scan was cancelled after step completion, ending early");
-            await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.COMPLETED, false, false);
+            await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.COMPLETED, false, false, config);
             break;
           }
           
@@ -251,7 +326,7 @@ const resumeAutoScan = async (
                 // If cancelled while paused, exit the loop
                 if (checkState.is_cancelled) {
                   debugTrace("Auto scan was cancelled while paused");
-                  await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.COMPLETED, false, false);
+                  await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.COMPLETED, false, false, config);
                   return;
                 }
                 // If unpaused, continue
@@ -276,7 +351,7 @@ const resumeAutoScan = async (
     setIsAutoScanning(false);
     setAutoScanCurrentStep(AUTO_SCAN_STEPS.COMPLETED);
     
-    // Update the API with completed status
+    // Update the API with completed status - don't need to check if this is disabled
     await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.COMPLETED);
   }
 };
@@ -304,12 +379,51 @@ const startAutoScan = async (
   await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.IDLE);
   
   try {
+    // Get the config for this auto scan
+    const configResponse = await fetch(
+      `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/auto-scan-config`
+    );
+    
+    if (!configResponse.ok) {
+      throw new Error("Failed to fetch auto scan config");
+    }
+    
+    const config = await configResponse.json();
+    debugTrace("Auto scan config retrieved");
+    
     const steps = getAutoScanSteps();
     for (let i = 0; i < steps.length; i++) {
       try {
-        // Update current step
-        setAutoScanCurrentStep(steps[i].name);
-        await updateAutoScanState(activeTarget.id, steps[i].name);
+        // Update current step - skip UI update if step is disabled
+        const stepConfigMapping = {
+          [AUTO_SCAN_STEPS.AMASS]: 'amass',
+          [AUTO_SCAN_STEPS.SUBLIST3R]: 'sublist3r',
+          [AUTO_SCAN_STEPS.ASSETFINDER]: 'assetfinder',
+          [AUTO_SCAN_STEPS.GAU]: 'gau',
+          [AUTO_SCAN_STEPS.CTL]: 'ctl',
+          [AUTO_SCAN_STEPS.SUBFINDER]: 'subfinder',
+          [AUTO_SCAN_STEPS.CONSOLIDATE]: 'consolidate_httpx_round1',
+          [AUTO_SCAN_STEPS.HTTPX]: 'consolidate_httpx_round1',
+          [AUTO_SCAN_STEPS.SHUFFLEDNS]: 'shuffledns',
+          [AUTO_SCAN_STEPS.SHUFFLEDNS_CEWL]: 'cewl',
+          [AUTO_SCAN_STEPS.CONSOLIDATE_ROUND2]: 'consolidate_httpx_round2',
+          [AUTO_SCAN_STEPS.HTTPX_ROUND2]: 'consolidate_httpx_round2',
+          [AUTO_SCAN_STEPS.GOSPIDER]: 'gospider',
+          [AUTO_SCAN_STEPS.SUBDOMAINIZER]: 'subdomainizer',
+          [AUTO_SCAN_STEPS.CONSOLIDATE_ROUND3]: 'consolidate_httpx_round3',
+          [AUTO_SCAN_STEPS.HTTPX_ROUND3]: 'consolidate_httpx_round3',
+          [AUTO_SCAN_STEPS.NUCLEI_SCREENSHOT]: 'nuclei_screenshot',
+          [AUTO_SCAN_STEPS.METADATA]: 'metadata'
+        };
+        
+        const stepName = steps[i].name;
+        const configKey = stepConfigMapping[stepName];
+        
+        // Only update UI state if the step is enabled or it's a system step
+        if (!configKey || stepName === AUTO_SCAN_STEPS.IDLE || stepName === AUTO_SCAN_STEPS.COMPLETED || config[configKey] !== false) {
+          setAutoScanCurrentStep(stepName);
+          await updateAutoScanState(activeTarget.id, stepName, false, false, config);
+        }
         
         // Check if cancelled before starting the step
         const stateResponse = await fetch(
@@ -320,7 +434,7 @@ const startAutoScan = async (
           // If cancelled, exit the loop
           if (state.is_cancelled) {
             debugTrace("Auto scan was cancelled, ending early");
-            await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.COMPLETED, false, false);
+            await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.COMPLETED, false, false, config);
             break;
           }
         }
@@ -337,7 +451,7 @@ const startAutoScan = async (
           // If cancelled, exit the loop
           if (state.is_cancelled) {
             debugTrace("Auto scan was cancelled after step completion, ending early");
-            await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.COMPLETED, false, false);
+            await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.COMPLETED, false, false, config);
             break;
           }
           
@@ -357,7 +471,7 @@ const startAutoScan = async (
                 // If cancelled while paused, exit the loop
                 if (checkState.is_cancelled) {
                   debugTrace("Auto scan was cancelled while paused");
-                  await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.COMPLETED, false, false);
+                  await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.COMPLETED, false, false, config);
                   return;
                 }
                 // If unpaused, continue

@@ -126,6 +126,24 @@ function ManageScopeTargets({
     }
   }, [isAutoScanning, scanStartTime, scanEndTime]);
 
+  // Add a useEffect to reset the UI when autoScanCurrentStep changes to idle
+  useEffect(() => {
+    if (autoScanCurrentStep === 'idle' && !isAutoScanning) {
+      // This means a scan is about to start or has been reset
+      setDisplayStatus('idle');
+      setScanStartTime(null);
+      setScanEndTime(null);
+      setFinalDuration('');
+      setElapsed('');
+      
+      // Clear any pending reset timeout
+      if (resetTimeoutRef.current) {
+        clearTimeout(resetTimeoutRef.current);
+        resetTimeoutRef.current = null;
+      }
+    }
+  }, [autoScanCurrentStep, isAutoScanning]);
+
   const handleConfigure = async () => {
     // Fetch latest config before showing the modal
     setConfigLoading(true);
@@ -148,17 +166,10 @@ function ManageScopeTargets({
     setConfigLoading(true);
     console.log('[AutoScanConfig] Saving config to backend:', config);
     try {
-      const response = await fetch(`${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/auto-scan-config`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(config)
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setAutoScanConfig(data);
-        setShowConfigModal(false);
-        console.log('[AutoScanConfig] Saved and updated config from backend:', data);
-      }
+      // The config is already saved by the modal, just update our local state
+      setAutoScanConfig(config);
+      setShowConfigModal(false);
+      console.log('[AutoScanConfig] Updated local config from modal:', config);
     } finally {
       setConfigLoading(false);
     }
@@ -321,9 +332,12 @@ function ManageScopeTargets({
       
       const configKey = stepConfigMapping[stepKey];
       if (configKey && autoScanConfig[configKey] === false) {
-        return 'Thinking...';
+        console.log("rs0n: " + configKey + " " + autoScanConfig[configKey])
+        return 'Transitioning...';
       }
     }
+    
+    if (!stepKey) return 'Processing';
     
     // Replace underscores with spaces and capitalize words
     return stepKey
@@ -383,29 +397,16 @@ function ManageScopeTargets({
     const currentStepIndex = fullStepSequence.indexOf(autoScanCurrentStep);
     if (currentStepIndex === -1) return 0; // Step not found in sequence
     
-    // Get list of enabled steps in config key format
-    const enabledConfigKeys = Object.entries(autoScanConfig)
-      .filter(([key, enabled]) => enabled === true && ['amass', 'sublist3r', 'assetfinder', 'gau', 'ctl', 'subfinder', 
-                                                      'consolidate_httpx_round1', 'shuffledns', 'cewl', 
-                                                      'consolidate_httpx_round2', 'gospider', 'subdomainizer', 
-                                                      'consolidate_httpx_round3', 'nuclei_screenshot', 'metadata'].includes(key))
-      .map(([key]) => key);
     
-    if (enabledConfigKeys.length === 0) return 0;
-    
-    // Convert the enabled config keys to their corresponding step names
-    const enabledSteps = [];
-    for (const configKey of enabledConfigKeys) {
-      // Find all steps that map to this config key
-      const matchingSteps = Object.entries(stepToConfigKeyMap)
-        .filter(([, mapConfigKey]) => mapConfigKey === configKey)
-        .map(([stepName]) => stepName);
-      
-      // Add the first matching step (to avoid duplicates for consolidate/httpx pairs)
-      if (matchingSteps.length > 0) {
-        const stepToAdd = matchingSteps.sort((a, b) => 
-          fullStepSequence.indexOf(a) - fullStepSequence.indexOf(b))[0];
-        enabledSteps.push(stepToAdd);
+    // Filter and sort enabled steps
+    let enabledSteps = [];
+    for (const [stepName, configKey] of Object.entries(stepToConfigKeyMap)) {
+      if (autoScanConfig[configKey] === true) {
+        // Only add steps once (avoid duplicates like consolidate/httpx)
+        if (!enabledSteps.includes(stepName) && 
+            (!stepName.includes('httpx') || !enabledSteps.includes(stepName.replace('httpx', 'consolidate')))) {
+          enabledSteps.push(stepName);
+        }
       }
     }
     
@@ -413,7 +414,10 @@ function ManageScopeTargets({
     enabledSteps.sort((a, b) => 
       fullStepSequence.indexOf(a) - fullStepSequence.indexOf(b));
     
-    // Count how many enabled steps we've completed or are currently on
+    // If no enabled steps, return 0
+    if (enabledSteps.length === 0) return 0;
+    
+    // Count how many enabled steps have been completed
     let completedEnabledSteps = 0;
     for (let i = 0; i < enabledSteps.length; i++) {
       const enabledStep = enabledSteps[i];
@@ -434,6 +438,11 @@ function ManageScopeTargets({
     
     // Calculate progress as a percentage of enabled steps completed
     const progress = Math.round((completedEnabledSteps / enabledSteps.length) * 100);
+    
+    // Add debug logging for troubleshooting
+    console.log(`[Progress] Current step: ${autoScanCurrentStep}, index: ${currentStepIndex}`);
+    console.log(`[Progress] Enabled steps (${enabledSteps.length}):`, enabledSteps);
+    console.log(`[Progress] Completed steps: ${completedEnabledSteps}, Progress: ${progress}%`);
     
     // Cap at 95% until completed
     return Math.min(progress, 95);
