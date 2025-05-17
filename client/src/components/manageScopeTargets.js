@@ -1,4 +1,4 @@
-import { Row, Col, Button, Card, Alert, Spinner } from 'react-bootstrap';
+import { Row, Col, Button, Card, Alert, Spinner, ProgressBar } from 'react-bootstrap';
 import { useState, useEffect, useRef } from 'react';
 import AutoScanConfigModal from '../modals/autoScanConfigModal';
 import { getHttpxResultsCount } from '../utils/miscUtils';
@@ -26,6 +26,8 @@ function ManageScopeTargets({
   const [finalDuration, setFinalDuration] = useState('');
   const prevIsAutoScanning = useRef(isAutoScanning);
   const intervalRef = useRef(null);
+  const [displayStatus, setDisplayStatus] = useState('idle');
+  const resetTimeoutRef = useRef(null);
 
   useEffect(() => {
     const fetchConfig = async () => {
@@ -52,11 +54,22 @@ function ManageScopeTargets({
 
   useEffect(() => {
     if (!prevIsAutoScanning.current && isAutoScanning) {
+      // Scan starting
       setScanStartTime(new Date());
       setScanEndTime(null);
       setFinalDuration('');
+      setDisplayStatus('running');
+      
+      // Clear any pending reset timeout
+      if (resetTimeoutRef.current) {
+        clearTimeout(resetTimeoutRef.current);
+        resetTimeoutRef.current = null;
+      }
     } else if (prevIsAutoScanning.current && !isAutoScanning) {
+      // Scan completing
       setScanEndTime(new Date());
+      setDisplayStatus('completed');
+      
       if (scanStartTime) {
         const now = new Date();
         const diff = now - new Date(scanStartTime);
@@ -64,9 +77,24 @@ function ManageScopeTargets({
         const secs = Math.floor((diff % 60000) / 1000);
         setFinalDuration(`${mins}m ${secs < 10 ? '0' : ''}${secs}s`);
       }
+      
+      // Set a timeout to reset status to idle after 5 seconds
+      resetTimeoutRef.current = setTimeout(() => {
+        setDisplayStatus('idle');
+        console.log('Reset to idle status after 5-second delay');
+      }, 5000);
     }
     prevIsAutoScanning.current = isAutoScanning;
-  }, [isAutoScanning]);
+  }, [isAutoScanning, scanStartTime]);
+
+  // Clean up timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (resetTimeoutRef.current) {
+        clearTimeout(resetTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (isAutoScanning && scanStartTime) {
@@ -84,9 +112,22 @@ function ManageScopeTargets({
     }
   }, [isAutoScanning, scanStartTime, scanEndTime]);
 
-  const handleConfigure = () => {
-    setShowConfigModal(true);
-    console.log('[AutoScanConfig] Modal opened. Current config:', autoScanConfig);
+  const handleConfigure = async () => {
+    // Fetch latest config before showing the modal
+    setConfigLoading(true);
+    try {
+      const response = await fetch(`${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/auto-scan-config`);
+      if (response.ok) {
+        const data = await response.json();
+        setAutoScanConfig(data);
+        console.log('[AutoScanConfig] Fetched fresh config before opening modal:', data);
+      }
+    } catch (e) {
+      console.error('[AutoScanConfig] Error fetching config:', e);
+    } finally {
+      setConfigLoading(false);
+      setShowConfigModal(true);
+    }
   };
 
   const handleConfigSave = async (config) => {
@@ -133,6 +174,88 @@ function ManageScopeTargets({
     return words;
   };
 
+  const getAutoScanPhase = (step) => {
+    if (!step || step === 'idle' || step === 'completed') return "";
+    
+    // Define phases based on step groups
+    if (['amass', 'sublist3r', 'assetfinder', 'gau', 'ctl', 'subfinder'].includes(step)) {
+      return "Phase 1: Initial Subdomain Discovery";
+    } else if (step.includes('consolidate_httpx_round1')) {
+      return "Phase 2: Consolidating Initial Results";
+    } else if (['shuffledns', 'cewl'].includes(step)) {
+      return "Phase 3: Brute Force Discovery";
+    } else if (step.includes('consolidate_httpx_round2')) {
+      return "Phase 4: Consolidating Brute Force Results";
+    } else if (['gospider', 'subdomainizer'].includes(step)) {
+      return "Phase 5: JavaScript/Link Discovery";
+    } else if (step.includes('consolidate_httpx_round3')) {
+      return "Phase 6: Final Consolidation";
+    } else if (['nuclei_screenshot', 'metadata'].includes(step)) {
+      return "Phase 7: Target Analysis";
+    }
+    
+    return "";
+  };
+
+  const getAutoScanStatusMessage = (step) => {
+    if (!step || step === 'idle') return "Ready to start";
+    if (step === 'completed') return "Scan completed";
+    
+    const stepName = formatStepName(step);
+    
+    if (step.includes('consolidate')) {
+      return `Consolidating subdomains and discovering live web servers`;
+    } else if (step === 'nuclei_screenshot') {
+      return `Taking screenshots of discovered web servers`;
+    } else if (step === 'metadata') {
+      return `Gathering metadata from discovered web servers`;
+    } else {
+      return `Running ${stepName} scan`;
+    }
+  };
+
+  const calculateProgress = () => {
+    // If the display status is idle, always return 0
+    if (displayStatus === 'idle' || !autoScanConfig || !autoScanCurrentStep || autoScanCurrentStep === 'idle') return 0;
+    
+    // If the display status is completed, return 100 for 5 seconds before resetting
+    if (displayStatus === 'completed') return 100;
+    
+    // List of all possible steps in order, treating consolidation+httpx as single steps
+    const stepOrder = [
+      'amass', 'sublist3r', 'assetfinder', 'gau', 'ctl', 'subfinder',
+      'consolidate_httpx_round1',
+      'shuffledns', 'cewl',
+      'consolidate_httpx_round2',
+      'gospider', 'subdomainizer',
+      'consolidate_httpx_round3',
+      'nuclei_screenshot', 'metadata'
+    ];
+    
+    // Enabled steps
+    const enabledSteps = stepOrder.filter(key => autoScanConfig[key] !== false);
+    
+    // Current step index - handle both consolidation and httpx steps
+    let currentIndex = -1;
+    for (let i = 0; i < enabledSteps.length; i++) {
+      const step = enabledSteps[i];
+      if (step === autoScanCurrentStep) {
+        currentIndex = i;
+        break;
+      } else if (step.includes('consolidate_httpx') && 
+                (autoScanCurrentStep.includes('consolidate') || autoScanCurrentStep === 'httpx')) {
+        currentIndex = i;
+        break;
+      }
+    }
+    
+    if (currentIndex === -1) return 0;
+    
+    // Calculate progress percentage - cap at 95% until completed
+    const progress = Math.round(((currentIndex + 1) / enabledSteps.length) * 100);
+    return Math.min(progress, 95);
+  };
+
   return (
     <>
       <Row className="mb-3">
@@ -166,61 +289,78 @@ function ManageScopeTargets({
                   <div className="d-flex justify-content-between align-items-center mb-1 w-100">
                     <div className="d-flex flex-column">
                       <div className="d-flex align-items-center mb-1">
-                        <span className={`fw-bold text-${isAutoScanning ? 'danger' : scanEndTime ? 'success' : 'secondary'}`}>Auto Scan Status: {isAutoScanning ? 'Running' : scanEndTime ? 'Completed' : 'Idle'}</span>
-                        {isAutoScanning && <Spinner animation="border" size="sm" variant="danger" className="ms-2" />}
+                        <span className={`fw-bold text-${displayStatus === 'running' ? 'danger' : displayStatus === 'completed' ? 'success' : 'secondary'}`}>
+                          Auto Scan Status: {displayStatus === 'running' ? 'Running' : displayStatus === 'completed' ? 'Completed' : 'Idle'}
+                        </span>
+                        {displayStatus === 'running' && <Spinner animation="border" size="sm" variant="danger" className="ms-2" />}
                       </div>
-                      {isAutoScanning && autoScanCurrentStep && autoScanCurrentStep !== 'idle' && autoScanCurrentStep !== 'completed' && (
-                        <div className="mb-1">
-                          <span className="text-white-50">Current Step: </span>
-                          <span className="text-white">{formatStepName(autoScanCurrentStep)}</span>
-                        </div>
-                      )}
-                      {scanStartTime && (
-                        <div className="mb-1">
-                          <span className="text-white-50">Start Time: </span>
-                          <span className="text-white">{new Date(scanStartTime).toLocaleTimeString()}</span>
-                        </div>
-                      )}
-                      {isAutoScanning && (
+                      <div className="mb-1">
+                        <span className="text-white-50">Start Time: </span>
+                        <span className="text-white">{scanStartTime ? new Date(scanStartTime).toLocaleTimeString() : '--:--:-- --'}</span>
+                      </div>
+                      {isAutoScanning ? (
                         <div className="mb-1">
                           <span className="text-white-50">Elapsed: </span>
-                          <span className="text-white">{elapsed}</span>
+                          <span className="text-white">{elapsed || '0m 00s'}</span>
                         </div>
-                      )}
-                      {!isAutoScanning && scanEndTime && scanStartTime && (
+                      ) : (
                         <div className="mb-1">
                           <span className="text-white-50">Duration: </span>
-                          <span className="text-white">{finalDuration}</span>
+                          <span className="text-white">{finalDuration || (scanEndTime ? '0m 00s' : '--')}</span>
                         </div>
                       )}
                     </div>
                     <div className="text-end" style={{ minWidth: 180 }}>
-                      {/* Tools Run Count */}
-                      {autoScanConfig && (
-                        (() => {
-                          // List of all possible steps in order
-                          const stepOrder = [
-                            'amass', 'sublist3r', 'assetfinder', 'gau', 'ctl', 'subfinder',
-                            'consolidate_httpx_round1', 'shuffledns', 'cewl', 'consolidate_httpx_round2',
-                            'gospider', 'subdomainizer', 'consolidate_httpx_round3', 'nuclei_screenshot', 'metadata'
-                          ];
-                          // Enabled steps
-                          const enabledSteps = stepOrder.filter(key => autoScanConfig[key] !== false);
-                          // Current step index
-                          let runCount = 0;
-                          if (isAutoScanning && autoScanCurrentStep && autoScanCurrentStep !== 'idle' && autoScanCurrentStep !== 'completed') {
-                            const idx = enabledSteps.findIndex(key => formatStepName(key) === formatStepName(autoScanCurrentStep));
-                            runCount = idx >= 0 ? idx + 1 : 0;
-                          } else if (!isAutoScanning && scanEndTime) {
-                            runCount = enabledSteps.length;
-                          }
-                          return (
-                            <div className="text-white-50 small mb-1">Tools Run: <span className="text-white">{runCount}</span> / <span className="text-white">{enabledSteps.length}</span></div>
-                          );
-                        })()
-                      )}
-                      <div className="text-white-50 small">Consolidated Subdomains: <span className="text-white">{consolidatedSubdomains.length}</span> / <span className="text-white">{autoScanConfig?.maxConsolidatedSubdomains ?? 2500}</span></div>
-                      <div className="text-white-50 small">Live Web Servers: <span className="text-white">{getHttpxResultsCount ? getHttpxResultsCount(mostRecentHttpxScan) : 0}</span> / <span className="text-white">{autoScanConfig?.maxLiveWebServers ?? 500}</span></div>
+                      <div className="text-white-50 small mb-2">
+                        Consolidated Subdomains: {consolidatedSubdomains.length} / {autoScanConfig?.maxConsolidatedSubdomains ?? 2500}
+                      </div>
+                      <div className="text-white-50 small mb-2">
+                        Live Web Servers: {getHttpxResultsCount(mostRecentHttpxScan)} / {autoScanConfig?.maxLiveWebServers ?? 500}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Auto Scan Status - Always shown */}
+                  <div className="mt-3">
+                    <div className="d-flex justify-content-between align-items-center mb-2">
+                      <div className="text-white-50 small">
+                        {displayStatus === 'running' ? (
+                          <>
+                            <span className="text-danger">●</span> Running {formatStepName(autoScanCurrentStep)}
+                          </>
+                        ) : displayStatus === 'completed' ? (
+                          <>
+                            <span className="text-success">●</span> Scan completed
+                          </>
+                        ) : (
+                          <>
+                            <span className="text-secondary">●</span> Ready to scan
+                          </>
+                        )}
+                      </div>
+                      <div className="text-white-50 small">
+                        {scanEndTime && (
+                          <>
+                            Duration: {finalDuration}
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Progress Bar - Always shown */}
+                    <div className="mt-2">
+                      <div className="d-flex justify-content-between mb-1">
+                        <span className="text-white-50 small">Progress</span>
+                        <span className="text-white small">
+                          {displayStatus === 'idle' ? '0' : calculateProgress()}%
+                        </span>
+                      </div>
+                      <ProgressBar 
+                        now={calculateProgress()} 
+                        variant="danger" 
+                        className="bg-dark" 
+                        style={{ height: '8px' }}
+                      />
                     </div>
                   </div>
                 </div>

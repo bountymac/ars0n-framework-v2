@@ -684,7 +684,10 @@ func updateAutoScanSessionFinalStats(w http.ResponseWriter, r *http.Request) {
 	}
 	_, err := dbPool.Exec(context.Background(), `
 		UPDATE auto_scan_sessions
-		SET final_consolidated_subdomains = $1, final_live_web_servers = $2, ended_at = COALESCE(ended_at, NOW())
+		SET final_consolidated_subdomains = $1, 
+		    final_live_web_servers = $2, 
+		    ended_at = COALESCE(ended_at, NOW()),
+		    status = 'completed'
 		WHERE id = $3
 	`, payload.FinalConsolidatedSubdomains, payload.FinalLiveWebServers, sessionID)
 	if err != nil {

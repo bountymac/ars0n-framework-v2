@@ -1499,12 +1499,46 @@ function App() {
         `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/auto-scan/sessions?target_id=${activeTarget.id}`
       );
       if (response.ok) {
-        const data = await response.json();
-        setAutoScanSessions(Array.isArray(data) ? data : []);
+        const rawData = await response.json();
+        
+        // Process and format the data for display
+        const formattedData = Array.isArray(rawData) ? rawData.map(session => {
+          // Format start time
+          const startTime = new Date(session.started_at);
+          const formattedStartTime = startTime.toLocaleString();
+          
+          // Format end time if available
+          let formattedEndTime = "";
+          let durationStr = "";
+          
+          if (session.ended_at) {
+            const endTime = new Date(session.ended_at);
+            formattedEndTime = endTime.toLocaleString();
+            
+            // Calculate duration
+            const durationMs = endTime - startTime;
+            const durationMins = Math.floor(durationMs / 60000);
+            const durationSecs = Math.floor((durationMs % 60000) / 1000);
+            durationStr = `${durationMins}m ${durationSecs < 10 ? '0' : ''}${durationSecs}s`;
+          }
+          
+          return {
+            session_id: session.id,
+            start_time: formattedStartTime,
+            end_time: formattedEndTime,
+            duration: durationStr,
+            status: session.status || "running",
+            final_consolidated_subdomains: session.final_consolidated_subdomains || 0,
+            final_live_web_servers: session.final_live_web_servers || 0
+          };
+        }) : [];
+        
+        setAutoScanSessions(formattedData);
       } else {
         setAutoScanSessions([]);
       }
     } catch (error) {
+      console.error("Error fetching auto scan sessions:", error);
       setAutoScanSessions([]);
     }
     setShowAutoScanHistoryModal(true);
@@ -2537,8 +2571,8 @@ function App() {
                 <th>End Time</th>
                 <th>Duration</th>
                 <th>Status</th>
-                <th>Final Consolidated Subdomains</th>
-                <th>Final Live Web Servers</th>
+                <th>Consolidated Subdomains</th>
+                <th>Live Web Servers</th>
               </tr>
             </thead>
             <tbody>
@@ -2551,13 +2585,19 @@ function App() {
               ) : (
                 autoScanSessions.map((session) => (
                   <tr key={session.session_id}>
-                    <td>{session.session_id}</td>
+                    <td className="text-truncate" style={{ maxWidth: '180px' }} title={session.session_id}>
+                      {session.session_id}
+                    </td>
                     <td>{session.start_time}</td>
-                    <td>{session.end_time}</td>
-                    <td>{session.duration}</td>
-                    <td>{session.status}</td>
-                    <td>{session.final_consolidated_subdomains}</td>
-                    <td>{session.final_live_web_servers}</td>
+                    <td>{session.end_time || '—'}</td>
+                    <td>{session.duration || '—'}</td>
+                    <td>
+                      <span className={`text-${session.status === 'completed' ? 'success' : session.status === 'cancelled' ? 'warning' : 'primary'}`}>
+                        {session.status.charAt(0).toUpperCase() + session.status.slice(1)}
+                      </span>
+                    </td>
+                    <td>{session.final_consolidated_subdomains || '—'}</td>
+                    <td>{session.final_live_web_servers || '—'}</td>
                   </tr>
                 ))
               )}

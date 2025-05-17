@@ -76,7 +76,7 @@ function AutoScanConfigModal({ show, handleClose, config }) {
       setSaveSuccess(true);
       setTimeout(() => {
         handleClose();
-      }, 1500);
+      }, 750);
     } catch (err) {
       setError('Failed to save configuration. Please try again.');
     } finally {
