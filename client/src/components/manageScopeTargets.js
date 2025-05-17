@@ -296,60 +296,47 @@ function ManageScopeTargets({
   };
 
   const formatStepName = (stepKey) => {
-    if (!stepKey) return "";
-    if (stepKey === 'gau' && mostRecentGauScanStatus === 'processing') {
-      return "GAU (Processing Large Results)";
+    // If this is a step for a disabled tool, don't show it
+    if (autoScanConfig) {
+      const stepConfigMapping = {
+        'amass': 'amass',
+        'sublist3r': 'sublist3r',
+        'assetfinder': 'assetfinder',
+        'gau': 'gau',
+        'ctl': 'ctl',
+        'subfinder': 'subfinder',
+        'consolidate': 'consolidate_httpx_round1',
+        'httpx': 'consolidate_httpx_round1',
+        'shuffledns': 'shuffledns',
+        'shuffledns_cewl': 'cewl',
+        'consolidate_round2': 'consolidate_httpx_round2',
+        'httpx_round2': 'consolidate_httpx_round2',
+        'gospider': 'gospider',
+        'subdomainizer': 'subdomainizer',
+        'consolidate_round3': 'consolidate_httpx_round3',
+        'httpx_round3': 'consolidate_httpx_round3',
+        'nuclei-screenshot': 'nuclei_screenshot',
+        'metadata': 'metadata'
+      };
+      
+      const configKey = stepConfigMapping[stepKey];
+      if (configKey && autoScanConfig[configKey] === false) {
+        return 'Thinking...';
+      }
     }
-    const words = stepKey
-      .replace(/([A-Z])/g, ' $1')
-      .replace(/_/g, ' ')
-      .toLowerCase()
-      .split(' ')
-      .filter(word => word.length > 0)
+    
+    // Replace underscores with spaces and capitalize words
+    return stepKey
+      .split('_')
       .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ');
-    return words;
-  };
-
-  const getAutoScanPhase = (step) => {
-    if (!step || step === 'idle' || step === 'completed') return "";
-    
-    // Define phases based on step groups
-    if (['amass', 'sublist3r', 'assetfinder', 'gau', 'ctl', 'subfinder'].includes(step)) {
-      return "Phase 1: Initial Subdomain Discovery";
-    } else if (step.includes('consolidate_httpx_round1')) {
-      return "Phase 2: Consolidating Initial Results";
-    } else if (['shuffledns', 'cewl'].includes(step)) {
-      return "Phase 3: Brute Force Discovery";
-    } else if (step.includes('consolidate_httpx_round2')) {
-      return "Phase 4: Consolidating Brute Force Results";
-    } else if (['gospider', 'subdomainizer'].includes(step)) {
-      return "Phase 5: JavaScript/Link Discovery";
-    } else if (step.includes('consolidate_httpx_round3')) {
-      return "Phase 6: Final Consolidation";
-    } else if (['nuclei_screenshot', 'metadata'].includes(step)) {
-      return "Phase 7: Target Analysis";
-    }
-    
-    return "";
-  };
-
-  const getAutoScanStatusMessage = (step) => {
-    if (!step || step === 'idle') return "Ready to start";
-    if (step === 'completed') return "Scan completed";
-    if (isAutoScanPaused) return "Scan paused";
-    
-    const stepName = formatStepName(step);
-    
-    if (step.includes('consolidate')) {
-      return `Consolidating subdomains and discovering live web servers`;
-    } else if (step === 'nuclei_screenshot') {
-      return `Taking screenshots of discovered web servers`;
-    } else if (step === 'metadata') {
-      return `Gathering metadata from discovered web servers`;
-    } else {
-      return `Running ${stepName} scan`;
-    }
+      .join(' ')
+      .replace('Httpx', 'HTTPX')
+      .replace('Sublist3r', 'Sublist3r')
+      .replace('Subdomainizer', 'Subdomainizer')
+      .replace('Cewl', 'CeWL')
+      .replace('Ctl', 'CTL')
+      .replace('Gau', 'GAU')
+      .replace('Nuclei-screenshot', 'Nuclei Screenshot');
   };
 
   const calculateProgress = () => {
@@ -359,38 +346,96 @@ function ManageScopeTargets({
     // If the display status is completed, return 100 for 5 seconds before resetting
     if (displayStatus === 'completed') return 100;
     
-    // List of all possible steps in order, treating consolidation+httpx as single steps
-    const stepOrder = [
+    // Define the full step sequence in execution order
+    const fullStepSequence = [
       'amass', 'sublist3r', 'assetfinder', 'gau', 'ctl', 'subfinder',
-      'consolidate_httpx_round1',
-      'shuffledns', 'cewl',
-      'consolidate_httpx_round2',
+      'consolidate', 'httpx', 
+      'shuffledns', 'shuffledns_cewl',
+      'consolidate_round2', 'httpx_round2',
       'gospider', 'subdomainizer',
-      'consolidate_httpx_round3',
-      'nuclei_screenshot', 'metadata'
+      'consolidate_round3', 'httpx_round3',
+      'nuclei-screenshot', 'metadata', 'completed'
     ];
     
-    // Enabled steps
-    const enabledSteps = stepOrder.filter(key => autoScanConfig[key] !== false);
+    // Map steps to their config keys
+    const stepToConfigKeyMap = {
+      'amass': 'amass', 
+      'sublist3r': 'sublist3r', 
+      'assetfinder': 'assetfinder', 
+      'gau': 'gau', 
+      'ctl': 'ctl', 
+      'subfinder': 'subfinder',
+      'consolidate': 'consolidate_httpx_round1',
+      'httpx': 'consolidate_httpx_round1',
+      'shuffledns': 'shuffledns',
+      'shuffledns_cewl': 'cewl',
+      'consolidate_round2': 'consolidate_httpx_round2',
+      'httpx_round2': 'consolidate_httpx_round2',
+      'gospider': 'gospider',
+      'subdomainizer': 'subdomainizer',
+      'consolidate_round3': 'consolidate_httpx_round3',
+      'httpx_round3': 'consolidate_httpx_round3',
+      'nuclei-screenshot': 'nuclei_screenshot',
+      'metadata': 'metadata'
+    };
     
-    // Current step index - handle both consolidation and httpx steps
-    let currentIndex = -1;
+    // Get the position of the current step in the full sequence
+    const currentStepIndex = fullStepSequence.indexOf(autoScanCurrentStep);
+    if (currentStepIndex === -1) return 0; // Step not found in sequence
+    
+    // Get list of enabled steps in config key format
+    const enabledConfigKeys = Object.entries(autoScanConfig)
+      .filter(([key, enabled]) => enabled === true && ['amass', 'sublist3r', 'assetfinder', 'gau', 'ctl', 'subfinder', 
+                                                      'consolidate_httpx_round1', 'shuffledns', 'cewl', 
+                                                      'consolidate_httpx_round2', 'gospider', 'subdomainizer', 
+                                                      'consolidate_httpx_round3', 'nuclei_screenshot', 'metadata'].includes(key))
+      .map(([key]) => key);
+    
+    if (enabledConfigKeys.length === 0) return 0;
+    
+    // Convert the enabled config keys to their corresponding step names
+    const enabledSteps = [];
+    for (const configKey of enabledConfigKeys) {
+      // Find all steps that map to this config key
+      const matchingSteps = Object.entries(stepToConfigKeyMap)
+        .filter(([, mapConfigKey]) => mapConfigKey === configKey)
+        .map(([stepName]) => stepName);
+      
+      // Add the first matching step (to avoid duplicates for consolidate/httpx pairs)
+      if (matchingSteps.length > 0) {
+        const stepToAdd = matchingSteps.sort((a, b) => 
+          fullStepSequence.indexOf(a) - fullStepSequence.indexOf(b))[0];
+        enabledSteps.push(stepToAdd);
+      }
+    }
+    
+    // Sort enabled steps by their order in the full sequence
+    enabledSteps.sort((a, b) => 
+      fullStepSequence.indexOf(a) - fullStepSequence.indexOf(b));
+    
+    // Count how many enabled steps we've completed or are currently on
+    let completedEnabledSteps = 0;
     for (let i = 0; i < enabledSteps.length; i++) {
-      const step = enabledSteps[i];
-      if (step === autoScanCurrentStep) {
-        currentIndex = i;
+      const enabledStep = enabledSteps[i];
+      const enabledStepIndex = fullStepSequence.indexOf(enabledStep);
+      
+      if (currentStepIndex > enabledStepIndex) {
+        // We've passed this enabled step
+        completedEnabledSteps++;
+      } else if (currentStepIndex === enabledStepIndex) {
+        // We're on this enabled step - count it as halfway done
+        completedEnabledSteps += 0.5;
         break;
-      } else if (step.includes('consolidate_httpx') && 
-                (autoScanCurrentStep.includes('consolidate') || autoScanCurrentStep === 'httpx')) {
-        currentIndex = i;
+      } else {
+        // We haven't reached this enabled step yet
         break;
       }
     }
     
-    if (currentIndex === -1) return 0;
+    // Calculate progress as a percentage of enabled steps completed
+    const progress = Math.round((completedEnabledSteps / enabledSteps.length) * 100);
     
-    // Calculate progress percentage - cap at 95% until completed
-    const progress = Math.round(((currentIndex + 1) / enabledSteps.length) * 100);
+    // Cap at 95% until completed
     return Math.min(progress, 95);
   };
 
@@ -449,10 +494,10 @@ function ManageScopeTargets({
                       )}
                     </div>
                     <div className="text-end" style={{ minWidth: 180 }}>
-                      <div className="text-white-50 small mb-2">
+                      <div className="text-white-50 mb-2">
                         Consolidated Subdomains: {consolidatedSubdomains.length} / {autoScanConfig?.maxConsolidatedSubdomains ?? 2500}
                       </div>
-                      <div className="text-white-50 small mb-2">
+                      <div className="text-white-50 mb-2">
                         Live Web Servers: {getHttpxResultsCount(mostRecentHttpxScan)} / {autoScanConfig?.maxLiveWebServers ?? 500}
                       </div>
                     </div>
