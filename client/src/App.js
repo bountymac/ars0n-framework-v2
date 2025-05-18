@@ -898,7 +898,6 @@ function App() {
     setMostRecentGauScanStatus(null);
     setScanHistory([]);
     setRawResults([]);
-    setConsolidatedSubdomains([]);
     setConsolidatedCount(0);
     setNucleiScreenshotScans([]);
     setMostRecentNucleiScreenshotScan(null);
@@ -1037,8 +1036,7 @@ function App() {
     setIsAutoScanPausing(false);
     setIsAutoScanCancelling(false);
     
-    // Reset consolidation states
-    setConsolidatedSubdomains([]);
+    // Only reset consolidation state, not the actual subdomains
     setIsConsolidating(false);
     
     // Reset individual scan states

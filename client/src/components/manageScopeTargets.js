@@ -87,6 +87,9 @@ function ManageScopeTargets({
       // Set a timeout to reset status to idle after 5 seconds
       resetTimeoutRef.current = setTimeout(() => {
         setDisplayStatus('idle');
+        setScanStartTime(null);
+        setScanEndTime(null);
+        setFinalDuration('');
         console.log('Reset to idle status after 5-second delay');
       }, 5000);
     }
