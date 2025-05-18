@@ -816,8 +816,9 @@ func updateAutoScanSessionFinalStats(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Updating final stats for session %s", sessionID)
 
 	var payload struct {
-		FinalConsolidatedSubdomains *int `json:"final_consolidated_subdomains"`
-		FinalLiveWebServers         *int `json:"final_live_web_servers"`
+		FinalConsolidatedSubdomains *int   `json:"final_consolidated_subdomains"`
+		FinalLiveWebServers         *int   `json:"final_live_web_servers"`
+		ScopeTargetID               string `json:"scope_target_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		log.Printf("Error decoding request body: %v", err)
@@ -825,9 +826,29 @@ func updateAutoScanSessionFinalStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("Final stats: subdomains=%v, webservers=%v", payload.FinalConsolidatedSubdomains, payload.FinalLiveWebServers)
+	log.Printf("Final stats: subdomains=%v, webservers=%v, scope_target_id=%s",
+		payload.FinalConsolidatedSubdomains, payload.FinalLiveWebServers, payload.ScopeTargetID)
 
-	_, err := dbPool.Exec(context.Background(), `
+	// First, verify this session belongs to this scope target to prevent cross-target modification
+	var scopeTargetID string
+	err := dbPool.QueryRow(context.Background(), `
+		SELECT scope_target_id FROM auto_scan_sessions WHERE id = $1
+	`, sessionID).Scan(&scopeTargetID)
+
+	if err != nil {
+		log.Printf("Error fetching session: %v", err)
+		http.Error(w, "Session not found", http.StatusNotFound)
+		return
+	}
+
+	// Ensure the scope_target_id in the request matches the one in the database
+	if payload.ScopeTargetID != "" && scopeTargetID != payload.ScopeTargetID {
+		log.Printf("Scope target ID mismatch: %s (request) vs %s (database)", payload.ScopeTargetID, scopeTargetID)
+		http.Error(w, "Scope target ID mismatch", http.StatusBadRequest)
+		return
+	}
+
+	_, err = dbPool.Exec(context.Background(), `
 		UPDATE auto_scan_sessions
 		SET final_consolidated_subdomains = $1, 
 		    final_live_web_servers = $2, 

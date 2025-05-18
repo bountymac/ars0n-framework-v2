@@ -511,6 +511,24 @@ function App() {
       // Fetch the current step from the API
       const fetchAndCheckAutoScanState = async () => {
         try {
+          // First check if there's an active session for this target
+          const sessionResponse = await fetch(
+            `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/auto-scan/sessions?target_id=${activeTarget.id}`
+          );
+          
+          if (sessionResponse.ok) {
+            const sessions = await sessionResponse.json();
+            const runningSession = Array.isArray(sessions) && sessions.length > 0 
+              ? sessions.find(s => s.status === 'running' || s.status === 'pending')
+              : null;
+              
+            if (runningSession) {
+              console.log(`Found in-progress Auto Scan session: ${runningSession.id}`);
+              setAutoScanSessionId(runningSession.id);
+            }
+          }
+          
+          // Then check the current step
           const response = await fetch(
             `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/auto-scan-state/${activeTarget.id}`
           );
@@ -897,6 +915,13 @@ function App() {
     setShuffleDNSCustomScans([]);
     setMostRecentShuffleDNSCustomScan(null);
     setMostRecentShuffleDNSCustomScanStatus(null);
+    setAutoScanSessions([]);
+    setAutoScanSessionId(null);
+    setAutoScanCurrentStep(AUTO_SCAN_STEPS.IDLE);
+    setIsAutoScanning(false);
+    setIsAutoScanPaused(false);
+    setIsAutoScanPausing(false);
+    setIsAutoScanCancelling(false);
     
     setActiveTarget(target);
     // Update the backend to set this target as active
@@ -1566,6 +1591,21 @@ function App() {
             durationStr = `${durationMins}m ${durationSecs < 10 ? '0' : ''}${durationSecs}s`;
           }
           
+          // Parse config snapshot from the session
+          let config = {};
+          try {
+            if (session.config_snapshot) {
+              if (typeof session.config_snapshot === 'string') {
+                config = JSON.parse(session.config_snapshot);
+              } else {
+                config = session.config_snapshot;
+              }
+            }
+          } catch (e) {
+            console.error("Error parsing config snapshot:", e);
+            config = {};
+          }
+          
           return {
             session_id: session.id,
             start_time: formattedStartTime,
@@ -1573,11 +1613,35 @@ function App() {
             duration: durationStr,
             status: session.status || "running",
             final_consolidated_subdomains: session.final_consolidated_subdomains || 0,
-            final_live_web_servers: session.final_live_web_servers || 0
+            final_live_web_servers: session.final_live_web_servers || 0,
+            config: {
+              amass: config.amass !== false,
+              sublist3r: config.sublist3r !== false,
+              assetfinder: config.assetfinder !== false,
+              gau: config.gau !== false,
+              ctl: config.ctl !== false,
+              subfinder: config.subfinder !== false,
+              consolidate_round1: config.consolidate_httpx_round1 !== false,
+              httpx_round1: config.consolidate_httpx_round1 !== false,
+              shuffledns: config.shuffledns !== false,
+              cewl: config.cewl !== false,
+              consolidate_round2: config.consolidate_httpx_round2 !== false,
+              httpx_round2: config.consolidate_httpx_round2 !== false,
+              gospider: config.gospider !== false,
+              subdomainizer: config.subdomainizer !== false,
+              consolidate_round3: config.consolidate_httpx_round3 !== false,
+              httpx_round3: config.consolidate_httpx_round3 !== false,
+              nuclei_screenshot: config.nuclei_screenshot !== false,
+              metadata: config.metadata !== false
+            }
           };
         }) : [];
         
         setAutoScanSessions(formattedData);
+        
+        // The config_snapshot is stored in the database during auto scan session creation
+        // and allows us to display which tools were enabled for each historical scan
+        console.log('[Auto Scan History] Loaded session data with tool configuration information');
       } else {
         setAutoScanSessions([]);
       }
@@ -1639,6 +1703,14 @@ function App() {
 
   return (
     <Container data-bs-theme="dark" className="App" style={{ padding: '20px' }}>
+      <style>
+        {`
+          .modal-90w {
+            max-width: 95% !important;
+            width: 95% !important;
+          }
+        `}
+      </style>
       <Ars0nFrameworkHeader 
         onSettingsClick={handleOpenSettingsModal} 
         onExportClick={handleOpenExportModal}
@@ -2654,46 +2726,80 @@ function App() {
         onHide={handleCloseROIReport}
         targetURLs={targetURLs}
       />
-      <Modal data-bs-theme="dark" show={showAutoScanHistoryModal} onHide={handleCloseAutoScanHistoryModal} size="xl">
+      <Modal data-bs-theme="dark" show={showAutoScanHistoryModal} onHide={handleCloseAutoScanHistoryModal} size="xl" dialogClassName="modal-90w">
         <Modal.Header closeButton>
           <Modal.Title className='text-danger'>Auto Scan History</Modal.Title>
         </Modal.Header>
-        <Modal.Body>
-          <Table striped bordered hover>
+        <Modal.Body style={{overflowX: 'auto'}}>
+          <Table striped bordered hover responsive>
             <thead>
               <tr>
-                <th>Session ID</th>
-                <th>Start Time</th>
-                <th>End Time</th>
-                <th>Duration</th>
-                <th>Status</th>
-                <th>Consolidated Subdomains</th>
-                <th>Live Web Servers</th>
+                <th className="text-center">Start Time</th>
+                <th className="text-center">Duration</th>
+                <th className="text-center">Status</th>
+                <th className="text-center">Consolidated Subdomains</th>
+                <th className="text-center">Live Web Servers</th>
+                <th colSpan={6} className="text-center bg-dark border-danger">Subdomain Scraping</th>
+                <th className="text-center bg-dark border-danger">R1</th>
+                <th colSpan={2} className="text-center bg-dark border-danger">Brute Force</th>
+                <th className="text-center bg-dark border-danger">R2</th>
+                <th colSpan={2} className="text-center bg-dark border-danger">JS/Link Discovery</th>
+                <th className="text-center bg-dark border-danger">R3</th>
+                <th colSpan={2} className="text-center bg-dark border-danger">Analysis</th>
+              </tr>
+              <tr>
+                <th colSpan={5}></th>
+                <th className="text-center" style={{width: '40px'}}>AM</th>
+                <th className="text-center" style={{width: '40px'}}>SL3</th>
+                <th className="text-center" style={{width: '40px'}}>AF</th>
+                <th className="text-center" style={{width: '40px'}}>GAU</th>
+                <th className="text-center" style={{width: '40px'}}>CTL</th>
+                <th className="text-center" style={{width: '40px'}}>SF</th>
+                <th className="text-center" style={{width: '40px'}}>HX1</th>
+                <th className="text-center" style={{width: '40px'}}>SDS</th>
+                <th className="text-center" style={{width: '40px'}}>CWL</th>
+                <th className="text-center" style={{width: '40px'}}>HX2</th>
+                <th className="text-center" style={{width: '40px'}}>GS</th>
+                <th className="text-center" style={{width: '40px'}}>SDZ</th>
+                <th className="text-center" style={{width: '40px'}}>HX3</th>
+                <th className="text-center" style={{width: '40px'}}>NSC</th>
+                <th className="text-center" style={{width: '40px'}}>MD</th>
               </tr>
             </thead>
             <tbody>
               {(!autoScanSessions || autoScanSessions.length === 0) ? (
                 <tr>
-                  <td colSpan={7} className="text-center text-white-50">
+                  <td colSpan={20} className="text-center text-white-50">
                     No auto scan sessions found for this target.
                   </td>
                 </tr>
               ) : (
                 autoScanSessions.map((session) => (
                   <tr key={session.session_id}>
-                    <td className="text-truncate" style={{ maxWidth: '180px' }} title={session.session_id}>
-                      {session.session_id}
-                    </td>
                     <td>{session.start_time}</td>
-                    <td>{session.end_time || '—'}</td>
                     <td>{session.duration || '—'}</td>
                     <td>
                       <span className={`text-${session.status === 'completed' ? 'success' : session.status === 'cancelled' ? 'warning' : 'primary'}`}>
                         {session.status.charAt(0).toUpperCase() + session.status.slice(1)}
                       </span>
                     </td>
-                    <td>{session.final_consolidated_subdomains || '—'}</td>
-                    <td>{session.final_live_web_servers || '—'}</td>
+                    <td className="text-center"><strong>{session.final_consolidated_subdomains || '—'}</strong></td>
+                    <td className="text-center"><strong>{session.final_live_web_servers || '—'}</strong></td>
+                    <td className="text-center">{session.config?.amass ? <span className="text-danger fw-bold">✓</span> : ''}</td>
+                    <td className="text-center">{session.config?.sublist3r ? <span className="text-danger fw-bold">✓</span> : ''}</td>
+                    <td className="text-center">{session.config?.assetfinder ? <span className="text-danger fw-bold">✓</span> : ''}</td>
+                    <td className="text-center">{session.config?.gau ? <span className="text-danger fw-bold">✓</span> : ''}</td>
+                    <td className="text-center">{session.config?.ctl ? <span className="text-danger fw-bold">✓</span> : ''}</td>
+                    <td className="text-center">{session.config?.subfinder ? <span className="text-danger fw-bold">✓</span> : ''}</td>
+                    <td className="text-center">{session.config?.httpx_round1 ? <span className="text-danger fw-bold">✓</span> : ''}</td>
+                    <td className="text-center">{session.config?.shuffledns ? <span className="text-danger fw-bold">✓</span> : ''}</td>
+                    <td className="text-center">{session.config?.cewl ? <span className="text-danger fw-bold">✓</span> : ''}</td>
+                    <td className="text-center">{session.config?.httpx_round2 ? <span className="text-danger fw-bold">✓</span> : ''}</td>
+                    <td className="text-center">{session.config?.gospider ? <span className="text-danger fw-bold">✓</span> : ''}</td>
+                    <td className="text-center">{session.config?.subdomainizer ? <span className="text-danger fw-bold">✓</span> : ''}</td>
+                    <td className="text-center">{session.config?.httpx_round3 ? <span className="text-danger fw-bold">✓</span> : ''}</td>
+                    <td className="text-center">{session.config?.nuclei_screenshot ? <span className="text-danger fw-bold">✓</span> : ''}</td>
+                    <td className="text-center">{session.config?.metadata ? <span className="text-danger fw-bold">✓</span> : ''}</td>
                   </tr>
                 ))
               )}

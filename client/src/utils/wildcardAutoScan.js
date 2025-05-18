@@ -674,7 +674,8 @@ const startAutoScan = async (
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             final_consolidated_subdomains: finalConsolidatedSubdomains,
-            final_live_web_servers: finalLiveWebServers
+            final_live_web_servers: finalLiveWebServers,
+            scope_target_id: activeTarget.id
           })
         });
         

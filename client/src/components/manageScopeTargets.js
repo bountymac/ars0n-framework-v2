@@ -467,10 +467,19 @@ function ManageScopeTargets({
           <h3 className="text-secondary">Active Scope Target</h3>
         </Col>
         <Col className="text-end">
-          <Button variant="outline-danger" onClick={handleOpen}>
+          <Button 
+            variant="outline-danger" 
+            onClick={handleOpen}
+            disabled={isAutoScanning}
+          >
             Add Scope Target
           </Button>
-          <Button variant="outline-danger" onClick={handleActiveModalOpen} className="ms-2">
+          <Button 
+            variant="outline-danger" 
+            onClick={handleActiveModalOpen} 
+            className="ms-2"
+            disabled={isAutoScanning}
+          >
             Select Active Target
           </Button>
         </Col>
