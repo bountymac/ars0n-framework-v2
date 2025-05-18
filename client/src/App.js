@@ -1057,6 +1057,7 @@ function App() {
       );
       if (!sessionResp.ok) throw new Error('Failed to create auto scan session');
       const sessionData = await sessionResp.json();
+      console.error(sessionData)
       setAutoScanSessionId(sessionData.session_id);
       
       // Now set isAutoScanning to true after all resets and config fetching
@@ -1129,11 +1130,11 @@ function App() {
           setMostRecentShuffleDNSCustomScanStatus,
           handleConsolidate,
           config,
-          autoScanSessionId // pass session id
+          sessionData.session_id // pass session id
         ),
         consolidatedSubdomains, // pass consolidated subdomains
         mostRecentHttpxScan, // pass most recent httpx scan
-        autoScanSessionId // pass session id
+        sessionData.session_id // pass session id
       );
     } catch (error) {
       console.error('[AutoScan] Error fetching config or starting scan:', error);

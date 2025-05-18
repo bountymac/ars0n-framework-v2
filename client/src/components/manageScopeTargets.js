@@ -332,8 +332,7 @@ function ManageScopeTargets({
       
       const configKey = stepConfigMapping[stepKey];
       if (configKey && autoScanConfig[configKey] === false) {
-        console.log("rs0n: " + configKey + " " + autoScanConfig[configKey])
-        return 'Transitioning...';
+        return 'away from responsibilities...';
       }
     }
     

@@ -395,31 +395,6 @@ const resumeAutoScan = async (
     
     // Update the API with completed status - don't need to check if this is disabled
     await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.COMPLETED);
-    
-    // Update session final stats if we have a session ID
-    if (autoScanSessionId) {
-      let finalConsolidatedSubdomains = Array.isArray(consolidatedSubdomains) ? consolidatedSubdomains.length : 0;
-      let finalLiveWebServers = 0;
-      if (mostRecentHttpxScan && mostRecentHttpxScan.result && typeof mostRecentHttpxScan.result.String === 'string') {
-        finalLiveWebServers = mostRecentHttpxScan.result.String.split('\n').filter(line => line.trim()).length;
-      }
-      try {
-        await fetch(
-          `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/auto-scan/session/${autoScanSessionId}/final-stats`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              final_consolidated_subdomains: finalConsolidatedSubdomains,
-              final_live_web_servers: finalLiveWebServers
-            })
-          }
-        );
-        debugTrace('Updated final stats for auto scan session');
-      } catch (err) {
-        debugTrace('Failed to update final stats for auto scan session: ' + err.message);
-      }
-    }
   }
 };
 
@@ -438,7 +413,7 @@ const startAutoScan = async (
     console.log("No active target selected.");
     return;
   }
-
+  console.error(autoScanSessionId)
   setIsAutoScanning(true);
   setAutoScanCurrentStep(AUTO_SCAN_STEPS.IDLE);
   setAutoScanTargetId(activeTarget.id);
@@ -457,7 +432,7 @@ const startAutoScan = async (
     
     const config = await configResponse.json();
     debugTrace("Auto scan config retrieved");
-    
+    console.error(autoScanSessionId);
     const steps = getAutoScanSteps(undefined, undefined, undefined, undefined, undefined, undefined, undefined, 
       undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, 
       undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, 
@@ -572,6 +547,7 @@ const startAutoScan = async (
     await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.COMPLETED);
     
     // Update session final stats if we have a session ID
+    console.error(autoScanSessionId)
     if (autoScanSessionId) {
       try {
         debugTrace(`Updating final stats for session ID: ${autoScanSessionId}`);
@@ -581,62 +557,108 @@ const startAutoScan = async (
         
         // Get consolidated subdomains count
         try {
-          if (Array.isArray(consolidatedSubdomains) && consolidatedSubdomains.length > 0) {
-            finalConsolidatedSubdomains = consolidatedSubdomains.length;
-            debugTrace(`Using existing consolidated subdomains count: ${finalConsolidatedSubdomains}`);
+          // Always fetch the latest consolidated subdomains data
+          const subdomainsResponse = await fetch(
+            `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/consolidated-subdomains/${activeTarget.id}`
+          );
+          if (subdomainsResponse.ok) {
+            const data = await subdomainsResponse.json();
+            finalConsolidatedSubdomains = (data.subdomains || []).length;
+            debugTrace(`Fetched consolidated subdomains count: ${finalConsolidatedSubdomains}`);
           } else {
-            // Fetch the latest count if not available
-            const subdomainsResponse = await fetch(
-              `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/consolidated-subdomains/${activeTarget.id}`
-            );
-            if (subdomainsResponse.ok) {
-              const data = await subdomainsResponse.json();
-              finalConsolidatedSubdomains = (data.subdomains || []).length;
-              debugTrace(`Fetched consolidated subdomains count: ${finalConsolidatedSubdomains}`);
-            } else {
-              debugTrace(`Failed to fetch consolidated subdomains: ${subdomainsResponse.status} ${subdomainsResponse.statusText}`);
-            }
+            debugTrace(`Failed to fetch consolidated subdomains: ${subdomainsResponse.status} ${subdomainsResponse.statusText}`);
           }
         } catch (err) {
           debugTrace(`Error getting consolidated subdomains count: ${err.message}`);
         }
         
-        // Get live web servers count
+        // Get live web servers count - always fetch the latest
         try {
-          if (mostRecentHttpxScan && mostRecentHttpxScan.result) {
-            if (typeof mostRecentHttpxScan.result.String === 'string') {
-              finalLiveWebServers = mostRecentHttpxScan.result.String.split('\n').filter(line => line.trim()).length;
-            } else if (mostRecentHttpxScan.result.httpx_results && Array.isArray(mostRecentHttpxScan.result.httpx_results)) {
-              finalLiveWebServers = mostRecentHttpxScan.result.httpx_results.length;
-            }
-            debugTrace(`Using existing live web servers count: ${finalLiveWebServers}`);
-          } else {
-            // Fetch the latest httpx scan if not available
-            const httpxResponse = await fetch(
-              `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${activeTarget.id}/scans/httpx`
-            );
-            if (httpxResponse.ok) {
-              const data = await httpxResponse.json();
-              const scans = Array.isArray(data) ? data : (data.scans || []);
+          // Always fetch the latest HTTPX results to ensure accuracy
+          debugTrace(`Fetching latest HTTPX scan results for target ${activeTarget.id}...`);
+          const httpxResponse = await fetch(
+            `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${activeTarget.id}/scans/httpx`
+          );
+          if (httpxResponse.ok) {
+            const data = await httpxResponse.json();
+            debugTrace(`HTTPX response received with status ${httpxResponse.status}`);
+            
+            const scans = Array.isArray(data) ? data : (data.scans || []);
+            debugTrace(`Found ${scans.length} HTTPX scans`);
+            
+            if (scans.length > 0) {
+              const latestHttpxScan = scans.reduce((latest, scan) => {
+                const scanDate = new Date(scan.created_at);
+                return scanDate > new Date(latest.created_at) ? scan : latest;
+              }, scans[0]);
               
-              if (scans.length > 0) {
-                const latestHttpxScan = scans.reduce((latest, scan) => {
-                  const scanDate = new Date(scan.created_at);
-                  return scanDate > new Date(latest.created_at) ? scan : latest;
-                }, scans[0]);
-                
-                if (latestHttpxScan.result) {
-                  if (typeof latestHttpxScan.result.String === 'string') {
-                    finalLiveWebServers = latestHttpxScan.result.String.split('\n').filter(line => line.trim()).length;
-                  } else if (latestHttpxScan.result.httpx_results && Array.isArray(latestHttpxScan.result.httpx_results)) {
-                    finalLiveWebServers = latestHttpxScan.result.httpx_results.length;
+              debugTrace(`Latest HTTPX scan ID: ${latestHttpxScan.id}, Status: ${latestHttpxScan.status}, Created: ${latestHttpxScan.created_at}`);
+              debugTrace(`HTTPX result available: ${latestHttpxScan.result ? "yes" : "no"}`);
+              
+              // Improved parsing logic with better error handling
+              if (latestHttpxScan.result) {
+                if (typeof latestHttpxScan.result === 'string') {
+                  // Handle case where result is a direct string
+                  finalLiveWebServers = latestHttpxScan.result.split('\n').filter(line => line.trim()).length;
+                  debugTrace(`Parsed live web servers from direct string: ${finalLiveWebServers}`);
+                } else if (latestHttpxScan.result.String && typeof latestHttpxScan.result.String === 'string') {
+                  // Handle case where result is an object with a String property
+                  finalLiveWebServers = latestHttpxScan.result.String.split('\n').filter(line => line.trim()).length;
+                  debugTrace(`Parsed live web servers from result.String: ${finalLiveWebServers}`);
+                } else if (latestHttpxScan.result.httpx_results && Array.isArray(latestHttpxScan.result.httpx_results)) {
+                  // Handle case where result has httpx_results array
+                  finalLiveWebServers = latestHttpxScan.result.httpx_results.length;
+                  debugTrace(`Parsed live web servers from httpx_results array: ${finalLiveWebServers}`);
+                } else if (latestHttpxScan.result.data && Array.isArray(latestHttpxScan.result.data)) {
+                  // Handle case where result has a data array
+                  finalLiveWebServers = latestHttpxScan.result.data.length;
+                  debugTrace(`Parsed live web servers from result.data array: ${finalLiveWebServers}`);
+                } else {
+                  // Try to use the utility function if available
+                  try {
+                    const getHttpxResultsCount = require('./miscUtils').getHttpxResultsCount;
+                    if (typeof getHttpxResultsCount === 'function') {
+                      finalLiveWebServers = getHttpxResultsCount(latestHttpxScan);
+                      debugTrace(`Used getHttpxResultsCount utility to get count: ${finalLiveWebServers}`);
+                    }
+                  } catch (utilError) {
+                    debugTrace(`Error using getHttpxResultsCount utility: ${utilError.message}`);
                   }
-                  debugTrace(`Fetched live web servers count: ${finalLiveWebServers}`);
+                  
+                  // If we still don't have a count, log the result structure for debugging
+                  if (finalLiveWebServers === 0) {
+                    debugTrace(`Could not determine live web servers count. Result structure: ${JSON.stringify(latestHttpxScan.result).substring(0, 500)}...`);
+                  }
+                }
+              } else {
+                // No result available, try to get the count from separate endpoint
+                debugTrace(`No result in scan object, trying to fetch from direct HTTPX results endpoint`);
+                try {
+                  const directHttpxResponse = await fetch(
+                    `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${activeTarget.id}/httpx-results`
+                  );
+                  
+                  if (directHttpxResponse.ok) {
+                    const httpxResults = await directHttpxResponse.json();
+                    if (Array.isArray(httpxResults)) {
+                      finalLiveWebServers = httpxResults.length;
+                      debugTrace(`Retrieved ${finalLiveWebServers} live web servers from direct endpoint`);
+                    } else if (httpxResults && Array.isArray(httpxResults.results)) {
+                      finalLiveWebServers = httpxResults.results.length;
+                      debugTrace(`Retrieved ${finalLiveWebServers} live web servers from direct endpoint results array`);
+                    }
+                  }
+                } catch (directError) {
+                  debugTrace(`Error fetching from direct HTTPX results endpoint: ${directError.message}`);
                 }
               }
+              
+              debugTrace(`Final live web servers count: ${finalLiveWebServers}`);
             } else {
-              debugTrace(`Failed to fetch httpx scans: ${httpxResponse.status} ${httpxResponse.statusText}`);
+              debugTrace(`No HTTPX scans found for target ${activeTarget.id}`);
             }
+          } else {
+            debugTrace(`Failed to fetch httpx scans: ${httpxResponse.status} ${httpxResponse.statusText}`);
           }
         } catch (err) {
           debugTrace(`Error getting live web servers count: ${err.message}`);

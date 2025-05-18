@@ -639,23 +639,12 @@ const getAutoScanSteps = (
         if (scanDetails) {
           // Get the count of live web servers directly from scanDetails
           liveWebServersCount = getHttpxResultsCount(scanDetails);
-          console.error("[AutoScan] DEBUG: getHttpxResultsCount returned:", liveWebServersCount);
         }
-        
-        console.error(`[AutoScan] Live web servers check: count=${liveWebServersCount}, limit=${config?.maxLiveWebServers}`);
-        console.error("[AutoScan] DEBUG: Full config object:", config);
-        console.error("[AutoScan] DEBUG: maxLiveWebServers value:", config?.maxLiveWebServers);
-        console.error("[AutoScan] DEBUG: MaxLiveWebServers value:", config?.MaxLiveWebServers);
-        console.error("[AutoScan] DEBUG: maxLiveWebServers type:", typeof config?.maxLiveWebServers);
-        
+              
         // Fix config if it's using PascalCase instead of camelCase
         if (config && config.MaxLiveWebServers !== undefined && config.maxLiveWebServers === undefined) {
-          console.error("[AutoScan] DEBUG: Converting MaxLiveWebServers to maxLiveWebServers");
           config.maxLiveWebServers = config.MaxLiveWebServers;
         }
-        
-        console.error("[AutoScan] DEBUG: Explicit comparison:", `${liveWebServersCount} > ${config?.maxLiveWebServers} = ${liveWebServersCount > config?.maxLiveWebServers}`);
-        console.error("[AutoScan] DEBUG: Should pause?", (liveWebServersCount > (config?.maxLiveWebServers || 500)));
         
         if (config && 
             config.maxLiveWebServers && 
