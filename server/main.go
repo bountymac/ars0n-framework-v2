@@ -759,28 +759,74 @@ func listAutoScanSessions(w http.ResponseWriter, r *http.Request) {
 func cancelAutoScanSession(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	sessionID := vars["id"]
-	_, err := dbPool.Exec(context.Background(), `
-		UPDATE auto_scan_sessions SET status = 'cancelled', ended_at = NOW() WHERE id = $1
-	`, sessionID)
+	log.Printf("Cancelling session %s", sessionID)
+
+	// First, get the current status to see if it's already completed or cancelled
+	var currentStatus string
+	err := dbPool.QueryRow(context.Background(),
+		`SELECT status FROM auto_scan_sessions WHERE id = $1`, sessionID).Scan(&currentStatus)
+
+	if err == nil {
+		log.Printf("Current status for session %s: %s", sessionID, currentStatus)
+
+		// Don't overwrite completed status with cancelled
+		if currentStatus == "completed" {
+			log.Printf("Session %s is already completed, not updating to cancelled", sessionID)
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"success": true, "status": "completed", "message": "Session already completed"}`))
+			return
+		}
+	}
+
+	// Mark as cancelled or completed based on request type
+	// If this is coming from the completed code path, mark as completed
+	status := "cancelled"
+	if r.URL.Query().Get("completed") == "true" {
+		status = "completed"
+	}
+
+	log.Printf("Setting session %s status to %s", sessionID, status)
+	_, err = dbPool.Exec(context.Background(), `
+		UPDATE auto_scan_sessions SET status = $1, ended_at = NOW() WHERE id = $2
+	`, status, sessionID)
+
 	if err != nil {
+		log.Printf("Error cancelling session: %v", err)
 		http.Error(w, "Failed to cancel session", http.StatusInternalServerError)
 		return
 	}
+
+	// Verify the update was successful
+	var newStatus string
+	err = dbPool.QueryRow(context.Background(), `SELECT status FROM auto_scan_sessions WHERE id = $1`,
+		sessionID).Scan(&newStatus)
+	if err != nil {
+		log.Printf("Error verifying session update: %v", err)
+	} else {
+		log.Printf("Session %s status after update: %s", sessionID, newStatus)
+	}
+
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"success": true}`))
+	w.Write([]byte(fmt.Sprintf(`{"success": true, "status": "%s"}`, status)))
 }
 
 func updateAutoScanSessionFinalStats(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	sessionID := vars["id"]
+	log.Printf("Updating final stats for session %s", sessionID)
+
 	var payload struct {
 		FinalConsolidatedSubdomains *int `json:"final_consolidated_subdomains"`
 		FinalLiveWebServers         *int `json:"final_live_web_servers"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		log.Printf("Error decoding request body: %v", err)
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
+
+	log.Printf("Final stats: subdomains=%v, webservers=%v", payload.FinalConsolidatedSubdomains, payload.FinalLiveWebServers)
+
 	_, err := dbPool.Exec(context.Background(), `
 		UPDATE auto_scan_sessions
 		SET final_consolidated_subdomains = $1, 
@@ -789,10 +835,22 @@ func updateAutoScanSessionFinalStats(w http.ResponseWriter, r *http.Request) {
 		    status = 'completed'
 		WHERE id = $3
 	`, payload.FinalConsolidatedSubdomains, payload.FinalLiveWebServers, sessionID)
+
 	if err != nil {
+		log.Printf("Error updating session stats: %v", err)
 		http.Error(w, "Failed to update session stats", http.StatusInternalServerError)
 		return
 	}
+
+	// Verify the update was successful
+	var status string
+	err = dbPool.QueryRow(context.Background(), `SELECT status FROM auto_scan_sessions WHERE id = $1`, sessionID).Scan(&status)
+	if err != nil {
+		log.Printf("Error verifying session update: %v", err)
+	} else {
+		log.Printf("Session %s status after update: %s", sessionID, status)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	w.Write([]byte(`{"success": true}`))
+	w.Write([]byte(`{"success": true, "status": "completed"}`))
 }

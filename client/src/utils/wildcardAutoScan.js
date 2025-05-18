@@ -217,6 +217,9 @@ const resumeAutoScan = async (
   fromStep,
   activeTarget,
   getAutoScanSteps,
+  consolidatedSubdomains,
+  mostRecentHttpxScan,
+  autoScanSessionId,
   setIsAutoScanning,
   setAutoScanCurrentStep
 ) => {
@@ -392,6 +395,31 @@ const resumeAutoScan = async (
     
     // Update the API with completed status - don't need to check if this is disabled
     await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.COMPLETED);
+    
+    // Update session final stats if we have a session ID
+    if (autoScanSessionId) {
+      let finalConsolidatedSubdomains = Array.isArray(consolidatedSubdomains) ? consolidatedSubdomains.length : 0;
+      let finalLiveWebServers = 0;
+      if (mostRecentHttpxScan && mostRecentHttpxScan.result && typeof mostRecentHttpxScan.result.String === 'string') {
+        finalLiveWebServers = mostRecentHttpxScan.result.String.split('\n').filter(line => line.trim()).length;
+      }
+      try {
+        await fetch(
+          `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/auto-scan/session/${autoScanSessionId}/final-stats`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              final_consolidated_subdomains: finalConsolidatedSubdomains,
+              final_live_web_servers: finalLiveWebServers
+            })
+          }
+        );
+        debugTrace('Updated final stats for auto scan session');
+      } catch (err) {
+        debugTrace('Failed to update final stats for auto scan session: ' + err.message);
+      }
+    }
   }
 };
 
@@ -542,29 +570,147 @@ const startAutoScan = async (
     setIsAutoScanning(false);
     setAutoScanCurrentStep(AUTO_SCAN_STEPS.COMPLETED);
     await updateAutoScanState(activeTarget.id, AUTO_SCAN_STEPS.COMPLETED);
-    debugTrace("Auto Scan session ended");
+    
+    // Update session final stats if we have a session ID
     if (autoScanSessionId) {
-      let finalConsolidatedSubdomains = Array.isArray(consolidatedSubdomains) ? consolidatedSubdomains.length : 0;
-      let finalLiveWebServers = 0;
-      if (mostRecentHttpxScan && mostRecentHttpxScan.result && typeof mostRecentHttpxScan.result.String === 'string') {
-        finalLiveWebServers = mostRecentHttpxScan.result.String.split('\n').filter(line => line.trim()).length;
-      }
       try {
-        await fetch(
-          `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/auto-scan/session/${autoScanSessionId}/final-stats`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              final_consolidated_subdomains: finalConsolidatedSubdomains,
-              final_live_web_servers: finalLiveWebServers
-            })
+        debugTrace(`Updating final stats for session ID: ${autoScanSessionId}`);
+        
+        let finalConsolidatedSubdomains = 0;
+        let finalLiveWebServers = 0;
+        
+        // Get consolidated subdomains count
+        try {
+          if (Array.isArray(consolidatedSubdomains) && consolidatedSubdomains.length > 0) {
+            finalConsolidatedSubdomains = consolidatedSubdomains.length;
+            debugTrace(`Using existing consolidated subdomains count: ${finalConsolidatedSubdomains}`);
+          } else {
+            // Fetch the latest count if not available
+            const subdomainsResponse = await fetch(
+              `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/consolidated-subdomains/${activeTarget.id}`
+            );
+            if (subdomainsResponse.ok) {
+              const data = await subdomainsResponse.json();
+              finalConsolidatedSubdomains = (data.subdomains || []).length;
+              debugTrace(`Fetched consolidated subdomains count: ${finalConsolidatedSubdomains}`);
+            } else {
+              debugTrace(`Failed to fetch consolidated subdomains: ${subdomainsResponse.status} ${subdomainsResponse.statusText}`);
+            }
           }
-        );
+        } catch (err) {
+          debugTrace(`Error getting consolidated subdomains count: ${err.message}`);
+        }
+        
+        // Get live web servers count
+        try {
+          if (mostRecentHttpxScan && mostRecentHttpxScan.result) {
+            if (typeof mostRecentHttpxScan.result.String === 'string') {
+              finalLiveWebServers = mostRecentHttpxScan.result.String.split('\n').filter(line => line.trim()).length;
+            } else if (mostRecentHttpxScan.result.httpx_results && Array.isArray(mostRecentHttpxScan.result.httpx_results)) {
+              finalLiveWebServers = mostRecentHttpxScan.result.httpx_results.length;
+            }
+            debugTrace(`Using existing live web servers count: ${finalLiveWebServers}`);
+          } else {
+            // Fetch the latest httpx scan if not available
+            const httpxResponse = await fetch(
+              `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${activeTarget.id}/scans/httpx`
+            );
+            if (httpxResponse.ok) {
+              const data = await httpxResponse.json();
+              const scans = Array.isArray(data) ? data : (data.scans || []);
+              
+              if (scans.length > 0) {
+                const latestHttpxScan = scans.reduce((latest, scan) => {
+                  const scanDate = new Date(scan.created_at);
+                  return scanDate > new Date(latest.created_at) ? scan : latest;
+                }, scans[0]);
+                
+                if (latestHttpxScan.result) {
+                  if (typeof latestHttpxScan.result.String === 'string') {
+                    finalLiveWebServers = latestHttpxScan.result.String.split('\n').filter(line => line.trim()).length;
+                  } else if (latestHttpxScan.result.httpx_results && Array.isArray(latestHttpxScan.result.httpx_results)) {
+                    finalLiveWebServers = latestHttpxScan.result.httpx_results.length;
+                  }
+                  debugTrace(`Fetched live web servers count: ${finalLiveWebServers}`);
+                }
+              }
+            } else {
+              debugTrace(`Failed to fetch httpx scans: ${httpxResponse.status} ${httpxResponse.statusText}`);
+            }
+          }
+        } catch (err) {
+          debugTrace(`Error getting live web servers count: ${err.message}`);
+        }
+        
+        // Update the session with final stats and set status to completed
+        const finalStatsUrl = `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/auto-scan/session/${autoScanSessionId}/final-stats`;
+        debugTrace(`Sending final stats to API: ${finalStatsUrl}`);
+        debugTrace(`Stats payload: subdomains=${finalConsolidatedSubdomains}, webServers=${finalLiveWebServers}`);
+        
+        const updateResponse = await fetch(finalStatsUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            final_consolidated_subdomains: finalConsolidatedSubdomains,
+            final_live_web_servers: finalLiveWebServers
+          })
+        });
+        
+        const responseText = await updateResponse.text();
+        debugTrace(`Session update response: ${updateResponse.status} ${updateResponse.statusText}`);
+        debugTrace(`Response body: ${responseText}`);
+        
+        if (updateResponse.ok) {
+          debugTrace(`Successfully updated session ${autoScanSessionId} status to COMPLETED`);
+          
+          // Double-check the session status to confirm it was updated
+          const verifyResponse = await fetch(
+            `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/auto-scan/session/${autoScanSessionId}`
+          );
+          
+          if (verifyResponse.ok) {
+            const sessionData = await verifyResponse.json();
+            debugTrace(`Verified session ${autoScanSessionId} status is now: ${sessionData.status}`);
+          }
+        } else {
+          debugTrace(`Failed to update session ${autoScanSessionId} to COMPLETED. Trying alternative approach...`);
+          
+          // Try alternative approach - use the cancel endpoint with completed=true
+          const cancelUrl = `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/auto-scan/session/${autoScanSessionId}/cancel?completed=true`;
+          debugTrace(`Using alternative endpoint: ${cancelUrl}`);
+          
+          const cancelResponse = await fetch(cancelUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+          });
+          
+          if (cancelResponse.ok) {
+            debugTrace(`Successfully marked session ${autoScanSessionId} as completed via cancel endpoint`);
+          } else {
+            debugTrace(`Failed to mark session as completed via cancel endpoint: ${cancelResponse.status} ${cancelResponse.statusText}`);
+          }
+        }
       } catch (err) {
-        debugTrace('Failed to update final stats for auto scan session: ' + err.message);
+        debugTrace(`Error during session finalization: ${err.message}`);
+        
+        // Last resort - try one more simple approach to mark the session as completed
+        try {
+          const cancelUrl = `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/auto-scan/session/${autoScanSessionId}/cancel?completed=true`;
+          debugTrace(`Final attempt to mark session as completed: ${cancelUrl}`);
+          
+          await fetch(cancelUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+          });
+        } catch (finalErr) {
+          debugTrace(`Final attempt failed: ${finalErr.message}`);
+        }
       }
+    } else {
+      debugTrace("No auto scan session ID available, skipping session update");
     }
+    
+    debugTrace("Auto Scan session ended");
   }
 };
 

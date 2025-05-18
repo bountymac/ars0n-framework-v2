@@ -605,6 +605,9 @@ function App() {
         // Other functions
         handleConsolidate
       ),
+      consolidatedSubdomains,
+      mostRecentHttpxScan,
+      autoScanSessionId,
       setIsAutoScanning,
       setAutoScanCurrentStep
     );
@@ -1128,6 +1131,8 @@ function App() {
           config,
           autoScanSessionId // pass session id
         ),
+        consolidatedSubdomains, // pass consolidated subdomains
+        mostRecentHttpxScan, // pass most recent httpx scan
         autoScanSessionId // pass session id
       );
     } catch (error) {
