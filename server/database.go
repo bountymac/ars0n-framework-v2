@@ -9,7 +9,6 @@ import (
 func createTables() {
 	queries := []string{
 		`CREATE EXTENSION IF NOT EXISTS pgcrypto;`,
-		`DROP TABLE IF EXISTS requests CASCADE;`,
 		`CREATE TABLE IF NOT EXISTS scope_targets (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			type VARCHAR(50) NOT NULL CHECK (type IN ('Company', 'Wildcard', 'URL')),
@@ -37,19 +36,22 @@ func createTables() {
 			scan_id UUID NOT NULL,
 			record TEXT NOT NULL,
 			record_type TEXT NOT NULL,
-			created_at TIMESTAMP DEFAULT NOW()
+			created_at TIMESTAMP DEFAULT NOW(),
+			FOREIGN KEY (scan_id) REFERENCES amass_scans(scan_id) ON DELETE CASCADE
 		);`,
 		`CREATE TABLE IF NOT EXISTS ips (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			scan_id UUID NOT NULL,
 			ip_address TEXT NOT NULL,
-			created_at TIMESTAMP DEFAULT NOW()
+			created_at TIMESTAMP DEFAULT NOW(),
+			FOREIGN KEY (scan_id) REFERENCES amass_scans(scan_id) ON DELETE CASCADE
 		);`,
 		`CREATE TABLE IF NOT EXISTS subdomains (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			scan_id UUID NOT NULL,
 			subdomain TEXT NOT NULL,
-			created_at TIMESTAMP DEFAULT NOW()
+			created_at TIMESTAMP DEFAULT NOW(),
+			FOREIGN KEY (scan_id) REFERENCES amass_scans(scan_id) ON DELETE CASCADE
 		);`,
 		`CREATE TABLE IF NOT EXISTS cloud_domains (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -377,14 +379,17 @@ func createTables() {
 		_, err := dbPool.Exec(context.Background(), query)
 		if err != nil {
 			log.Printf("[ERROR] Failed to execute query: %s, error: %v", query, err)
-			// Don't fatally exit on migration errors
-			if !strings.Contains(query, "ALTER TABLE") {
+			if strings.Contains(query, "ALTER TABLE") {
+				if !strings.Contains(err.Error(), "duplicate_column") && !strings.Contains(err.Error(), "already exists") {
+					log.Fatalf("[ERROR] Failed to execute ALTER TABLE query: %s, error: %v", query, err)
+				}
+			} else {
 				log.Fatalf("[ERROR] Failed to execute query: %s, error: %v", query, err)
 			}
 		}
 	}
 
-	deletePendingScansQuery := `
+	/*deletePendingScansQuery := `
 		DELETE FROM amass_scans WHERE status = 'pending';
 		DELETE FROM httpx_scans WHERE status = 'pending';
 		DELETE FROM gau_scans WHERE status = 'pending';
@@ -403,5 +408,5 @@ func createTables() {
 	if err != nil {
 		log.Fatalf("[ERROR] Failed to delete pending scans: %v", err)
 	}
-	log.Println("[INFO] Deleted any scans with status 'pending'")
+	log.Println("[INFO] Deleted any scans with status 'pending'")*/
 }

@@ -614,11 +614,12 @@ func ExecuteAndParseAmassScan(scanID, domain string) {
 		log.Printf("[INFO] Starting to parse results for scan %s", scanID)
 		ParseAndStoreResults(scanID, domain, result)
 		log.Printf("[INFO] Finished parsing results for scan %s", scanID)
+		UpdateScanStatus(scanID, "success", result, stderr.String(), cmd.String(), execTime)
 	} else {
 		log.Printf("[WARN] No output from Amass scan for domain %s", domain)
+		UpdateScanStatus(scanID, "success_empty_output", "", stderr.String(), cmd.String(), execTime)
 	}
 
-	UpdateScanStatus(scanID, "success", result, stderr.String(), cmd.String(), execTime)
 	log.Printf("[INFO] Scan status updated for scan %s", scanID)
 }
 
