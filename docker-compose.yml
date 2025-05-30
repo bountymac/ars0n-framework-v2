@@ -26,6 +26,21 @@ services:
     networks:
       - ars0n-network
 
+  ai_service:
+    container_name: ars0n-framework-v2-ai-service-1
+    build: ./ai_service
+    ports:
+      - "8000:8000"
+    depends_on:
+      - api
+    environment:
+      API_URL: http://api:8080
+    restart: unless-stopped
+    networks:
+      - ars0n-network
+    profiles:
+      - ai
+
   db:
     container_name: ars0n-framework-v2-db-1
     image: postgres:latest

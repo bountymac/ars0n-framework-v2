@@ -1964,24 +1964,95 @@ function App() {
           <div>
             {activeTarget.type === 'Company' && (
               <div className="mb-4">
-                <h3 className="text-danger">Company</h3>
-                <Row>
-                  <Col md={12}>
-                    <Card className="mb-3 shadow-sm">
-                      <Card.Body className="text-center">
-                        <Card.Title className="text-danger mb-4">Coming Soon!</Card.Title>
-                        <Card.Text>
-                          The Company workflow is currently under development. rs0n is working diligently to bring you amazing features for company-wide asset discovery and analysis.
-                        </Card.Text>
-                        <Card.Text className="text-muted fst-italic mt-4">
-                          Please note that rs0n maintains this tool while balancing a full-time job and family life. This is a passion project provided free to the community, and your patience and kindness are greatly appreciated! 💝
-                        </Card.Text>
-                        <Card.Text className="text-danger mt-4">
-                          In the meantime, try out our fully-featured Wildcard workflow - it's packed with powerful reconnaissance capabilities!
-                        </Card.Text>
-                      </Card.Body>
-                    </Card>
-                  </Col>
+                <h3 className="text-danger mb-3">Company</h3>
+                <h4 className="text-secondary mb-3 fs-5">Root Domain Discovery</h4>
+                <Row className="row-cols-3 g-3 mb-4">
+                  {[
+                    { 
+                      name: 'Amass Intel', 
+                      link: 'https://github.com/OWASP/Amass',
+                      description: 'Intelligence gathering and ASN enumeration for comprehensive company domain discovery.',
+                      isActive: true,
+                      status: 'idle', // placeholder
+                      isScanning: false, // placeholder
+                      onScan: () => console.log('Amass Intel scan'), // placeholder
+                      onResults: () => console.log('Amass Intel results'), // placeholder
+                      onHistory: () => console.log('Amass Intel history'), // placeholder
+                      resultCount: 0 // placeholder
+                    },
+                    { 
+                      name: 'Metabigor', 
+                      link: 'https://github.com/j3ssie/metabigor',
+                      description: 'OSINT tool for company intelligence gathering and domain enumeration.',
+                      isActive: true,
+                      status: 'idle', // placeholder
+                      isScanning: false, // placeholder
+                      onScan: () => console.log('Metabigor scan'), // placeholder
+                      onResults: () => console.log('Metabigor results'), // placeholder
+                      onHistory: () => console.log('Metabigor history'), // placeholder
+                      resultCount: 0 // placeholder
+                    },
+                    { 
+                      name: 'CRT', 
+                      link: 'https://crt.sh',
+                      description: 'Certificate Transparency logs analysis for company domain discovery.',
+                      isActive: true,
+                      status: 'idle', // placeholder
+                      isScanning: false, // placeholder
+                      onScan: () => console.log('CRT scan'), // placeholder
+                      onResults: () => console.log('CRT results'), // placeholder
+                      onHistory: () => console.log('CRT history'), // placeholder
+                      resultCount: 0 // placeholder
+                    }
+                  ].map((tool, index) => (
+                    <Col key={index}>
+                      <Card className="shadow-sm h-100 text-center" style={{ minHeight: '250px' }}>
+                        <Card.Body className="d-flex flex-column">
+                          <Card.Title className="text-danger mb-3">
+                            <a href={tool.link} className="text-danger text-decoration-none">
+                              {tool.name}
+                            </a>
+                          </Card.Title>
+                          <Card.Text className="text-white small fst-italic">
+                            {tool.description}
+                          </Card.Text>
+                          <div className="mt-auto">
+                            <Card.Text className="text-white small mb-3">
+                              Root Domains: {tool.resultCount || "0"}
+                            </Card.Text>
+                            <div className="d-flex justify-content-between gap-2">
+                              <Button 
+                                variant="outline-danger" 
+                                className="flex-fill" 
+                                onClick={tool.onHistory}
+                              >
+                                History
+                              </Button>
+                              <Button
+                                variant="outline-danger"
+                                className="flex-fill"
+                                onClick={tool.onScan}
+                                disabled={tool.isScanning || tool.status === "pending"}
+                              >
+                                <div className="btn-content">
+                                  {tool.isScanning || tool.status === "pending" ? (
+                                    <div className="spinner"></div>
+                                  ) : 'Scan'}
+                                </div>
+                              </Button>
+                              <Button 
+                                variant="outline-danger" 
+                                className="flex-fill" 
+                                onClick={tool.onResults}
+                              >
+                                Results
+                              </Button>
+                            </div>
+                          </div>
+                        </Card.Body>
+                      </Card>
+                    </Col>
+                  ))}
                 </Row>
               </div>
             )}
