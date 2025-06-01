@@ -494,6 +494,15 @@ func createTables() {
 		SELECT gen_random_uuid()
 		WHERE NOT EXISTS (SELECT 1 FROM auto_scan_config LIMIT 1);`,
 
+		`CREATE TABLE IF NOT EXISTS google_dorking_domains (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scope_target_id UUID NOT NULL,
+			domain TEXT NOT NULL,
+			created_at TIMESTAMP DEFAULT NOW(),
+			FOREIGN KEY (scope_target_id) REFERENCES scope_targets(id) ON DELETE CASCADE,
+			UNIQUE(scope_target_id, domain)
+		);`,
+
 		// Add auto_scan_session_id to all scan tables
 		`DO $$ BEGIN BEGIN ALTER TABLE amass_scans ADD COLUMN IF NOT EXISTS auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL; EXCEPTION WHEN duplicate_column THEN RAISE NOTICE 'Column already exists.'; END; END $$;`,
 		`DO $$ BEGIN BEGIN ALTER TABLE httpx_scans ADD COLUMN IF NOT EXISTS auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL; EXCEPTION WHEN duplicate_column THEN RAISE NOTICE 'Column already exists.'; END; END $$;`,

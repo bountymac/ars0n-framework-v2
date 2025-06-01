@@ -239,6 +239,8 @@ function App() {
   const [cloudDomains, setCloudDomains] = useState([]);
   const [showCloudDomainsModal, setShowCloudDomainsModal] = useState(false);
   const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+  const [toastTitle, setToastTitle] = useState('Success');
   const [showInfraModal, setShowInfraModal] = useState(false);
   const [httpxScans, setHttpxScans] = useState([]);
   const [mostRecentHttpxScanStatus, setMostRecentHttpxScanStatus] = useState(null);
@@ -341,6 +343,8 @@ function App() {
   const [showGoogleDorkingResultsModal, setShowGoogleDorkingResultsModal] = useState(false);
   const [showGoogleDorkingHistoryModal, setShowGoogleDorkingHistoryModal] = useState(false);
   const [showGoogleDorkingManualModal, setShowGoogleDorkingManualModal] = useState(false);
+  const [googleDorkingDomains, setGoogleDorkingDomains] = useState([]);
+  const [googleDorkingError, setGoogleDorkingError] = useState('');
 
   const handleCloseSubdomainsModal = () => setShowSubdomainsModal(false);
   const handleCloseCloudDomainsModal = () => setShowCloudDomainsModal(false);
@@ -369,6 +373,7 @@ function App() {
       fetchAmassIntelScans(activeTarget, setAmassIntelScans, setMostRecentAmassIntelScan, setMostRecentAmassIntelScanStatus);
       fetchHttpxScans(activeTarget, setHttpxScans, setMostRecentHttpxScan, setMostRecentHttpxScanStatus);
       fetchConsolidatedSubdomains(activeTarget, setConsolidatedSubdomains, setConsolidatedCount);
+      fetchGoogleDorkingDomains();
     }
   }, [activeTarget]);
 
@@ -973,6 +978,8 @@ function App() {
     setIsAutoScanPaused(false);
     setIsAutoScanPausing(false);
     setIsAutoScanCancelling(false);
+    setGoogleDorkingDomains([]);
+    setGoogleDorkingError('');
     
     setActiveTarget(target);
     // Update the backend to set this target as active
@@ -1366,6 +1373,8 @@ function App() {
     const handleCopy = async () => {
       const success = await copyToClipboard(scanId);
       if (success) {
+        setToastTitle('Success');
+        setToastMessage('Scan ID copied to clipboard');
         setShowToast(true);
         setTimeout(() => setShowToast(false), 3000); // Hide after 3 seconds
       }
@@ -1430,38 +1439,92 @@ function App() {
   const handleCloseGoogleDorkingManualModal = () => setShowGoogleDorkingManualModal(false);
   const handleOpenGoogleDorkingManualModal = () => setShowGoogleDorkingManualModal(true);
 
-  const startGoogleDorkingAutomatedScan = () => {
-    console.log('Starting Google Dorking Automated Scan...');
-  };
-
   const startGoogleDorkingManualScan = () => {
     setShowGoogleDorkingManualModal(true);
   };
 
   const handleGoogleDorkingDomainAdd = async (domain) => {
+    if (!activeTarget) {
+      setGoogleDorkingError('No active target selected');
+      return;
+    }
+
+    // Check if domain already exists in the current list
+    const domainExists = googleDorkingDomains.some(existingDomain => 
+      existingDomain.domain.toLowerCase() === domain.toLowerCase()
+    );
+
+    if (domainExists) {
+      setGoogleDorkingError(`Domain "${domain}" already exists in the list`);
+      return;
+    }
+
     try {
-      const response = await fetch(`${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/add`, {
+      const response = await fetch(`${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/google-dorking-domains`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          type: 'Wildcard',
-          mode: 'Passive',
-          scope_target: domain,
-          active: false,
+          scope_target_id: activeTarget.id,
+          domain: domain,
         }),
       });
 
       if (!response.ok) {
-        throw new Error('Network response was not ok');
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to add domain');
       }
 
-      await fetchScopeTargets();
+      // Refresh the domains list
+      await fetchGoogleDorkingDomains();
+      setGoogleDorkingError('');
+      setToastTitle('Success');
+      setToastMessage('Domain added successfully');
       setShowToast(true);
       setTimeout(() => setShowToast(false), 3000);
     } catch (error) {
       console.error('Error adding domain:', error);
+      setGoogleDorkingError(error.message || 'Failed to add domain');
+    }
+  };
+
+  const fetchGoogleDorkingDomains = async () => {
+    if (!activeTarget) return;
+
+    try {
+      const response = await fetch(
+        `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/google-dorking-domains/${activeTarget.id}`
+      );
+      if (response.ok) {
+        const domains = await response.json();
+        setGoogleDorkingDomains(domains);
+      }
+    } catch (error) {
+      console.error('Error fetching Google dorking domains:', error);
+    }
+  };
+
+  const deleteGoogleDorkingDomain = async (domainId) => {
+    try {
+      const response = await fetch(
+        `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/google-dorking-domains/${domainId}`,
+        { method: 'DELETE' }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to delete domain');
+      }
+
+      // Refresh the domains list
+      await fetchGoogleDorkingDomains();
+      setToastTitle('Success');
+      setToastMessage('Domain deleted successfully');
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 3000);
+    } catch (error) {
+      console.error('Error deleting domain:', error);
+      setGoogleDorkingError('Failed to delete domain');
     }
   };
 
@@ -1907,12 +1970,12 @@ function App() {
               fontSize: '0.95rem',
               letterSpacing: '0.5px'
             }}>
-              Success
+              {toastTitle}
             </strong>
           </Toast.Header>
           <Toast.Body style={{ color: '#ffffff' }}>
             <div className="d-flex align-items-center">
-              <span>Scan ID Copied to Clipboard</span>
+              <span>{toastMessage}</span>
             </div>
           </Toast.Body>
         </Toast>
@@ -2165,12 +2228,10 @@ function App() {
                       isActive: true,
                       status: mostRecentGoogleDorkingScanStatus,
                       isScanning: isGoogleDorkingScanning,
-                      onAutomated: startGoogleDorkingAutomatedScan,
                       onManual: startGoogleDorkingManualScan,
                       onResults: handleOpenGoogleDorkingResultsModal,
                       onHistory: handleOpenGoogleDorkingHistoryModal,
-                      resultCount: mostRecentGoogleDorkingScan && mostRecentGoogleDorkingScan.result ? 
-                        mostRecentGoogleDorkingScan.result.split('\n').filter(line => line.trim()).length : 0,
+                      resultCount: googleDorkingDomains.length,
                       isGoogleDorking: true
                     },
                     { 
@@ -2204,18 +2265,6 @@ function App() {
                             </Card.Text>
                             {tool.isGoogleDorking ? (
                               <div className="d-flex justify-content-between gap-2">
-                                <Button
-                                  variant="outline-danger"
-                                  className="flex-fill"
-                                  onClick={tool.onAutomated}
-                                  disabled={tool.isScanning || tool.status === "pending"}
-                                >
-                                  <div className="btn-content">
-                                    {tool.isScanning || tool.status === "pending" ? (
-                                      <div className="spinner"></div>
-                                    ) : 'Automated'}
-                                  </div>
-                                </Button>
                                 <Button
                                   variant="outline-danger"
                                   className="flex-fill"
@@ -3296,8 +3345,55 @@ function App() {
           <Modal.Title className='text-danger'>Google Dorking Results</Modal.Title>
         </Modal.Header>
         <Modal.Body>
-          <p className="text-white">Google Dorking results will be displayed here once functionality is implemented.</p>
+          {googleDorkingDomains.length === 0 ? (
+            <div className="text-center py-4">
+              <p className="text-white">No domains discovered yet.</p>
+              <p className="text-white-50 small">
+                Use the Manual Google Dorking tool to discover and add company domains.
+              </p>
+            </div>
+          ) : (
+            <div>
+              <p className="text-white mb-3">
+                Discovered domains for <strong>{activeTarget?.scope_target}</strong>:
+              </p>
+              <ListGroup variant="flush">
+                {googleDorkingDomains.map((domainData) => (
+                  <ListGroup.Item 
+                    key={domainData.id} 
+                    className="bg-dark border-secondary d-flex justify-content-between align-items-center"
+                  >
+                    <div>
+                      <span className="text-white">{domainData.domain}</span>
+                      <br />
+                      <small className="text-white-50">
+                        Added: {new Date(domainData.created_at).toLocaleDateString()}
+                      </small>
+                    </div>
+                    <Button 
+                      variant="outline-danger" 
+                      size="sm"
+                      onClick={() => deleteGoogleDorkingDomain(domainData.id)}
+                      title="Delete domain"
+                    >
+                      <i className="bi bi-trash"></i>
+                    </Button>
+                  </ListGroup.Item>
+                ))}
+              </ListGroup>
+              <div className="mt-3 text-center">
+                <small className="text-white-50">
+                  Total domains discovered: {googleDorkingDomains.length}
+                </small>
+              </div>
+            </div>
+          )}
         </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={handleCloseGoogleDorkingResultsModal}>
+            Close
+          </Button>
+        </Modal.Footer>
       </Modal>
 
       <Modal data-bs-theme="dark" show={showGoogleDorkingHistoryModal} onHide={handleCloseGoogleDorkingHistoryModal} size="lg">
@@ -3314,6 +3410,8 @@ function App() {
         handleClose={handleCloseGoogleDorkingManualModal}
         companyName={activeTarget?.scope_target || ''}
         onDomainAdd={handleGoogleDorkingDomainAdd}
+        error={googleDorkingError}
+        onClearError={() => setGoogleDorkingError('')}
       />
 
       <SubfinderResultsModal

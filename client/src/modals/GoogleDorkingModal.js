@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Modal, Row, Col, Button, ListGroup, Form, InputGroup, Alert } from 'react-bootstrap';
 
-const GoogleDorkingModal = ({ show, handleClose, companyName, onDomainAdd }) => {
+const GoogleDorkingModal = ({ show, handleClose, companyName, onDomainAdd, error, onClearError }) => {
   const [newDomain, setNewDomain] = useState('');
   const [currentSearchUrl, setCurrentSearchUrl] = useState('');
   const [iframeError, setIframeError] = useState(false);
@@ -150,6 +150,13 @@ const GoogleDorkingModal = ({ show, handleClose, companyName, onDomainAdd }) => 
     }
   };
 
+  const handleDomainInputChange = (e) => {
+    setNewDomain(e.target.value);
+    if (error && onClearError) {
+      onClearError();
+    }
+  };
+
   return (
     <Modal 
       show={show} 
@@ -278,12 +285,17 @@ const GoogleDorkingModal = ({ show, handleClose, companyName, onDomainAdd }) => 
             
             <div className="border-top pt-3">
               <h5 className="text-danger mb-3">Add Discovered Domain</h5>
+              {error && (
+                <Alert variant="danger" className="mb-3">
+                  <small>{error}</small>
+                </Alert>
+              )}
               <InputGroup>
                 <Form.Control
                   type="text"
                   placeholder="Enter domain (e.g., example.com)"
                   value={newDomain}
-                  onChange={(e) => setNewDomain(e.target.value)}
+                  onChange={handleDomainInputChange}
                   onKeyPress={handleKeyPress}
                   className="bg-dark text-white border-secondary"
                 />
