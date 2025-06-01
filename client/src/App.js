@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import AddScopeTargetModal from './modals/addScopeTargetModal.js';
 import SelectActiveScopeTargetModal from './modals/selectActiveScopeTargetModal.js';
 import { DNSRecordsModal, SubdomainsModal, CloudDomainsModal, InfrastructureMapModal } from './modals/amassModals.js';
+import { AmassIntelResultsModal, AmassIntelHistoryModal } from './modals/amassIntelModals.js';
 import { HttpxResultsModal } from './modals/httpxModals.js';
 import { GauResultsModal } from './modals/gauModals.js';
 import { Sublist3rResultsModal } from './modals/sublist3rModals.js';
@@ -86,6 +87,15 @@ import {
   startAutoScan as startAutoScanUtil
 } from './utils/wildcardAutoScan';
 import getAutoScanSteps from './utils/autoScanSteps';
+import fetchAmassIntelScans from './utils/fetchAmassIntelScans';
+import monitorAmassIntelScanStatus from './utils/monitorAmassIntelScanStatus';
+import initiateAmassIntelScan from './utils/initiateAmassIntelScan';
+import initiateCTLCompanyScan from './utils/initiateCTLCompanyScan';
+import monitorCTLCompanyScanStatus from './utils/monitorCTLCompanyScanStatus';
+import { CTLCompanyResultsModal, CTLCompanyHistoryModal } from './modals/CTLCompanyResultsModal';
+import monitorMetabigorCompanyScanStatus from './utils/monitorMetabigorCompanyScanStatus';
+import initiateMetabigorCompanyScan from './utils/initiateMetabigorCompanyScan';
+import { MetabigorCompanyResultsModal, MetabigorCompanyHistoryModal } from './modals/MetabigorCompanyResultsModal';
 
 // Add helper function
 const getHttpxResultsCount = (scan) => {
@@ -217,6 +227,12 @@ function App() {
   const [mostRecentAmassScanStatus, setMostRecentAmassScanStatus] = useState(null);
   const [mostRecentAmassScan, setMostRecentAmassScan] = useState(null);
   const [isScanning, setIsScanning] = useState(false);
+  const [amassIntelScans, setAmassIntelScans] = useState([]);
+  const [mostRecentAmassIntelScanStatus, setMostRecentAmassIntelScanStatus] = useState(null);
+  const [mostRecentAmassIntelScan, setMostRecentAmassIntelScan] = useState(null);
+  const [isAmassIntelScanning, setIsAmassIntelScanning] = useState(false);
+  const [showAmassIntelResultsModal, setShowAmassIntelResultsModal] = useState(false);
+  const [showAmassIntelHistoryModal, setShowAmassIntelHistoryModal] = useState(false);
   const [subdomains, setSubdomains] = useState([]);
   const [showSubdomainsModal, setShowSubdomainsModal] = useState(false);
   const [cloudDomains, setCloudDomains] = useState([]);
@@ -305,6 +321,18 @@ function App() {
   const [isAutoScanPaused, setIsAutoScanPaused] = useState(false);
   const [isAutoScanPausing, setIsAutoScanPausing] = useState(false);
   const [isAutoScanCancelling, setIsAutoScanCancelling] = useState(false);
+  const [ctlCompanyScans, setCTLCompanyScans] = useState([]);
+  const [mostRecentCTLCompanyScanStatus, setMostRecentCTLCompanyScanStatus] = useState(null);
+  const [mostRecentCTLCompanyScan, setMostRecentCTLCompanyScan] = useState(null);
+  const [isCTLCompanyScanning, setIsCTLCompanyScanning] = useState(false);
+  const [showCTLCompanyResultsModal, setShowCTLCompanyResultsModal] = useState(false);
+  const [showCTLCompanyHistoryModal, setShowCTLCompanyHistoryModal] = useState(false);
+  const [metabigorCompanyScans, setMetabigorCompanyScans] = useState([]);
+  const [mostRecentMetabigorCompanyScanStatus, setMostRecentMetabigorCompanyScanStatus] = useState(null);
+  const [mostRecentMetabigorCompanyScan, setMostRecentMetabigorCompanyScan] = useState(null);
+  const [isMetabigorCompanyScanning, setIsMetabigorCompanyScanning] = useState(false);
+  const [showMetabigorCompanyResultsModal, setShowMetabigorCompanyResultsModal] = useState(false);
+  const [showMetabigorCompanyHistoryModal, setShowMetabigorCompanyHistoryModal] = useState(false);
 
   const handleCloseSubdomainsModal = () => setShowSubdomainsModal(false);
   const handleCloseCloudDomainsModal = () => setShowCloudDomainsModal(false);
@@ -330,6 +358,7 @@ function App() {
   useEffect(() => {
     if (activeTarget) {
       fetchAmassScans(activeTarget, setAmassScans, setMostRecentAmassScan, setMostRecentAmassScanStatus, setDnsRecords, setSubdomains, setCloudDomains);
+      fetchAmassIntelScans(activeTarget, setAmassIntelScans, setMostRecentAmassIntelScan, setMostRecentAmassIntelScanStatus);
       fetchHttpxScans(activeTarget, setHttpxScans, setMostRecentHttpxScan, setMostRecentHttpxScanStatus);
       fetchConsolidatedSubdomains(activeTarget, setConsolidatedSubdomains, setConsolidatedCount);
     }
@@ -346,6 +375,18 @@ function App() {
         setDnsRecords,
         setSubdomains,
         setCloudDomains
+      );
+    }
+  }, [activeTarget]);
+
+  useEffect(() => {
+    if (activeTarget) {
+      monitorAmassIntelScanStatus(
+        activeTarget,
+        setAmassIntelScans,
+        setMostRecentAmassIntelScan,
+        setIsAmassIntelScanning,
+        setMostRecentAmassIntelScanStatus
       );
     }
   }, [activeTarget]);
@@ -885,11 +926,14 @@ function App() {
   const handleActiveSelect = async (target) => {
     // Reset all scan-related states
     setAmassScans([]);
+    setAmassIntelScans([]);
     setDnsRecords([]);
     setSubdomains([]);
     setCloudDomains([]);
     setMostRecentAmassScan(null);
     setMostRecentAmassScanStatus(null);
+    setMostRecentAmassIntelScan(null);
+    setMostRecentAmassIntelScanStatus(null);
     setHttpxScans([]);
     setMostRecentHttpxScan(null);
     setMostRecentHttpxScanStatus(null);
@@ -1025,6 +1069,16 @@ function App() {
   const startAmassScan = () => {
     initiateAmassScan(activeTarget, monitorScanStatus, setIsScanning, setAmassScans, setMostRecentAmassScanStatus, setDnsRecords, setSubdomains, setCloudDomains, setMostRecentAmassScan)
   }
+
+  const startAmassIntelScan = () => {
+    initiateAmassIntelScan(activeTarget, monitorAmassIntelScanStatus, setIsAmassIntelScanning, setAmassIntelScans, setMostRecentAmassIntelScanStatus, setMostRecentAmassIntelScan)
+  }
+
+  const handleOpenAmassIntelResultsModal = () => setShowAmassIntelResultsModal(true);
+  const handleCloseAmassIntelResultsModal = () => setShowAmassIntelResultsModal(false);
+  
+  const handleOpenAmassIntelHistoryModal = () => setShowAmassIntelHistoryModal(true);
+  const handleCloseAmassIntelHistoryModal = () => setShowAmassIntelHistoryModal(false);
 
   const startAutoScan = async () => {
     console.log('[AutoScan] Starting Auto Scan. Fetching config from backend...');
@@ -1219,6 +1273,28 @@ function App() {
     );
   };
 
+  const startCTLCompanyScan = () => {
+    initiateCTLCompanyScan(
+      activeTarget,
+      monitorCTLCompanyScanStatus,
+      setIsCTLCompanyScanning,
+      setCTLCompanyScans,
+      setMostRecentCTLCompanyScanStatus,
+      setMostRecentCTLCompanyScan
+    );
+  };
+
+  const startMetabigorCompanyScan = () => {
+    initiateMetabigorCompanyScan(
+      activeTarget,
+      monitorMetabigorCompanyScanStatus,
+      setIsMetabigorCompanyScanning,
+      setMetabigorCompanyScans,
+      setMostRecentMetabigorCompanyScanStatus,
+      setMostRecentMetabigorCompanyScan
+    );
+  };
+
   const startSubfinderScan = () => {
     initiateSubfinderScan(
       activeTarget,
@@ -1325,6 +1401,18 @@ function App() {
   const handleCloseCTLResultsModal = () => setShowCTLResultsModal(false);
   const handleOpenCTLResultsModal = () => setShowCTLResultsModal(true);
 
+  const handleCloseCTLCompanyResultsModal = () => setShowCTLCompanyResultsModal(false);
+  const handleOpenCTLCompanyResultsModal = () => setShowCTLCompanyResultsModal(true);
+  
+  const handleCloseCTLCompanyHistoryModal = () => setShowCTLCompanyHistoryModal(false);
+  const handleOpenCTLCompanyHistoryModal = () => setShowCTLCompanyHistoryModal(true);
+
+  const handleCloseMetabigorCompanyResultsModal = () => setShowMetabigorCompanyResultsModal(false);
+  const handleOpenMetabigorCompanyResultsModal = () => setShowMetabigorCompanyResultsModal(true);
+  
+  const handleCloseMetabigorCompanyHistoryModal = () => setShowMetabigorCompanyHistoryModal(false);
+  const handleOpenMetabigorCompanyHistoryModal = () => setShowMetabigorCompanyHistoryModal(true);
+
   const handleCloseSubfinderResultsModal = () => setShowSubfinderResultsModal(false);
   const handleOpenSubfinderResultsModal = () => setShowSubfinderResultsModal(true);
 
@@ -1382,6 +1470,30 @@ function App() {
         setMostRecentSubdomainizerScan,
         setIsSubdomainizerScanning,
         setMostRecentSubdomainizerScanStatus
+      );
+    }
+  }, [activeTarget]);
+
+  useEffect(() => {
+    if (activeTarget) {
+      monitorCTLCompanyScanStatus(
+        activeTarget,
+        setCTLCompanyScans,
+        setMostRecentCTLCompanyScan,
+        setIsCTLCompanyScanning,
+        setMostRecentCTLCompanyScanStatus
+      );
+    }
+  }, [activeTarget]);
+
+  useEffect(() => {
+    if (activeTarget) {
+      monitorMetabigorCompanyScanStatus(
+        activeTarget,
+        setMetabigorCompanyScans,
+        setMostRecentMetabigorCompanyScan,
+        setIsMetabigorCompanyScanning,
+        setMostRecentMetabigorCompanyScanStatus
       );
     }
   }, [activeTarget]);
@@ -1849,6 +1961,19 @@ function App() {
         scanId={getLatestScanId(amassScans)}
       />
 
+      <AmassIntelResultsModal
+        showAmassIntelResultsModal={showAmassIntelResultsModal}
+        handleCloseAmassIntelResultsModal={handleCloseAmassIntelResultsModal}
+        amassIntelResults={mostRecentAmassIntelScan}
+        setShowToast={setShowToast}
+      />
+
+      <AmassIntelHistoryModal
+        showAmassIntelHistoryModal={showAmassIntelHistoryModal}
+        handleCloseAmassIntelHistoryModal={handleCloseAmassIntelHistoryModal}
+        amassIntelScans={amassIntelScans}
+      />
+
       <HttpxResultsModal
         showHttpxResultsModal={showHttpxResultsModal}
         handleCloseHttpxResultsModal={handleCloseHttpxResultsModal}
@@ -1877,6 +2002,19 @@ function App() {
         showCTLResultsModal={showCTLResultsModal}
         handleCloseCTLResultsModal={handleCloseCTLResultsModal}
         ctlResults={mostRecentCTLScan}
+      />
+
+      <CTLCompanyResultsModal
+        showCTLCompanyResultsModal={showCTLCompanyResultsModal}
+        handleCloseCTLCompanyResultsModal={handleCloseCTLCompanyResultsModal}
+        ctlCompanyResults={mostRecentCTLCompanyScan}
+        setShowToast={setShowToast}
+      />
+
+      <CTLCompanyHistoryModal
+        showCTLCompanyHistoryModal={showCTLCompanyHistoryModal}
+        handleCloseCTLCompanyHistoryModal={handleCloseCTLCompanyHistoryModal}
+        ctlCompanyScans={ctlCompanyScans}
       />
 
       <SubfinderResultsModal
@@ -1965,44 +2103,21 @@ function App() {
             {activeTarget.type === 'Company' && (
               <div className="mb-4">
                 <h3 className="text-danger mb-3">Company</h3>
-                <h4 className="text-secondary mb-3 fs-5">Root Domain Discovery</h4>
-                <Row className="row-cols-3 g-3 mb-4">
+                <h4 className="text-secondary mb-3 fs-5">Root Domain Discovery (No API Key)</h4>
+                <Row className="row-cols-2 g-3 mb-4">
                   {[
-                    { 
-                      name: 'Amass Intel', 
-                      link: 'https://github.com/OWASP/Amass',
-                      description: 'Intelligence gathering and ASN enumeration for comprehensive company domain discovery.',
-                      isActive: true,
-                      status: 'idle', // placeholder
-                      isScanning: false, // placeholder
-                      onScan: () => console.log('Amass Intel scan'), // placeholder
-                      onResults: () => console.log('Amass Intel results'), // placeholder
-                      onHistory: () => console.log('Amass Intel history'), // placeholder
-                      resultCount: 0 // placeholder
-                    },
-                    { 
-                      name: 'Metabigor', 
-                      link: 'https://github.com/j3ssie/metabigor',
-                      description: 'OSINT tool for company intelligence gathering and domain enumeration.',
-                      isActive: true,
-                      status: 'idle', // placeholder
-                      isScanning: false, // placeholder
-                      onScan: () => console.log('Metabigor scan'), // placeholder
-                      onResults: () => console.log('Metabigor results'), // placeholder
-                      onHistory: () => console.log('Metabigor history'), // placeholder
-                      resultCount: 0 // placeholder
-                    },
                     { 
                       name: 'CRT', 
                       link: 'https://crt.sh',
                       description: 'Certificate Transparency logs analysis for company domain discovery.',
                       isActive: true,
-                      status: 'idle', // placeholder
-                      isScanning: false, // placeholder
-                      onScan: () => console.log('CRT scan'), // placeholder
-                      onResults: () => console.log('CRT results'), // placeholder
-                      onHistory: () => console.log('CRT history'), // placeholder
-                      resultCount: 0 // placeholder
+                      status: mostRecentCTLCompanyScanStatus,
+                      isScanning: isCTLCompanyScanning,
+                      onScan: startCTLCompanyScan,
+                      onResults: handleOpenCTLCompanyResultsModal,
+                      onHistory: handleOpenCTLCompanyHistoryModal,
+                      resultCount: mostRecentCTLCompanyScan && mostRecentCTLCompanyScan.result ? 
+                        mostRecentCTLCompanyScan.result.split('\n').filter(line => line.trim()).length : 0
                     }
                   ].map((tool, index) => (
                     <Col key={index}>
@@ -2019,6 +2134,189 @@ function App() {
                           <div className="mt-auto">
                             <Card.Text className="text-white small mb-3">
                               Root Domains: {tool.resultCount || "0"}
+                            </Card.Text>
+                            <div className="d-flex justify-content-between gap-2">
+                              <Button 
+                                variant="outline-danger" 
+                                className="flex-fill" 
+                                onClick={tool.onHistory}
+                              >
+                                History
+                              </Button>
+                              <Button
+                                variant="outline-danger"
+                                className="flex-fill"
+                                onClick={tool.onScan}
+                                disabled={tool.isScanning || tool.status === "pending"}
+                              >
+                                <div className="btn-content">
+                                  {tool.isScanning || tool.status === "pending" ? (
+                                    <div className="spinner"></div>
+                                  ) : 'Scan'}
+                                </div>
+                              </Button>
+                              <Button 
+                                variant="outline-danger" 
+                                className="flex-fill" 
+                                onClick={tool.onResults}
+                              >
+                                Results
+                              </Button>
+                            </div>
+                          </div>
+                        </Card.Body>
+                      </Card>
+                    </Col>
+                  ))}
+                </Row>
+                
+                <h4 className="text-secondary mb-3 fs-5">Root Domain Discovery (API Key)</h4>
+                <Row className="row-cols-4 g-3 mb-4">
+                  {[
+                    { 
+                      name: 'SecurityTrails', 
+                      link: 'https://securitytrails.com',
+                      description: 'Comprehensive DNS and subdomain intelligence platform with historical data.',
+                      isActive: true,
+                      status: 'idle',
+                      isScanning: false,
+                      onScan: () => console.log('SecurityTrails scan'),
+                      onResults: () => console.log('SecurityTrails results'),
+                      onHistory: () => console.log('SecurityTrails history'),
+                      resultCount: 0
+                    },
+                    { 
+                      name: 'Censys CLI / API', 
+                      link: 'https://censys.io',
+                      description: 'Internet-wide scanning platform for discovering and analyzing internet-connected devices.',
+                      isActive: true,
+                      status: 'idle',
+                      isScanning: false,
+                      onScan: () => console.log('Censys scan'),
+                      onResults: () => console.log('Censys results'),
+                      onHistory: () => console.log('Censys history'),
+                      resultCount: 0
+                    },
+                    { 
+                      name: 'Shodan CLI / API', 
+                      link: 'https://shodan.io',
+                      description: 'Search engine for internet-connected devices and services.',
+                      isActive: true,
+                      status: 'idle',
+                      isScanning: false,
+                      onScan: () => console.log('Shodan scan'),
+                      onResults: () => console.log('Shodan results'),
+                      onHistory: () => console.log('Shodan history'),
+                      resultCount: 0
+                    },
+                    { 
+                      name: 'GitHub Recon Tools', 
+                      link: 'https://github.com/gwen001/github-search',
+                      description: 'Looks for organization mentions and domain patterns in public GitHub repos to discover config files, email addresses, or links to other root domains.',
+                      isActive: true,
+                      status: 'idle',
+                      isScanning: false,
+                      onScan: () => console.log('GitHub Recon scan'),
+                      onResults: () => console.log('GitHub Recon results'),
+                      onHistory: () => console.log('GitHub Recon history'),
+                      resultCount: 0
+                    }
+                  ].map((tool, index) => (
+                    <Col key={index}>
+                      <Card className="shadow-sm h-100 text-center" style={{ minHeight: '250px' }}>
+                        <Card.Body className="d-flex flex-column">
+                          <Card.Title className="text-danger mb-3">
+                            <a href={tool.link} className="text-danger text-decoration-none">
+                              {tool.name}
+                            </a>
+                          </Card.Title>
+                          <Card.Text className="text-white small fst-italic">
+                            {tool.description}
+                          </Card.Text>
+                          <div className="mt-auto">
+                            <Card.Text className="text-white small mb-3">
+                              Root Domains: {tool.resultCount || "0"}
+                            </Card.Text>
+                            <div className="d-flex justify-content-between gap-2">
+                              <Button 
+                                variant="outline-danger" 
+                                className="flex-fill" 
+                                onClick={tool.onHistory}
+                              >
+                                History
+                              </Button>
+                              <Button
+                                variant="outline-danger"
+                                className="flex-fill"
+                                onClick={tool.onScan}
+                                disabled={tool.isScanning || tool.status === "pending"}
+                              >
+                                <div className="btn-content">
+                                  {tool.isScanning || tool.status === "pending" ? (
+                                    <div className="spinner"></div>
+                                  ) : 'Scan'}
+                                </div>
+                              </Button>
+                              <Button 
+                                variant="outline-danger" 
+                                className="flex-fill" 
+                                onClick={tool.onResults}
+                              >
+                                Results
+                              </Button>
+                            </div>
+                          </div>
+                        </Card.Body>
+                      </Card>
+                    </Col>
+                  ))}
+                </Row>
+                
+                <h4 className="text-secondary mb-3 fs-5">IP Address Discovery</h4>
+                <Row className="mb-4">
+                  {[
+                    {
+                      name: 'Amass Intel',
+                      link: 'https://github.com/OWASP/Amass',
+                      description: 'Intelligence gathering and ASN enumeration for comprehensive company domain discovery.',
+                      isActive: true,
+                      status: mostRecentAmassIntelScanStatus,
+                      isScanning: isAmassIntelScanning,
+                      onScan: startAmassIntelScan,
+                      onResults: handleOpenAmassIntelResultsModal,
+                      onHistory: handleOpenAmassIntelHistoryModal,
+                      resultCount: mostRecentAmassIntelScan?.result ? JSON.parse(mostRecentAmassIntelScan.result).length : 0,
+                      resultLabel: 'Root Domains'
+                    },
+                    {
+                      name: 'Metabigor',
+                      link: 'https://github.com/j3ssie/metabigor',
+                      description: 'OSINT tool for network intelligence gathering including ASN and IP range discovery.',
+                      isActive: true,
+                      status: mostRecentMetabigorCompanyScanStatus,
+                      isScanning: isMetabigorCompanyScanning,
+                      onScan: startMetabigorCompanyScan,
+                      onResults: handleOpenMetabigorCompanyResultsModal,
+                      onHistory: handleOpenMetabigorCompanyHistoryModal,
+                      resultCount: mostRecentMetabigorCompanyScan && mostRecentMetabigorCompanyScan.result ? 
+                        mostRecentMetabigorCompanyScan.result.split('\n').filter(line => line.trim()).length : 0,
+                      resultLabel: 'Network Ranges'
+                    }
+                  ].map((tool, index) => (
+                    <Col md={6} key={index}>
+                      <Card className="shadow-sm h-100 text-center" style={{ minHeight: '250px' }}>
+                        <Card.Body className="d-flex flex-column">
+                          <Card.Title className="text-danger mb-3">
+                            <a href={tool.link} className="text-danger text-decoration-none">
+                              {tool.name}
+                            </a>
+                          </Card.Title>
+                          <Card.Text className="text-white small fst-italic">
+                            {tool.description}
+                          </Card.Text>
+                          <div className="mt-auto">
+                            <Card.Text className="text-white small mb-3">
+                              {tool.resultLabel}: {tool.resultCount || "0"}
                             </Card.Text>
                             <div className="d-flex justify-content-between gap-2">
                               <Button 
@@ -2876,6 +3174,24 @@ function App() {
           </Table>
         </Modal.Body>
       </Modal>
+      <CTLCompanyHistoryModal
+        showCTLCompanyHistoryModal={showCTLCompanyHistoryModal}
+        handleCloseCTLCompanyHistoryModal={handleCloseCTLCompanyHistoryModal}
+        ctlCompanyScans={ctlCompanyScans}
+      />
+
+      <MetabigorCompanyResultsModal
+        showMetabigorCompanyResultsModal={showMetabigorCompanyResultsModal}
+        handleCloseMetabigorCompanyResultsModal={handleCloseMetabigorCompanyResultsModal}
+        metabigorCompanyResults={mostRecentMetabigorCompanyScan}
+        setShowToast={setShowToast}
+      />
+
+      <MetabigorCompanyHistoryModal
+        showMetabigorCompanyHistoryModal={showMetabigorCompanyHistoryModal}
+        handleCloseMetabigorCompanyHistoryModal={handleCloseMetabigorCompanyHistoryModal}
+        metabigorCompanyScans={metabigorCompanyScans}
+      />
     </Container>
   );
 }

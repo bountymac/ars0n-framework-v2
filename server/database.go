@@ -431,6 +431,43 @@ func createTables() {
 			END;
 		END $$;`,
 
+		`CREATE TABLE IF NOT EXISTS amass_intel_scans (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scan_id UUID NOT NULL UNIQUE,
+			company_name TEXT NOT NULL,
+			status VARCHAR(50) NOT NULL,
+			result TEXT,
+			error TEXT,
+			stdout TEXT,
+			stderr TEXT,
+			command TEXT,
+			execution_time TEXT,
+			created_at TIMESTAMP DEFAULT NOW(),
+			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
+			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
+		);`,
+
+		`CREATE TABLE IF NOT EXISTS intel_root_domains (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scan_id UUID NOT NULL,
+			domain TEXT NOT NULL,
+			source TEXT DEFAULT 'intel',
+			raw_data TEXT,
+			created_at TIMESTAMP DEFAULT NOW(),
+			FOREIGN KEY (scan_id) REFERENCES amass_intel_scans(scan_id) ON DELETE CASCADE
+		);`,
+
+		`CREATE TABLE IF NOT EXISTS intel_whois_data (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scan_id UUID NOT NULL,
+			domain TEXT,
+			registrant TEXT,
+			organization TEXT,
+			raw_whois TEXT,
+			created_at TIMESTAMP DEFAULT NOW(),
+			FOREIGN KEY (scan_id) REFERENCES amass_intel_scans(scan_id) ON DELETE CASCADE
+		);`,
+
 		`CREATE TABLE IF NOT EXISTS auto_scan_config (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			amass BOOLEAN DEFAULT TRUE,
@@ -487,6 +524,7 @@ func createTables() {
 
 	deletePendingScansQuery := `
 		DELETE FROM amass_scans WHERE status = 'pending';
+		DELETE FROM amass_intel_scans WHERE status = 'pending';
 		DELETE FROM httpx_scans WHERE status = 'pending';
 		DELETE FROM gau_scans WHERE status = 'pending';
 		DELETE FROM sublist3r_scans WHERE status = 'pending';

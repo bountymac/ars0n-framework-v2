@@ -80,6 +80,16 @@ services:
     networks:
       - ars0n-network
 
+  metabigor:
+    container_name: ars0n-framework-v2-metabigor-1
+    build: ./docker/metabigor
+    depends_on:
+      - api
+    entrypoint: ["sleep", "infinity"]
+    restart: "no"
+    networks:
+      - ars0n-network
+
   sublist3r:
     container_name: ars0n-framework-v2-sublist3r-1
     build: ./docker/sublist3r
