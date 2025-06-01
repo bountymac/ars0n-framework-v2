@@ -12,6 +12,7 @@ import { ShuffleDNSResultsModal } from './modals/shuffleDNSModals.js';
 import ScreenshotResultsModal from './modals/ScreenshotResultsModal.js';
 import SettingsModal from './modals/SettingsModal.js';
 import ExportModal from './modals/ExportModal.js';
+import GoogleDorkingModal from './modals/GoogleDorkingModal.js';
 import Ars0nFrameworkHeader from './components/ars0nFrameworkHeader.js';
 import ManageScopeTargets from './components/manageScopeTargets.js';
 import fetchAmassScans from './utils/fetchAmassScans.js';
@@ -333,6 +334,13 @@ function App() {
   const [isMetabigorCompanyScanning, setIsMetabigorCompanyScanning] = useState(false);
   const [showMetabigorCompanyResultsModal, setShowMetabigorCompanyResultsModal] = useState(false);
   const [showMetabigorCompanyHistoryModal, setShowMetabigorCompanyHistoryModal] = useState(false);
+  const [googleDorkingScans, setGoogleDorkingScans] = useState([]);
+  const [mostRecentGoogleDorkingScanStatus, setMostRecentGoogleDorkingScanStatus] = useState(null);
+  const [mostRecentGoogleDorkingScan, setMostRecentGoogleDorkingScan] = useState(null);
+  const [isGoogleDorkingScanning, setIsGoogleDorkingScanning] = useState(false);
+  const [showGoogleDorkingResultsModal, setShowGoogleDorkingResultsModal] = useState(false);
+  const [showGoogleDorkingHistoryModal, setShowGoogleDorkingHistoryModal] = useState(false);
+  const [showGoogleDorkingManualModal, setShowGoogleDorkingManualModal] = useState(false);
 
   const handleCloseSubdomainsModal = () => setShowSubdomainsModal(false);
   const handleCloseCloudDomainsModal = () => setShowCloudDomainsModal(false);
@@ -1413,6 +1421,50 @@ function App() {
   const handleCloseMetabigorCompanyHistoryModal = () => setShowMetabigorCompanyHistoryModal(false);
   const handleOpenMetabigorCompanyHistoryModal = () => setShowMetabigorCompanyHistoryModal(true);
 
+  const handleCloseGoogleDorkingResultsModal = () => setShowGoogleDorkingResultsModal(false);
+  const handleOpenGoogleDorkingResultsModal = () => setShowGoogleDorkingResultsModal(true);
+  
+  const handleCloseGoogleDorkingHistoryModal = () => setShowGoogleDorkingHistoryModal(false);
+  const handleOpenGoogleDorkingHistoryModal = () => setShowGoogleDorkingHistoryModal(true);
+
+  const handleCloseGoogleDorkingManualModal = () => setShowGoogleDorkingManualModal(false);
+  const handleOpenGoogleDorkingManualModal = () => setShowGoogleDorkingManualModal(true);
+
+  const startGoogleDorkingAutomatedScan = () => {
+    console.log('Starting Google Dorking Automated Scan...');
+  };
+
+  const startGoogleDorkingManualScan = () => {
+    setShowGoogleDorkingManualModal(true);
+  };
+
+  const handleGoogleDorkingDomainAdd = async (domain) => {
+    try {
+      const response = await fetch(`${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/add`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: 'Wildcard',
+          mode: 'Passive',
+          scope_target: domain,
+          active: false,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
+      }
+
+      await fetchScopeTargets();
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 3000);
+    } catch (error) {
+      console.error('Error adding domain:', error);
+    }
+  };
+
   const handleCloseSubfinderResultsModal = () => setShowSubfinderResultsModal(false);
   const handleOpenSubfinderResultsModal = () => setShowSubfinderResultsModal(true);
 
@@ -2107,6 +2159,21 @@ function App() {
                 <Row className="row-cols-2 g-3 mb-4">
                   {[
                     { 
+                      name: 'Google Dorking', 
+                      link: 'https://www.google.com',
+                      description: 'Advanced Google search techniques to discover company domains, subdomains, and exposed information using search operators.',
+                      isActive: true,
+                      status: mostRecentGoogleDorkingScanStatus,
+                      isScanning: isGoogleDorkingScanning,
+                      onAutomated: startGoogleDorkingAutomatedScan,
+                      onManual: startGoogleDorkingManualScan,
+                      onResults: handleOpenGoogleDorkingResultsModal,
+                      onHistory: handleOpenGoogleDorkingHistoryModal,
+                      resultCount: mostRecentGoogleDorkingScan && mostRecentGoogleDorkingScan.result ? 
+                        mostRecentGoogleDorkingScan.result.split('\n').filter(line => line.trim()).length : 0,
+                      isGoogleDorking: true
+                    },
+                    { 
                       name: 'CRT', 
                       link: 'https://crt.sh',
                       description: 'Certificate Transparency logs analysis for company domain discovery.',
@@ -2133,36 +2200,67 @@ function App() {
                           </Card.Text>
                           <div className="mt-auto">
                             <Card.Text className="text-white small mb-3">
-                              Root Domains: {tool.resultCount || "0"}
+                              Domains: {tool.resultCount || "0"}
                             </Card.Text>
-                            <div className="d-flex justify-content-between gap-2">
-                              <Button 
-                                variant="outline-danger" 
-                                className="flex-fill" 
-                                onClick={tool.onHistory}
-                              >
-                                History
-                              </Button>
-                              <Button
-                                variant="outline-danger"
-                                className="flex-fill"
-                                onClick={tool.onScan}
-                                disabled={tool.isScanning || tool.status === "pending"}
-                              >
-                                <div className="btn-content">
-                                  {tool.isScanning || tool.status === "pending" ? (
-                                    <div className="spinner"></div>
-                                  ) : 'Scan'}
-                                </div>
-                              </Button>
-                              <Button 
-                                variant="outline-danger" 
-                                className="flex-fill" 
-                                onClick={tool.onResults}
-                              >
-                                Results
-                              </Button>
-                            </div>
+                            {tool.isGoogleDorking ? (
+                              <div className="d-flex justify-content-between gap-2">
+                                <Button
+                                  variant="outline-danger"
+                                  className="flex-fill"
+                                  onClick={tool.onAutomated}
+                                  disabled={tool.isScanning || tool.status === "pending"}
+                                >
+                                  <div className="btn-content">
+                                    {tool.isScanning || tool.status === "pending" ? (
+                                      <div className="spinner"></div>
+                                    ) : 'Automated'}
+                                  </div>
+                                </Button>
+                                <Button
+                                  variant="outline-danger"
+                                  className="flex-fill"
+                                  onClick={tool.onManual}
+                                >
+                                  Manual
+                                </Button>
+                                <Button 
+                                  variant="outline-danger" 
+                                  className="flex-fill" 
+                                  onClick={tool.onResults}
+                                >
+                                  Results
+                                </Button>
+                              </div>
+                            ) : (
+                              <div className="d-flex justify-content-between gap-2">
+                                <Button 
+                                  variant="outline-danger" 
+                                  className="flex-fill" 
+                                  onClick={tool.onHistory}
+                                >
+                                  History
+                                </Button>
+                                <Button
+                                  variant="outline-danger"
+                                  className="flex-fill"
+                                  onClick={tool.onScan}
+                                  disabled={tool.isScanning || tool.status === "pending"}
+                                >
+                                  <div className="btn-content">
+                                    {tool.isScanning || tool.status === "pending" ? (
+                                      <div className="spinner"></div>
+                                    ) : 'Scan'}
+                                  </div>
+                                </Button>
+                                <Button 
+                                  variant="outline-danger" 
+                                  className="flex-fill" 
+                                  onClick={tool.onResults}
+                                >
+                                  Results
+                                </Button>
+                              </div>
+                            )}
                           </div>
                         </Card.Body>
                       </Card>
@@ -2235,7 +2333,7 @@ function App() {
                           </Card.Text>
                           <div className="mt-auto">
                             <Card.Text className="text-white small mb-3">
-                              Root Domains: {tool.resultCount || "0"}
+                              Domains: {tool.resultCount || "0"}
                             </Card.Text>
                             <div className="d-flex justify-content-between gap-2">
                               <Button 
@@ -2286,7 +2384,7 @@ function App() {
                       onResults: handleOpenAmassIntelResultsModal,
                       onHistory: handleOpenAmassIntelHistoryModal,
                       resultCount: mostRecentAmassIntelScan?.result ? JSON.parse(mostRecentAmassIntelScan.result).length : 0,
-                      resultLabel: 'Root Domains'
+                      resultLabel: 'Domains'
                     },
                     {
                       name: 'Metabigor',
@@ -3191,6 +3289,37 @@ function App() {
         showMetabigorCompanyHistoryModal={showMetabigorCompanyHistoryModal}
         handleCloseMetabigorCompanyHistoryModal={handleCloseMetabigorCompanyHistoryModal}
         metabigorCompanyScans={metabigorCompanyScans}
+      />
+
+      <Modal data-bs-theme="dark" show={showGoogleDorkingResultsModal} onHide={handleCloseGoogleDorkingResultsModal} size="lg">
+        <Modal.Header closeButton>
+          <Modal.Title className='text-danger'>Google Dorking Results</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <p className="text-white">Google Dorking results will be displayed here once functionality is implemented.</p>
+        </Modal.Body>
+      </Modal>
+
+      <Modal data-bs-theme="dark" show={showGoogleDorkingHistoryModal} onHide={handleCloseGoogleDorkingHistoryModal} size="lg">
+        <Modal.Header closeButton>
+          <Modal.Title className='text-danger'>Google Dorking History</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <p className="text-white">Google Dorking scan history will be displayed here once functionality is implemented.</p>
+        </Modal.Body>
+      </Modal>
+
+      <GoogleDorkingModal
+        show={showGoogleDorkingManualModal}
+        handleClose={handleCloseGoogleDorkingManualModal}
+        companyName={activeTarget?.scope_target || ''}
+        onDomainAdd={handleGoogleDorkingDomainAdd}
+      />
+
+      <SubfinderResultsModal
+        showSubfinderResultsModal={showSubfinderResultsModal}
+        handleCloseSubfinderResultsModal={handleCloseSubfinderResultsModal}
+        subfinderResults={mostRecentSubfinderScan}
       />
     </Container>
   );

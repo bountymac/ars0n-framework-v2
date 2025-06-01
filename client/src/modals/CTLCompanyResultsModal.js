@@ -34,7 +34,7 @@ export const CTLCompanyResultsModal = ({
     >
       <Modal.Header closeButton>
         <Modal.Title className='text-danger'>
-          CTL Company Results - {results.length} Root Domains Found
+          CTL Company Results - {results.length} Domains Found
         </Modal.Title>
       </Modal.Header>
       <Modal.Body>
@@ -95,7 +95,7 @@ export const CTLCompanyResultsModal = ({
             {results.length > 0 ? (
               <>
                 <div className="d-flex justify-content-between align-items-center mb-3">
-                  <h6 className="text-danger mb-0">Root Domains ({results.length})</h6>
+                  <h6 className="text-danger mb-0">Domains ({results.length})</h6>
                   <Button variant="outline-danger" size="sm" onClick={handleCopy}>
                     Copy All Domains
                   </Button>
@@ -105,7 +105,7 @@ export const CTLCompanyResultsModal = ({
                     <thead>
                       <tr>
                         <th>#</th>
-                        <th>Root Domain</th>
+                        <th>Domain</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -122,7 +122,7 @@ export const CTLCompanyResultsModal = ({
             ) : (
               <div className="text-center text-muted py-4">
                 <i className="bi bi-search fs-1"></i>
-                <p className="mt-2">No root domains found</p>
+                <p className="mt-2">No domains found</p>
                 {ctlCompanyResults.status === 'success' && (
                   <small>The scan completed successfully but no domains were discovered for this company.</small>
                 )}
@@ -168,7 +168,7 @@ export const CTLCompanyHistoryModal = ({
               <tr>
                 <th>Company Name</th>
                 <th>Status</th>
-                <th>Root Domains Found</th>
+                <th>Domains Found</th>
                 <th>Execution Time</th>
                 <th>Created At</th>
                 <th>Scan ID</th>

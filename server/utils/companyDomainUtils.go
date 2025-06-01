@@ -117,7 +117,24 @@ func ExecuteAndParseCTLCompanyScan(scanID, companyName string) {
 
 	client := &http.Client{Timeout: 60 * time.Second}
 
-	resp, err := client.Get(url)
+	// Create request with realistic browser headers
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		log.Printf("[CTL-COMPANY] [ERROR] Failed to create HTTP request: %v", err)
+		UpdateCTLCompanyScanStatus(scanID, "error", "", fmt.Sprintf("Failed to create HTTP request: %v", err), "", time.Since(startTime).String())
+		return
+	}
+
+	// Add realistic browser headers to avoid rate limiting
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+	req.Header.Set("Accept", "application/json, text/plain, */*")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	req.Header.Set("Accept-Encoding", "gzip, deflate, br")
+	req.Header.Set("DNT", "1")
+	req.Header.Set("Connection", "keep-alive")
+	req.Header.Set("Upgrade-Insecure-Requests", "1")
+
+	resp, err := client.Do(req)
 	if err != nil {
 		log.Printf("[CTL-COMPANY] [ERROR] Failed to make request to crt.sh: %v", err)
 		UpdateCTLCompanyScanStatus(scanID, "error", "", fmt.Sprintf("Failed to make request to crt.sh: %v", err), "", time.Since(startTime).String())
@@ -143,7 +160,7 @@ func ExecuteAndParseCTLCompanyScan(scanID, companyName string) {
 
 	log.Printf("[CTL-COMPANY] [DEBUG] Received %d certificate entries from crt.sh", len(results))
 
-	uniqueRootDomains := make(map[string]bool)
+	uniqueDomains := make(map[string]bool)
 	for _, result := range results {
 		domain := strings.ToLower(strings.TrimPrefix(result.CommonName, "*."))
 		log.Printf("[CTL-COMPANY] [DEBUG] Processing domain: %s", domain)
@@ -164,9 +181,8 @@ func ExecuteAndParseCTLCompanyScan(scanID, companyName string) {
 			// Validate that it's a proper domain format
 			lastPart := parts[len(parts)-1]
 			if len(lastPart) >= 2 && len(lastPart) <= 6 { // Valid TLD length
-				rootDomain := parts[len(parts)-2] + "." + parts[len(parts)-1]
-				log.Printf("[CTL-COMPANY] [DEBUG] Extracted root domain: %s from %s", rootDomain, domain)
-				uniqueRootDomains[rootDomain] = true
+				log.Printf("[CTL-COMPANY] [DEBUG] Keeping full domain: %s", domain)
+				uniqueDomains[domain] = true
 			} else {
 				log.Printf("[CTL-COMPANY] [DEBUG] Skipping invalid TLD: %s", domain)
 			}
@@ -175,15 +191,15 @@ func ExecuteAndParseCTLCompanyScan(scanID, companyName string) {
 		}
 	}
 
-	var rootDomains []string
-	for rootDomain := range uniqueRootDomains {
-		rootDomains = append(rootDomains, rootDomain)
+	var domains []string
+	for domain := range uniqueDomains {
+		domains = append(domains, domain)
 	}
-	sort.Strings(rootDomains)
+	sort.Strings(domains)
 
-	result := strings.Join(rootDomains, "\n")
-	log.Printf("[CTL-COMPANY] [DEBUG] Final processed result contains %d unique root domains", len(rootDomains))
-	log.Printf("[CTL-COMPANY] [DEBUG] Root domains found: %v", rootDomains)
+	result := strings.Join(domains, "\n")
+	log.Printf("[CTL-COMPANY] [DEBUG] Final processed result contains %d unique domains", len(domains))
+	log.Printf("[CTL-COMPANY] [DEBUG] Domains found: %v", domains)
 
 	UpdateCTLCompanyScanStatus(scanID, "success", result, "", fmt.Sprintf("GET %s", url), time.Since(startTime).String())
 	log.Printf("[CTL-COMPANY] [INFO] CTL Company scan completed and results stored successfully for company %s", companyName)
