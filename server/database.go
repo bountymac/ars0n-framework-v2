@@ -49,6 +49,15 @@ func createTables() {
 		`INSERT INTO user_settings (id)
 		SELECT gen_random_uuid()
 		WHERE NOT EXISTS (SELECT 1 FROM user_settings LIMIT 1);`,
+		`CREATE TABLE IF NOT EXISTS api_keys (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			tool_name VARCHAR(100) NOT NULL,
+			api_key_name VARCHAR(200) NOT NULL,
+			api_key_value TEXT NOT NULL,
+			created_at TIMESTAMP DEFAULT NOW(),
+			updated_at TIMESTAMP DEFAULT NOW(),
+			UNIQUE(tool_name, api_key_name)
+		);`,
 		`CREATE TABLE IF NOT EXISTS amass_scans (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			scan_id UUID NOT NULL UNIQUE,

@@ -50,14 +50,14 @@ import initiateHttpxScan from './utils/initiateHttpxScan';
 import monitorHttpxScanStatus from './utils/monitorHttpxScanStatus';
 import initiateGauScan from './utils/initiateGauScan.js';
 import monitorGauScanStatus from './utils/monitorGauScanStatus.js';
-import initiateSublist3rScan from './utils/initiateSublist3rScan.js';
-import monitorSublist3rScanStatus from './utils/monitorSublist3rScanStatus.js';
-import initiateAssetfinderScan from './utils/initiateAssetfinderScan.js';
-import monitorAssetfinderScanStatus from './utils/monitorAssetfinderScanStatus.js';
-import initiateCTLScan from './utils/initiateCTLScan.js';
-import monitorCTLScanStatus from './utils/monitorCTLScanStatus.js';
-import initiateSubfinderScan from './utils/initiateSubfinderScan.js';
-import monitorSubfinderScanStatus from './utils/monitorSubfinderScanStatus.js';
+import initiateSublist3rScan from './utils/initiateSublist3rScan';
+import monitorSublist3rScanStatus from './utils/monitorSublist3rScanStatus';
+import initiateAssetfinderScan from './utils/initiateAssetfinderScan';
+import monitorAssetfinderScanStatus from './utils/monitorAssetfinderScanStatus';
+import initiateCTLScan from './utils/initiateCTLScan';
+import monitorCTLScanStatus from './utils/monitorCTLScanStatus';
+import initiateSubfinderScan from './utils/initiateSubfinderScan';
+import monitorSubfinderScanStatus from './utils/monitorSubfinderScanStatus';
 import { CTLResultsModal } from './modals/CTLResultsModal';
 import { ReconResultsModal } from './modals/ReconResultsModal';
 import { UniqueSubdomainsModal } from './modals/UniqueSubdomainsModal';
@@ -97,6 +97,7 @@ import { CTLCompanyResultsModal, CTLCompanyHistoryModal } from './modals/CTLComp
 import monitorMetabigorCompanyScanStatus from './utils/monitorMetabigorCompanyScanStatus';
 import initiateMetabigorCompanyScan from './utils/initiateMetabigorCompanyScan';
 import { MetabigorCompanyResultsModal, MetabigorCompanyHistoryModal } from './modals/MetabigorCompanyResultsModal';
+import APIKeysConfigModal from './modals/APIKeysConfigModal.js';
 
 // Add helper function
 const getHttpxResultsCount = (scan) => {
@@ -345,6 +346,8 @@ function App() {
   const [showGoogleDorkingManualModal, setShowGoogleDorkingManualModal] = useState(false);
   const [googleDorkingDomains, setGoogleDorkingDomains] = useState([]);
   const [googleDorkingError, setGoogleDorkingError] = useState('');
+  const [showAPIKeysConfigModal, setShowAPIKeysConfigModal] = useState(false);
+  const [settingsModalInitialTab, setSettingsModalInitialTab] = useState('rate-limits');
 
   const handleCloseSubdomainsModal = () => setShowSubdomainsModal(false);
   const handleCloseCloudDomainsModal = () => setShowCloudDomainsModal(false);
@@ -352,6 +355,7 @@ function App() {
   const handleCloseMetaDataModal = () => setShowMetaDataModal(false);
   const handleCloseSettingsModal = () => {
     setShowSettingsModal(false);
+    setSettingsModalInitialTab('rate-limits');
   };
   const handleCloseExportModal = () => {
     setShowExportModal(false);
@@ -1737,6 +1741,12 @@ function App() {
     setShowExportModal(true);
   };
 
+  const handleOpenSettingsOnAPIKeysTab = () => {
+    setShowAPIKeysConfigModal(false);
+    setSettingsModalInitialTab('api-keys');
+    setShowSettingsModal(true);
+  };
+
   // Add scroll position restoration
   useEffect(() => {
     const handleBeforeUnload = () => {
@@ -2002,6 +2012,7 @@ function App() {
       <SettingsModal
         show={showSettingsModal}
         handleClose={handleCloseSettingsModal}
+        initialTab={settingsModalInitialTab}
       />
 
       <ExportModal
@@ -2317,7 +2328,16 @@ function App() {
                   ))}
                 </Row>
                 
-                <h4 className="text-secondary mb-3 fs-5">Root Domain Discovery (API Key)</h4>
+                <div className="d-flex justify-content-between align-items-center mb-3">
+                  <h4 className="text-secondary fs-5 mb-0">Root Domain Discovery (API Key)</h4>
+                  <Button 
+                    variant="outline-danger" 
+                    size="sm"
+                    onClick={() => setShowAPIKeysConfigModal(true)}
+                  >
+                    Configure API Keys
+                  </Button>
+                </div>
                 <Row className="row-cols-4 g-3 mb-4">
                   {[
                     { 
@@ -3418,6 +3438,12 @@ function App() {
         showSubfinderResultsModal={showSubfinderResultsModal}
         handleCloseSubfinderResultsModal={handleCloseSubfinderResultsModal}
         subfinderResults={mostRecentSubfinderScan}
+      />
+
+      <APIKeysConfigModal
+        show={showAPIKeysConfigModal}
+        handleClose={() => setShowAPIKeysConfigModal(false)}
+        onOpenSettings={handleOpenSettingsOnAPIKeysTab}
       />
     </Container>
   );

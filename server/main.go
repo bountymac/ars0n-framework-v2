@@ -140,6 +140,10 @@ func main() {
 	r.HandleFunc("/api/google-dorking-domains", createGoogleDorkingDomain).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/google-dorking-domains/{target_id}", getGoogleDorkingDomains).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/google-dorking-domains/{domain_id}", deleteGoogleDorkingDomain).Methods("DELETE", "OPTIONS")
+	r.HandleFunc("/api/api-keys", getAPIKeys).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/api-keys", createAPIKey).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/api-keys/{id}", updateAPIKey).Methods("PUT", "OPTIONS")
+	r.HandleFunc("/api/api-keys/{id}", deleteAPIKey).Methods("DELETE", "OPTIONS")
 
 	log.Println("API server started on :8080")
 	http.ListenAndServe(":8080", r)
@@ -1037,4 +1041,153 @@ func deleteGoogleDorkingDomain(w http.ResponseWriter, r *http.Request) {
 		"success": true,
 		"message": "Domain deleted successfully",
 	})
+}
+
+func getAPIKeys(w http.ResponseWriter, r *http.Request) {
+	rows, err := dbPool.Query(context.Background(), `
+		SELECT id, tool_name, api_key_name, api_key_value, created_at, updated_at
+		FROM api_keys
+		ORDER BY tool_name, api_key_name
+	`)
+	if err != nil {
+		log.Printf("Error fetching API keys: %v", err)
+		http.Error(w, "Failed to fetch API keys", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var apiKeys []map[string]interface{}
+	for rows.Next() {
+		var id, toolName, apiKeyName, apiKeyValue string
+		var createdAt, updatedAt time.Time
+
+		err := rows.Scan(&id, &toolName, &apiKeyName, &apiKeyValue, &createdAt, &updatedAt)
+		if err != nil {
+			log.Printf("Error scanning API key row: %v", err)
+			continue
+		}
+
+		// Mask the API key value for security
+		maskedValue := ""
+		if len(apiKeyValue) > 4 {
+			maskedValue = strings.Repeat("*", len(apiKeyValue)-4) + apiKeyValue[len(apiKeyValue)-4:]
+		} else {
+			maskedValue = strings.Repeat("*", len(apiKeyValue))
+		}
+
+		apiKeys = append(apiKeys, map[string]interface{}{
+			"id":            id,
+			"tool_name":     toolName,
+			"api_key_name":  apiKeyName,
+			"api_key_value": maskedValue,
+			"created_at":    createdAt,
+			"updated_at":    updatedAt,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(apiKeys)
+}
+
+func createAPIKey(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		ToolName    string `json:"tool_name"`
+		APIKeyName  string `json:"api_key_name"`
+		APIKeyValue string `json:"api_key_value"`
+	}
+
+	err := json.NewDecoder(r.Body).Decode(&request)
+	if err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if request.ToolName == "" || request.APIKeyName == "" || request.APIKeyValue == "" {
+		http.Error(w, "tool_name, api_key_name, and api_key_value are required", http.StatusBadRequest)
+		return
+	}
+
+	var id string
+	err = dbPool.QueryRow(context.Background(), `
+		INSERT INTO api_keys (tool_name, api_key_name, api_key_value)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (tool_name, api_key_name)
+		DO UPDATE SET api_key_value = EXCLUDED.api_key_value, updated_at = NOW()
+		RETURNING id
+	`, request.ToolName, request.APIKeyName, request.APIKeyValue).Scan(&id)
+
+	if err != nil {
+		log.Printf("Error creating API key: %v", err)
+		http.Error(w, "Failed to create API key", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"id": id, "message": "API key created successfully"})
+}
+
+func updateAPIKey(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id := vars["id"]
+
+	var request struct {
+		APIKeyName  string `json:"api_key_name"`
+		APIKeyValue string `json:"api_key_value"`
+	}
+
+	err := json.NewDecoder(r.Body).Decode(&request)
+	if err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if request.APIKeyName == "" || request.APIKeyValue == "" {
+		http.Error(w, "api_key_name and api_key_value are required", http.StatusBadRequest)
+		return
+	}
+
+	result, err := dbPool.Exec(context.Background(), `
+		UPDATE api_keys 
+		SET api_key_name = $1, api_key_value = $2, updated_at = NOW()
+		WHERE id = $3
+	`, request.APIKeyName, request.APIKeyValue, id)
+
+	if err != nil {
+		log.Printf("Error updating API key: %v", err)
+		http.Error(w, "Failed to update API key", http.StatusInternalServerError)
+		return
+	}
+
+	rowsAffected := result.RowsAffected()
+	if rowsAffected == 0 {
+		http.Error(w, "API key not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"message": "API key updated successfully"})
+}
+
+func deleteAPIKey(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id := vars["id"]
+
+	result, err := dbPool.Exec(context.Background(), `
+		DELETE FROM api_keys WHERE id = $1
+	`, id)
+
+	if err != nil {
+		log.Printf("Error deleting API key: %v", err)
+		http.Error(w, "Failed to delete API key", http.StatusInternalServerError)
+		return
+	}
+
+	rowsAffected := result.RowsAffected()
+	if rowsAffected == 0 {
+		http.Error(w, "API key not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"message": "API key deleted successfully"})
 }

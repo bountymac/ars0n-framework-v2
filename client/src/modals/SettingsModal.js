@@ -18,19 +18,31 @@ const styles = {
   },
 };
 
-function SettingsModal({ show, handleClose }) {
+function SettingsModal({ show, handleClose, initialTab = 'rate-limits' }) {
   const [settings, setSettings] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [activeTab, setActiveTab] = useState('rate-limits');
+  const [activeTab, setActiveTab] = useState(initialTab);
+  const [apiKeys, setApiKeys] = useState([]);
+  const [apiKeyLoading, setApiKeyLoading] = useState(false);
+  const [newApiKey, setNewApiKey] = useState({
+    tool_name: '',
+    api_key_name: '',
+    api_key_value: ''
+  });
 
   useEffect(() => {
     if (show) {
       fetchSettings();
+      fetchApiKeys();
       setSaveSuccess(false);
     }
   }, [show]);
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
 
   const fetchSettings = async () => {
     setLoading(true);
@@ -129,6 +141,85 @@ function SettingsModal({ show, handleClose }) {
     }
   };
 
+  const fetchApiKeys = async () => {
+    setApiKeyLoading(true);
+    try {
+      const response = await fetch(
+        `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/api-keys`
+      );
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch API keys');
+      }
+      
+      const data = await response.json();
+      setApiKeys(data || []);
+    } catch (error) {
+      console.error('Error fetching API keys:', error);
+      setError('Failed to load API keys. Please try again.');
+    } finally {
+      setApiKeyLoading(false);
+    }
+  };
+
+  const handleCreateApiKey = async () => {
+    if (!newApiKey.tool_name || !newApiKey.api_key_name || !newApiKey.api_key_value) {
+      setError('Please fill in all fields for the API key');
+      return;
+    }
+
+    try {
+      setApiKeyLoading(true);
+      const response = await fetch(
+        `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/api-keys`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(newApiKey),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to create API key');
+      }
+
+      setNewApiKey({ tool_name: '', api_key_name: '', api_key_value: '' });
+      await fetchApiKeys();
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (error) {
+      console.error('Error creating API key:', error);
+      setError('Failed to create API key. Please try again.');
+    } finally {
+      setApiKeyLoading(false);
+    }
+  };
+
+  const handleDeleteApiKey = async (id) => {
+    try {
+      setApiKeyLoading(true);
+      const response = await fetch(
+        `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/api-keys/${id}`,
+        {
+          method: 'DELETE',
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to delete API key');
+      }
+
+      await fetchApiKeys();
+    } catch (error) {
+      console.error('Error deleting API key:', error);
+      setError('Failed to delete API key. Please try again.');
+    } finally {
+      setApiKeyLoading(false);
+    }
+  };
+
   const renderSlider = (tool, label, min, max, step, description) => (
     <Form.Group as={Row} className="mb-4 align-items-center">
       <Form.Label column sm={4} className="text-white">
@@ -205,6 +296,17 @@ function SettingsModal({ show, handleClose }) {
                       }}
                     >
                       Custom HTTP
+                    </Nav.Link>
+                  </Nav.Item>
+                  <Nav.Item>
+                    <Nav.Link 
+                      eventKey="api-keys"
+                      className={`text-danger ${activeTab === 'api-keys' ? 'active' : ''}`}
+                      style={{
+                        ...(activeTab === 'api-keys' ? styles.navLinkActive : styles.navLink),
+                      }}
+                    >
+                      API Keys
                     </Nav.Link>
                   </Nav.Item>
                 </Nav>
@@ -353,6 +455,104 @@ function SettingsModal({ show, handleClose }) {
                         className="custom-input"
                       />
                     </Form.Group>
+                  </Tab.Pane>
+                  <Tab.Pane eventKey="api-keys">
+                    <h5 className="text-danger mb-3">API Keys Management</h5>
+                    <p className="text-white-50 small mb-4">
+                      Manage API keys for the Domain Discovery tools. These keys will be used to enhance the capabilities of the tools.
+                    </p>
+                    
+                    <div className="mb-4">
+                      <h6 className="text-white mb-3">Add New API Key</h6>
+                      <Row className="mb-3">
+                        <Col md={4}>
+                          <Form.Group>
+                            <Form.Label className="text-white">Tool</Form.Label>
+                            <Form.Select
+                              value={newApiKey.tool_name}
+                              onChange={(e) => setNewApiKey({...newApiKey, tool_name: e.target.value})}
+                              className="custom-input"
+                            >
+                              <option value="">Select Tool</option>
+                              <option value="SecurityTrails">SecurityTrails</option>
+                              <option value="Censys">Censys</option>
+                              <option value="Shodan">Shodan</option>
+                              <option value="GitHub">GitHub</option>
+                            </Form.Select>
+                          </Form.Group>
+                        </Col>
+                        <Col md={4}>
+                          <Form.Group>
+                            <Form.Label className="text-white">Key Name</Form.Label>
+                            <Form.Control
+                              type="text"
+                              placeholder="e.g., API_KEY, X-API-Key"
+                              value={newApiKey.api_key_name}
+                              onChange={(e) => setNewApiKey({...newApiKey, api_key_name: e.target.value})}
+                              className="custom-input"
+                            />
+                          </Form.Group>
+                        </Col>
+                        <Col md={4}>
+                          <Form.Group>
+                            <Form.Label className="text-white">API Key Value</Form.Label>
+                            <Form.Control
+                              type="text"
+                              placeholder="Enter your API key"
+                              value={newApiKey.api_key_value}
+                              onChange={(e) => setNewApiKey({...newApiKey, api_key_value: e.target.value})}
+                              className="custom-input"
+                              autoComplete="off"
+                              spellCheck="false"
+                            />
+                          </Form.Group>
+                        </Col>
+                      </Row>
+                      <Button 
+                        variant="danger" 
+                        onClick={handleCreateApiKey}
+                        disabled={apiKeyLoading}
+                      >
+                        {apiKeyLoading ? 'Adding...' : 'Add API Key'}
+                      </Button>
+                    </div>
+
+                    <div className="mb-4">
+                      <h6 className="text-white mb-3">Existing API Keys</h6>
+                      {apiKeyLoading ? (
+                        <div className="text-center py-3">
+                          <div className="spinner-border text-danger" role="status">
+                            <span className="visually-hidden">Loading...</span>
+                          </div>
+                        </div>
+                      ) : apiKeys.length === 0 ? (
+                        <p className="text-white-50">No API keys configured yet.</p>
+                      ) : (
+                        <div className="list-group" style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                          {apiKeys.map((apiKey) => (
+                            <div key={apiKey.id} className="list-group-item bg-dark border-secondary d-flex justify-content-between align-items-center">
+                              <div>
+                                <strong className="text-danger">{apiKey.tool_name}</strong>
+                                <br />
+                                <span className="text-white">{apiKey.api_key_name}: {apiKey.api_key_value}</span>
+                                <br />
+                                <small className="text-white-50">
+                                  Added: {new Date(apiKey.created_at).toLocaleDateString()}
+                                </small>
+                              </div>
+                              <Button 
+                                variant="outline-danger" 
+                                size="sm"
+                                onClick={() => handleDeleteApiKey(apiKey.id)}
+                                disabled={apiKeyLoading}
+                              >
+                                Delete
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </Tab.Pane>
                 </Tab.Content>
               </Col>
