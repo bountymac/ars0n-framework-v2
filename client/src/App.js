@@ -98,6 +98,7 @@ import monitorMetabigorCompanyScanStatus from './utils/monitorMetabigorCompanySc
 import initiateMetabigorCompanyScan from './utils/initiateMetabigorCompanyScan';
 import { MetabigorCompanyResultsModal, MetabigorCompanyHistoryModal } from './modals/MetabigorCompanyResultsModal';
 import APIKeysConfigModal from './modals/APIKeysConfigModal.js';
+import ReverseWhoisModal from './modals/ReverseWhoisModal.js';
 
 // Add helper function
 const getHttpxResultsCount = (scan) => {
@@ -348,6 +349,10 @@ function App() {
   const [googleDorkingError, setGoogleDorkingError] = useState('');
   const [showAPIKeysConfigModal, setShowAPIKeysConfigModal] = useState(false);
   const [settingsModalInitialTab, setSettingsModalInitialTab] = useState('rate-limits');
+  const [showReverseWhoisResultsModal, setShowReverseWhoisResultsModal] = useState(false);
+  const [showReverseWhoisManualModal, setShowReverseWhoisManualModal] = useState(false);
+  const [reverseWhoisDomains, setReverseWhoisDomains] = useState([]);
+  const [reverseWhoisError, setReverseWhoisError] = useState('');
 
   const handleCloseSubdomainsModal = () => setShowSubdomainsModal(false);
   const handleCloseCloudDomainsModal = () => setShowCloudDomainsModal(false);
@@ -378,6 +383,7 @@ function App() {
       fetchHttpxScans(activeTarget, setHttpxScans, setMostRecentHttpxScan, setMostRecentHttpxScanStatus);
       fetchConsolidatedSubdomains(activeTarget, setConsolidatedSubdomains, setConsolidatedCount);
       fetchGoogleDorkingDomains();
+      fetchReverseWhoisDomains();
     }
   }, [activeTarget]);
 
@@ -984,6 +990,8 @@ function App() {
     setIsAutoScanCancelling(false);
     setGoogleDorkingDomains([]);
     setGoogleDorkingError('');
+    setReverseWhoisDomains([]);
+    setReverseWhoisError('');
     
     setActiveTarget(target);
     // Update the backend to set this target as active
@@ -1936,6 +1944,101 @@ function App() {
     }
   }, [isAutoScanning, activeTarget, isAutoScanPaused, isAutoScanPausing, isAutoScanCancelling]);
 
+  const handleCloseReverseWhoisResultsModal = () => setShowReverseWhoisResultsModal(false);
+  const handleOpenReverseWhoisResultsModal = () => setShowReverseWhoisResultsModal(true);
+
+  const handleCloseReverseWhoisManualModal = () => setShowReverseWhoisManualModal(false);
+  const handleOpenReverseWhoisManualModal = () => setShowReverseWhoisManualModal(true);
+
+  const startReverseWhoisManualScan = () => {
+    setShowReverseWhoisManualModal(true);
+  };
+
+  const handleReverseWhoisDomainAdd = async (domain) => {
+    if (!activeTarget) {
+      setReverseWhoisError('No active target selected');
+      return;
+    }
+
+    // Check if domain already exists in the current list
+    const domainExists = reverseWhoisDomains.some(existingDomain => 
+      existingDomain.domain.toLowerCase() === domain.toLowerCase()
+    );
+
+    if (domainExists) {
+      setReverseWhoisError(`Domain "${domain}" already exists in the list`);
+      return;
+    }
+
+    try {
+      const response = await fetch(`${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/reverse-whois-domains`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          scope_target_id: activeTarget.id,
+          domain: domain,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to add domain');
+      }
+
+      // Refresh the domains list
+      await fetchReverseWhoisDomains();
+      setReverseWhoisError('');
+      setToastTitle('Success');
+      setToastMessage('Domain added successfully');
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 3000);
+    } catch (error) {
+      console.error('Error adding domain:', error);
+      setReverseWhoisError(error.message || 'Failed to add domain');
+    }
+  };
+
+  const fetchReverseWhoisDomains = async () => {
+    if (!activeTarget) return;
+
+    try {
+      const response = await fetch(
+        `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/reverse-whois-domains/${activeTarget.id}`
+      );
+      if (response.ok) {
+        const domains = await response.json();
+        setReverseWhoisDomains(domains);
+      }
+    } catch (error) {
+      console.error('Error fetching reverse whois domains:', error);
+    }
+  };
+
+  const deleteReverseWhoisDomain = async (domainId) => {
+    try {
+      const response = await fetch(
+        `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/reverse-whois-domains/${domainId}`,
+        { method: 'DELETE' }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to delete domain');
+      }
+
+      // Refresh the domains list
+      await fetchReverseWhoisDomains();
+      setToastTitle('Success');
+      setToastMessage('Domain deleted successfully');
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 3000);
+    } catch (error) {
+      console.error('Error deleting domain:', error);
+      setReverseWhoisError('Failed to delete domain');
+    }
+  };
+
   return (
     <Container data-bs-theme="dark" className="App" style={{ padding: '20px' }}>
       <style>
@@ -2230,7 +2333,7 @@ function App() {
               <div className="mb-4">
                 <h3 className="text-danger mb-3">Company</h3>
                 <h4 className="text-secondary mb-3 fs-5">Root Domain Discovery (No API Key)</h4>
-                <Row className="row-cols-2 g-3 mb-4">
+                <Row className="row-cols-3 g-3 mb-4">
                   {[
                     { 
                       name: 'Google Dorking', 
@@ -2257,6 +2360,18 @@ function App() {
                       onHistory: handleOpenCTLCompanyHistoryModal,
                       resultCount: mostRecentCTLCompanyScan && mostRecentCTLCompanyScan.result ? 
                         mostRecentCTLCompanyScan.result.split('\n').filter(line => line.trim()).length : 0
+                    },
+                    { 
+                      name: 'Reverse Whois', 
+                      link: 'https://www.whoxy.com/reverse-whois/',
+                      description: 'Reverse WHOIS lookup using Whoxy to find other domains registered by the same entity or contact information.',
+                      isActive: true,
+                      status: null,
+                      isScanning: false,
+                      onManual: startReverseWhoisManualScan,
+                      onResults: handleOpenReverseWhoisResultsModal,
+                      resultCount: reverseWhoisDomains.length,
+                      isReverseWhois: true
                     }
                   ].map((tool, index) => (
                     <Col key={index}>
@@ -2275,6 +2390,23 @@ function App() {
                               Domains: {tool.resultCount || "0"}
                             </Card.Text>
                             {tool.isGoogleDorking ? (
+                              <div className="d-flex justify-content-between gap-2">
+                                <Button
+                                  variant="outline-danger"
+                                  className="flex-fill"
+                                  onClick={tool.onManual}
+                                >
+                                  Manual
+                                </Button>
+                                <Button 
+                                  variant="outline-danger" 
+                                  className="flex-fill" 
+                                  onClick={tool.onResults}
+                                >
+                                  Results
+                                </Button>
+                              </div>
+                            ) : tool.isReverseWhois ? (
                               <div className="d-flex justify-content-between gap-2">
                                 <Button
                                   variant="outline-danger"
@@ -3416,6 +3548,62 @@ function App() {
         </Modal.Footer>
       </Modal>
 
+      <Modal data-bs-theme="dark" show={showReverseWhoisResultsModal} onHide={handleCloseReverseWhoisResultsModal} size="lg">
+        <Modal.Header closeButton>
+          <Modal.Title className='text-danger'>Reverse Whois Results</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {reverseWhoisDomains.length === 0 ? (
+            <div className="text-center py-4">
+              <p className="text-white">No domains discovered yet.</p>
+              <p className="text-white-50 small">
+                Use the Manual Reverse Whois tool to discover and add company domains.
+              </p>
+            </div>
+          ) : (
+            <div>
+              <p className="text-white mb-3">
+                Discovered domains for <strong>{activeTarget?.scope_target}</strong>:
+              </p>
+              <ListGroup variant="flush">
+                {reverseWhoisDomains.map((domainData) => (
+                  <ListGroup.Item 
+                    key={domainData.id} 
+                    className="bg-dark border-secondary d-flex justify-content-between align-items-center"
+                  >
+                    <div>
+                      <span className="text-white">{domainData.domain}</span>
+                      <br />
+                      <small className="text-white-50">
+                        Added: {new Date(domainData.created_at).toLocaleDateString()}
+                      </small>
+                    </div>
+                    <Button 
+                      variant="outline-danger" 
+                      size="sm"
+                      onClick={() => deleteReverseWhoisDomain(domainData.id)}
+                      title="Delete domain"
+                    >
+                      <i className="bi bi-trash"></i>
+                    </Button>
+                  </ListGroup.Item>
+                ))}
+              </ListGroup>
+              <div className="mt-3 text-center">
+                <small className="text-white-50">
+                  Total domains discovered: {reverseWhoisDomains.length}
+                </small>
+              </div>
+            </div>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={handleCloseReverseWhoisResultsModal}>
+            Close
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
       <Modal data-bs-theme="dark" show={showGoogleDorkingHistoryModal} onHide={handleCloseGoogleDorkingHistoryModal} size="lg">
         <Modal.Header closeButton>
           <Modal.Title className='text-danger'>Google Dorking History</Modal.Title>
@@ -3432,6 +3620,15 @@ function App() {
         onDomainAdd={handleGoogleDorkingDomainAdd}
         error={googleDorkingError}
         onClearError={() => setGoogleDorkingError('')}
+      />
+
+      <ReverseWhoisModal
+        show={showReverseWhoisManualModal}
+        handleClose={handleCloseReverseWhoisManualModal}
+        companyName={activeTarget?.scope_target || ''}
+        onDomainAdd={handleReverseWhoisDomainAdd}
+        error={reverseWhoisError}
+        onClearError={() => setReverseWhoisError('')}
       />
 
       <SubfinderResultsModal

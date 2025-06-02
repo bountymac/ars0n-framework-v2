@@ -140,6 +140,9 @@ func main() {
 	r.HandleFunc("/api/google-dorking-domains", createGoogleDorkingDomain).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/google-dorking-domains/{target_id}", getGoogleDorkingDomains).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/google-dorking-domains/{domain_id}", deleteGoogleDorkingDomain).Methods("DELETE", "OPTIONS")
+	r.HandleFunc("/api/reverse-whois-domains", createReverseWhoisDomain).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/reverse-whois-domains/{target_id}", getReverseWhoisDomains).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/reverse-whois-domains/{domain_id}", deleteReverseWhoisDomain).Methods("DELETE", "OPTIONS")
 	r.HandleFunc("/api/api-keys", getAPIKeys).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/api-keys", createAPIKey).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/api-keys/{id}", updateAPIKey).Methods("PUT", "OPTIONS")
@@ -1025,6 +1028,155 @@ func deleteGoogleDorkingDomain(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		log.Printf("Error deleting Google dorking domain: %v", err)
+		http.Error(w, "Failed to delete domain", http.StatusInternalServerError)
+		return
+	}
+
+	rowsAffected := result.RowsAffected()
+	if rowsAffected == 0 {
+		http.Error(w, "Domain not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Domain deleted successfully",
+	})
+}
+
+func createReverseWhoisDomain(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ScopeTargetID string `json:"scope_target_id"`
+		Domain        string `json:"domain"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.ScopeTargetID == "" || req.Domain == "" {
+		http.Error(w, "scope_target_id and domain are required", http.StatusBadRequest)
+		return
+	}
+
+	// Check if domain already exists for this scope target
+	var existingCount int
+	err := dbPool.QueryRow(context.Background(), `
+		SELECT COUNT(*) FROM reverse_whois_domains 
+		WHERE scope_target_id = $1 AND LOWER(domain) = LOWER($2)
+	`, req.ScopeTargetID, req.Domain).Scan(&existingCount)
+
+	if err != nil {
+		log.Printf("Error checking existing reverse whois domain: %v", err)
+		http.Error(w, "Database error", http.StatusInternalServerError)
+		return
+	}
+
+	if existingCount > 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]string{
+			"message": fmt.Sprintf("Domain \"%s\" already exists for this target", req.Domain),
+		})
+		return
+	}
+
+	// Insert the domain
+	var domainID string
+	err = dbPool.QueryRow(context.Background(), `
+		INSERT INTO reverse_whois_domains (scope_target_id, domain, created_at)
+		VALUES ($1, $2, NOW())
+		RETURNING id
+	`, req.ScopeTargetID, req.Domain).Scan(&domainID)
+
+	if err != nil {
+		log.Printf("Error creating reverse whois domain: %v", err)
+		http.Error(w, "Failed to create domain", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"id":              domainID,
+		"scope_target_id": req.ScopeTargetID,
+		"domain":          req.Domain,
+		"success":         true,
+	})
+}
+
+func getReverseWhoisDomains(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	targetID := vars["target_id"]
+
+	if targetID == "" {
+		http.Error(w, "target_id is required", http.StatusBadRequest)
+		return
+	}
+
+	rows, err := dbPool.Query(context.Background(), `
+		SELECT id, scope_target_id, domain, created_at
+		FROM reverse_whois_domains
+		WHERE scope_target_id = $1
+		ORDER BY created_at DESC
+	`, targetID)
+
+	if err != nil {
+		log.Printf("Error fetching reverse whois domains: %v", err)
+		http.Error(w, "Failed to fetch domains", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var domains []map[string]interface{}
+	for rows.Next() {
+		var domain struct {
+			ID            string    `json:"id"`
+			ScopeTargetID string    `json:"scope_target_id"`
+			Domain        string    `json:"domain"`
+			CreatedAt     time.Time `json:"created_at"`
+		}
+
+		err := rows.Scan(&domain.ID, &domain.ScopeTargetID, &domain.Domain, &domain.CreatedAt)
+		if err != nil {
+			log.Printf("Error scanning reverse whois domain: %v", err)
+			continue
+		}
+
+		domains = append(domains, map[string]interface{}{
+			"id":              domain.ID,
+			"scope_target_id": domain.ScopeTargetID,
+			"domain":          domain.Domain,
+			"created_at":      domain.CreatedAt,
+		})
+	}
+
+	if domains == nil {
+		domains = []map[string]interface{}{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(domains)
+}
+
+func deleteReverseWhoisDomain(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	domainID := vars["domain_id"]
+
+	if domainID == "" {
+		http.Error(w, "domain_id is required", http.StatusBadRequest)
+		return
+	}
+
+	result, err := dbPool.Exec(context.Background(), `
+		DELETE FROM reverse_whois_domains WHERE id = $1
+	`, domainID)
+
+	if err != nil {
+		log.Printf("Error deleting reverse whois domain: %v", err)
 		http.Error(w, "Failed to delete domain", http.StatusInternalServerError)
 		return
 	}
