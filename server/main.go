@@ -147,6 +147,9 @@ func main() {
 	r.HandleFunc("/api/api-keys", createAPIKey).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/api-keys/{id}", updateAPIKey).Methods("PUT", "OPTIONS")
 	r.HandleFunc("/api/api-keys/{id}", deleteAPIKey).Methods("DELETE", "OPTIONS")
+	r.HandleFunc("/securitytrails-company/run", utils.RunSecurityTrailsCompanyScan).Methods("POST", "OPTIONS")
+	r.HandleFunc("/securitytrails-company/status/{scan_id}", utils.GetSecurityTrailsCompanyScanStatus).Methods("GET", "OPTIONS")
+	r.HandleFunc("/scopetarget/{id}/scans/securitytrails-company", utils.GetSecurityTrailsCompanyScansForScopeTarget).Methods("GET", "OPTIONS")
 
 	log.Println("API server started on :8080")
 	http.ListenAndServe(":8080", r)

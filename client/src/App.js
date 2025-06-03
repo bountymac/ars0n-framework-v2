@@ -99,6 +99,9 @@ import initiateMetabigorCompanyScan from './utils/initiateMetabigorCompanyScan';
 import { MetabigorCompanyResultsModal, MetabigorCompanyHistoryModal } from './modals/MetabigorCompanyResultsModal';
 import APIKeysConfigModal from './modals/APIKeysConfigModal.js';
 import ReverseWhoisModal from './modals/ReverseWhoisModal.js';
+import initiateSecurityTrailsCompanyScan from './utils/initiateSecurityTrailsCompanyScan';
+import monitorSecurityTrailsCompanyScanStatus from './utils/monitorSecurityTrailsCompanyScanStatus';
+import { SecurityTrailsCompanyResultsModal, SecurityTrailsCompanyHistoryModal } from './modals/SecurityTrailsCompanyResultsModal';
 
 // Add helper function
 const getHttpxResultsCount = (scan) => {
@@ -353,6 +356,13 @@ function App() {
   const [showReverseWhoisManualModal, setShowReverseWhoisManualModal] = useState(false);
   const [reverseWhoisDomains, setReverseWhoisDomains] = useState([]);
   const [reverseWhoisError, setReverseWhoisError] = useState('');
+  const [securityTrailsCompanyScans, setSecurityTrailsCompanyScans] = useState([]);
+  const [mostRecentSecurityTrailsCompanyScan, setMostRecentSecurityTrailsCompanyScan] = useState(null);
+  const [mostRecentSecurityTrailsCompanyScanStatus, setMostRecentSecurityTrailsCompanyScanStatus] = useState(null);
+  const [isSecurityTrailsCompanyScanning, setIsSecurityTrailsCompanyScanning] = useState(false);
+  const [showSecurityTrailsCompanyResultsModal, setShowSecurityTrailsCompanyResultsModal] = useState(false);
+  // Add state for history modal
+  const [showSecurityTrailsCompanyHistoryModal, setShowSecurityTrailsCompanyHistoryModal] = useState(false);
 
   const handleCloseSubdomainsModal = () => setShowSubdomainsModal(false);
   const handleCloseCloudDomainsModal = () => setShowCloudDomainsModal(false);
@@ -365,6 +375,11 @@ function App() {
   const handleCloseExportModal = () => {
     setShowExportModal(false);
   };
+  const handleCloseSecurityTrailsCompanyResultsModal = () => setShowSecurityTrailsCompanyResultsModal(false);
+  const handleOpenSecurityTrailsCompanyResultsModal = () => setShowSecurityTrailsCompanyResultsModal(true);
+  // Add handler for history modal
+  const handleCloseSecurityTrailsCompanyHistoryModal = () => setShowSecurityTrailsCompanyHistoryModal(false);
+  const handleOpenSecurityTrailsCompanyHistoryModal = () => setShowSecurityTrailsCompanyHistoryModal(true);
 
   useEffect(() => {
     fetchScopeTargets();
@@ -2044,6 +2059,47 @@ function App() {
     }
   };
 
+  const startSecurityTrailsCompanyScan = () => {
+    initiateSecurityTrailsCompanyScan(
+      activeTarget,
+      monitorSecurityTrailsCompanyScanStatus,
+      setIsSecurityTrailsCompanyScanning,
+      setSecurityTrailsCompanyScans,
+      setMostRecentSecurityTrailsCompanyScanStatus,
+      setMostRecentSecurityTrailsCompanyScan
+    );
+  };
+
+  useEffect(() => {
+    if (activeTarget) {
+      const fetchSecurityTrailsCompanyScans = async () => {
+        try {
+          const response = await fetch(
+            `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${activeTarget.id}/scans/securitytrails-company`
+          );
+          if (!response.ok) {
+            throw new Error('Failed to fetch SecurityTrails Company scans');
+          }
+          const scans = await response.json();
+          if (Array.isArray(scans)) {
+            setSecurityTrailsCompanyScans(scans);
+            if (scans.length > 0) {
+              const mostRecentScan = scans.reduce((latest, scan) => {
+                const scanDate = new Date(scan.created_at);
+                return scanDate > new Date(latest.created_at) ? scan : latest;
+              }, scans[0]);
+              setMostRecentSecurityTrailsCompanyScan(mostRecentScan);
+              setMostRecentSecurityTrailsCompanyScanStatus(mostRecentScan.status);
+            }
+          }
+        } catch (error) {
+          console.error('[SECURITYTRAILS-COMPANY] Error fetching scans:', error);
+        }
+      };
+      fetchSecurityTrailsCompanyScans();
+    }
+  }, [activeTarget]);
+
   return (
     <Container data-bs-theme="dark" className="App" style={{ padding: '20px' }}>
       <style>
@@ -2480,14 +2536,15 @@ function App() {
                     { 
                       name: 'SecurityTrails', 
                       link: 'https://securitytrails.com',
-                      description: 'Comprehensive DNS and subdomain intelligence platform with historical data.',
+                      description: 'SecurityTrails is a comprehensive DNS, domain, and IP data provider that helps security teams discover and monitor their digital assets.',
                       isActive: true,
-                      status: 'idle',
-                      isScanning: false,
-                      onScan: () => console.log('SecurityTrails scan'),
-                      onResults: () => console.log('SecurityTrails results'),
-                      onHistory: () => console.log('SecurityTrails history'),
-                      resultCount: 0
+                      status: mostRecentSecurityTrailsCompanyScanStatus,
+                      isScanning: isSecurityTrailsCompanyScanning,
+                      onScan: startSecurityTrailsCompanyScan,
+                      onResults: handleOpenSecurityTrailsCompanyResultsModal,
+                      onHistory: handleOpenSecurityTrailsCompanyHistoryModal,
+                      resultCount: mostRecentSecurityTrailsCompanyScan && mostRecentSecurityTrailsCompanyScan.result ? 
+                        JSON.parse(mostRecentSecurityTrailsCompanyScan.result).domains?.length || 0 : 0
                     },
                     { 
                       name: 'Censys CLI / API', 
@@ -3646,6 +3703,20 @@ function App() {
         show={showAPIKeysConfigModal}
         handleClose={() => setShowAPIKeysConfigModal(false)}
         onOpenSettings={handleOpenSettingsOnAPIKeysTab}
+      />
+
+      {showSecurityTrailsCompanyResultsModal && (
+        <SecurityTrailsCompanyResultsModal
+          show={showSecurityTrailsCompanyResultsModal}
+          handleClose={handleCloseSecurityTrailsCompanyResultsModal}
+          scan={mostRecentSecurityTrailsCompanyScan}
+        />
+      )}
+
+      <SecurityTrailsCompanyHistoryModal
+        show={showSecurityTrailsCompanyHistoryModal}
+        handleClose={handleCloseSecurityTrailsCompanyHistoryModal}
+        scans={securityTrailsCompanyScans}
       />
     </Container>
   );
