@@ -18,7 +18,7 @@ const styles = {
   },
 };
 
-function SettingsModal({ show, handleClose, initialTab = 'rate-limits' }) {
+function SettingsModal({ show, handleClose, initialTab = 'rate-limits', onApiKeyDeleted }) {
   const [settings, setSettings] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -31,6 +31,10 @@ function SettingsModal({ show, handleClose, initialTab = 'rate-limits' }) {
     api_key_name: '',
     api_key_value: ''
   });
+  const [saving, setSaving] = useState(false);
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+  const [toastVariant, setToastVariant] = useState('success');
 
   useEffect(() => {
     if (show) {
@@ -109,35 +113,39 @@ function SettingsModal({ show, handleClose, initialTab = 'rate-limits' }) {
   };
 
   const handleSave = async () => {
+    setSaving(true);
     try {
-      setLoading(true);
-      setSaveSuccess(false);
-      setError(null);
-      
-      const response = await fetch(
-        `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/user/settings`,
-        {
+      if (activeTab === 'api-keys') {
+        // For API keys, just close the modal after successful save
+        await handleCreateApiKey();
+        handleClose();
+      } else {
+        // For other settings, show the success toast
+        const response = await fetch('/api/settings', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify(settings),
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to save settings');
         }
-      );
 
-      if (!response.ok) {
-        throw new Error('Failed to save settings');
+        setShowToast(true);
+        setTimeout(() => {
+          setShowToast(false);
+          handleClose();
+        }, 2000);
       }
-
-      setSaveSuccess(true);
-      setTimeout(() => {
-        handleClose();
-      }, 1500);
     } catch (error) {
       console.error('Error saving settings:', error);
-      setError('Failed to save settings. Please try again.');
+      setShowToast(true);
+      setToastMessage('Error saving settings');
+      setToastVariant('danger');
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
@@ -163,13 +171,7 @@ function SettingsModal({ show, handleClose, initialTab = 'rate-limits' }) {
   };
 
   const handleCreateApiKey = async () => {
-    if (!newApiKey.tool_name || !newApiKey.api_key_name || !newApiKey.api_key_value) {
-      setError('Please fill in all fields for the API key');
-      return;
-    }
-
     try {
-      setApiKeyLoading(true);
       const response = await fetch(
         `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/api-keys`,
         {
@@ -185,21 +187,25 @@ function SettingsModal({ show, handleClose, initialTab = 'rate-limits' }) {
         throw new Error('Failed to create API key');
       }
 
-      setNewApiKey({ tool_name: '', api_key_name: '', api_key_value: '' });
+      // Refresh the API keys list
       await fetchApiKeys();
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 3000);
+      
+      // Reset the form
+      setNewApiKey({
+        tool_name: '',
+        api_key_name: '',
+        api_key_value: ''
+      });
     } catch (error) {
       console.error('Error creating API key:', error);
-      setError('Failed to create API key. Please try again.');
-    } finally {
-      setApiKeyLoading(false);
+      setShowToast(true);
+      setToastMessage('Error creating API key');
+      setToastVariant('danger');
     }
   };
 
   const handleDeleteApiKey = async (id) => {
     try {
-      setApiKeyLoading(true);
       const response = await fetch(
         `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/api-keys/${id}`,
         {
@@ -211,12 +217,19 @@ function SettingsModal({ show, handleClose, initialTab = 'rate-limits' }) {
         throw new Error('Failed to delete API key');
       }
 
+      // Check if the deleted key was for SecurityTrails
+      const deletedKey = apiKeys.find(key => key.id === id);
+      if (deletedKey && deletedKey.tool_name === 'SecurityTrails') {
+        onApiKeyDeleted?.(false);
+      }
+
+      // Refresh the API keys list
       await fetchApiKeys();
     } catch (error) {
       console.error('Error deleting API key:', error);
-      setError('Failed to delete API key. Please try again.');
-    } finally {
-      setApiKeyLoading(false);
+      setShowToast(true);
+      setToastMessage('Error deleting API key');
+      setToastVariant('danger');
     }
   };
 
@@ -257,7 +270,12 @@ function SettingsModal({ show, handleClose, initialTab = 'rate-limits' }) {
   };
 
   return (
-    <Modal data-bs-theme="dark" show={show} onHide={handleClose} size="lg">
+    <Modal 
+      show={show} 
+      onHide={handleClose} 
+      size="xl"
+      data-bs-theme="dark"
+    >
       <Modal.Header closeButton>
         <Modal.Title className="text-danger">Settings</Modal.Title>
       </Modal.Header>
@@ -567,9 +585,9 @@ function SettingsModal({ show, handleClose, initialTab = 'rate-limits' }) {
         <Button 
           variant="danger" 
           onClick={handleSave} 
-          disabled={loading || saveSuccess}
+          disabled={loading || saving}
         >
-          {loading ? 'Saving...' : saveSuccess ? 'Saved!' : 'Save Settings'}
+          {loading ? 'Saving...' : saving ? 'Saving...' : 'Save Settings'}
         </Button>
       </Modal.Footer>
     </Modal>

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Modal, Button, Form, Row, Col } from 'react-bootstrap';
 
-function APIKeysConfigModal({ show, handleClose, onOpenSettings }) {
+function APIKeysConfigModal({ show, handleClose, onOpenSettings, onApiKeySelected }) {
   const [apiKeys, setApiKeys] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedKeys, setSelectedKeys] = useState({
@@ -53,15 +53,27 @@ function APIKeysConfigModal({ show, handleClose, onOpenSettings }) {
       ...prev,
       [toolName]: keyId
     }));
+
+    // Notify parent when SecurityTrails key is selected
+    if (toolName === 'SecurityTrails' && keyId) {
+      onApiKeySelected?.(true);
+    }
+  };
+
+  const handleModalClose = () => {
+    // Check if SecurityTrails key is selected before closing
+    const hasSecurityTrailsKey = selectedKeys.SecurityTrails !== '';
+    onApiKeySelected?.(hasSecurityTrailsKey);
+    handleClose();
   };
 
   const handleOpenSettingsModal = () => {
-    handleClose();
+    handleModalClose();
     onOpenSettings();
   };
 
   return (
-    <Modal data-bs-theme="dark" show={show} onHide={handleClose} size="lg">
+    <Modal data-bs-theme="dark" show={show} onHide={handleModalClose} size="lg">
       <Modal.Header closeButton>
         <Modal.Title className="text-danger">Configure API Keys</Modal.Title>
       </Modal.Header>
@@ -140,12 +152,12 @@ function APIKeysConfigModal({ show, handleClose, onOpenSettings }) {
         )}
       </Modal.Body>
       <Modal.Footer>
-        <Button variant="secondary" onClick={handleClose}>
+        <Button variant="secondary" onClick={handleModalClose}>
           Cancel
         </Button>
         <Button 
           variant="danger" 
-          onClick={handleClose}
+          onClick={handleModalClose}
           disabled={loading}
         >
           Save Configuration

@@ -29,6 +29,7 @@ import {
   Table,
   Toast,
   ToastContainer,
+  Spinner,
 } from 'react-bootstrap';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'bootstrap-icons/font/bootstrap-icons.css';
@@ -363,6 +364,7 @@ function App() {
   const [showSecurityTrailsCompanyResultsModal, setShowSecurityTrailsCompanyResultsModal] = useState(false);
   // Add state for history modal
   const [showSecurityTrailsCompanyHistoryModal, setShowSecurityTrailsCompanyHistoryModal] = useState(false);
+  const [hasSecurityTrailsApiKey, setHasSecurityTrailsApiKey] = useState(false);
 
   const handleCloseSubdomainsModal = () => setShowSubdomainsModal(false);
   const handleCloseCloudDomainsModal = () => setShowCloudDomainsModal(false);
@@ -2100,6 +2102,34 @@ function App() {
     }
   }, [activeTarget]);
 
+  useEffect(() => {
+    const checkSecurityTrailsApiKey = async () => {
+      try {
+        const response = await fetch(
+          `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/api-keys`
+        );
+        if (!response.ok) {
+          throw new Error('Failed to fetch API keys');
+        }
+        const data = await response.json();
+        const hasKey = data.some(key => key.tool_name === 'SecurityTrails' && key.api_key_value && key.api_key_value.trim() !== '');
+        setHasSecurityTrailsApiKey(hasKey);
+      } catch (error) {
+        console.error('Error checking SecurityTrails API key:', error);
+        setHasSecurityTrailsApiKey(false);
+      }
+    };
+    checkSecurityTrailsApiKey();
+  }, []);
+
+  const handleApiKeySelected = (hasKey) => {
+    setHasSecurityTrailsApiKey(hasKey);
+  };
+
+  const handleApiKeyDeleted = (hasKey) => {
+    setHasSecurityTrailsApiKey(hasKey);
+  };
+
   return (
     <Container data-bs-theme="dark" className="App" style={{ padding: '20px' }}>
       <style>
@@ -2177,6 +2207,7 @@ function App() {
         show={showSettingsModal}
         handleClose={handleCloseSettingsModal}
         initialTab={settingsModalInitialTab}
+        onApiKeyDeleted={handleApiKeyDeleted}
       />
 
       <ExportModal
@@ -2544,7 +2575,9 @@ function App() {
                       onResults: handleOpenSecurityTrailsCompanyResultsModal,
                       onHistory: handleOpenSecurityTrailsCompanyHistoryModal,
                       resultCount: mostRecentSecurityTrailsCompanyScan && mostRecentSecurityTrailsCompanyScan.result ? 
-                        JSON.parse(mostRecentSecurityTrailsCompanyScan.result).domains?.length || 0 : 0
+                        JSON.parse(mostRecentSecurityTrailsCompanyScan.result).domains.length : 0,
+                      disabled: !hasSecurityTrailsApiKey,
+                      disabledMessage: !hasSecurityTrailsApiKey ? 'SecurityTrails API key not configured' : null
                     },
                     { 
                       name: 'Censys CLI / API', 
@@ -2610,12 +2643,15 @@ function App() {
                                 variant="outline-danger"
                                 className="flex-fill"
                                 onClick={tool.onScan}
-                                disabled={tool.isScanning || tool.status === "pending"}
+                                disabled={!tool.isActive || tool.disabled || tool.isScanning}
+                                title={tool.disabledMessage}
                               >
                                 <div className="btn-content">
-                                  {tool.isScanning || tool.status === "pending" ? (
-                                    <div className="spinner"></div>
-                                  ) : 'Scan'}
+                                  {tool.isScanning ? (
+                                    <Spinner animation="border" size="sm" />
+                                  ) : (
+                                    'Scan'
+                                  )}
                                 </div>
                               </Button>
                               <Button 
@@ -2691,12 +2727,15 @@ function App() {
                                 variant="outline-danger"
                                 className="flex-fill"
                                 onClick={tool.onScan}
-                                disabled={tool.isScanning || tool.status === "pending"}
+                                disabled={!tool.isActive || tool.disabled || tool.isScanning}
+                                title={tool.disabledMessage}
                               >
                                 <div className="btn-content">
-                                  {tool.isScanning || tool.status === "pending" ? (
-                                    <div className="spinner"></div>
-                                  ) : 'Scan'}
+                                  {tool.isScanning ? (
+                                    <Spinner animation="border" size="sm" />
+                                  ) : (
+                                    'Scan'
+                                  )}
                                 </div>
                               </Button>
                               <Button 
@@ -3702,7 +3741,12 @@ function App() {
       <APIKeysConfigModal
         show={showAPIKeysConfigModal}
         handleClose={() => setShowAPIKeysConfigModal(false)}
-        onOpenSettings={handleOpenSettingsOnAPIKeysTab}
+        onOpenSettings={() => {
+          setShowAPIKeysConfigModal(false);
+          setSettingsModalInitialTab('api-keys');
+          setShowSettingsModal(true);
+        }}
+        onApiKeySelected={handleApiKeySelected}
       />
 
       {showSecurityTrailsCompanyResultsModal && (

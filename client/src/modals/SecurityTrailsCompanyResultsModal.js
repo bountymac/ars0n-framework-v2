@@ -94,12 +94,17 @@ export const SecurityTrailsCompanyResultsModal = ({
               </Table>
             </div>
 
-            {scan.status === 'error' && scan.error && (
-              <div className="mb-3">
-                <h6 className="text-danger">Error Details:</h6>
-                <pre className="bg-dark text-danger p-2 rounded" style={{ fontSize: '0.9em' }}>
-                  {scan.error}
-                </pre>
+            {scan.error && (
+              <div className="alert alert-danger mb-3">
+                <h6 className="mb-2">Error</h6>
+                {scan.error.includes('rate limit exceeded') ? (
+                  <>
+                    <p className="mb-2">SecurityTrails API rate limit has been exceeded.</p>
+                    <p className="mb-0 small">Please upgrade your SecurityTrails plan or try again later.</p>
+                  </>
+                ) : (
+                  <p className="mb-0">{scan.error}</p>
+                )}
               </div>
             )}
 

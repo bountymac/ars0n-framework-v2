@@ -111,7 +111,6 @@ func ExecuteSecurityTrailsCompanyScan(scanID, companyName string) {
 	log.Printf("[SECURITYTRAILS-COMPANY] [INFO] Starting SecurityTrails Company scan execution for company %s (scan ID: %s)", companyName, scanID)
 	startTime := time.Now()
 
-	// Get the SecurityTrails API key
 	var apiKey string
 	err := dbPool.QueryRow(context.Background(), `
 		SELECT api_key_value 
@@ -152,7 +151,8 @@ func ExecuteSecurityTrailsCompanyScan(scanID, companyName string) {
 	}
 
 	// Add API key to request
-	req.Header.Set("apikey", apiKey)
+	req.Header.Set("APIKEY", apiKey)
+	req.Header.Set("Accept", "application/json")
 	log.Printf("[SECURITYTRAILS-COMPANY] [INFO] Making request to SecurityTrails API: %s", url)
 
 	// Make request
@@ -163,6 +163,12 @@ func ExecuteSecurityTrailsCompanyScan(scanID, companyName string) {
 		return
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode == 429 {
+		log.Printf("[SECURITYTRAILS-COMPANY] [ERROR] SecurityTrails API rate limit exceeded")
+		UpdateSecurityTrailsCompanyScanStatus(scanID, "error", "", "SecurityTrails API rate limit exceeded. Please upgrade your plan or try again later.", "", time.Since(startTime).String())
+		return
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
