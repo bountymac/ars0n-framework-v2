@@ -525,23 +525,28 @@ function App() {
             const mostRecentScan = scans[0]; // Scans are ordered by created_at DESC
             setMostRecentShuffleDNSCustomScan(mostRecentScan);
             setMostRecentShuffleDNSCustomScanStatus(mostRecentScan.status);
+            
+            // If scan is complete and we were previously scanning, stop scanning
+            if (isCeWLScanning && (mostRecentScan.status === 'success' || mostRecentScan.status === 'failed')) {
+              setIsCeWLScanning(false);
+            }
           }
         } catch (error) {
           console.error('Error fetching custom ShuffleDNS scans:', error);
         }
       };
 
-      // Only start polling if we're in the SHUFFLEDNS_CEWL step of auto scan
-      if (isAutoScanning && autoScanCurrentStep === AUTO_SCAN_STEPS.SHUFFLEDNS_CEWL) {
+      // Start polling if we're in the SHUFFLEDNS_CEWL step of auto scan OR if CeWL is scanning manually
+      if ((isAutoScanning && autoScanCurrentStep === AUTO_SCAN_STEPS.SHUFFLEDNS_CEWL) || isCeWLScanning) {
         fetchCustomShuffleDNSScans();
         const interval = setInterval(fetchCustomShuffleDNSScans, 5000);
         return () => clearInterval(interval);
       } else {
-        // If not in auto scan, just fetch once
+        // If not in auto scan and not scanning, just fetch once
         fetchCustomShuffleDNSScans();
       }
     }
-  }, [activeTarget, isAutoScanning, autoScanCurrentStep]);
+  }, [activeTarget, isAutoScanning, autoScanCurrentStep, isCeWLScanning]);
 
   // Add new useEffect for monitoring consolidated subdomains after scans complete
   useEffect(() => {
@@ -1347,7 +1352,7 @@ function App() {
   const startCeWLScan = () => {
     initiateCeWLScan(
       activeTarget,
-      monitorCeWLScanStatus,
+      null, // Don't use old monitoring - we handle this in the shufflednscustom useEffect now
       setIsCeWLScanning,
       setCeWLScans,
       setMostRecentCeWLScanStatus,
