@@ -56,13 +56,15 @@ function APIKeysConfigModal({ show, handleClose, onOpenSettings, onApiKeySelecte
 
     // Notify parent when SecurityTrails key is selected
     if (toolName === 'SecurityTrails' && keyId) {
-      onApiKeySelected?.(true);
+      const selectedKey = apiKeys.find(key => key.id === keyId);
+      onApiKeySelected?.(selectedKey?.key_values?.api_key ? true : false);
     }
   };
 
   const handleModalClose = () => {
     // Check if SecurityTrails key is selected before closing
-    const hasSecurityTrailsKey = selectedKeys.SecurityTrails !== '';
+    const selectedKey = apiKeys.find(key => key.id === selectedKeys.SecurityTrails);
+    const hasSecurityTrailsKey = selectedKey?.key_values?.api_key ? true : false;
     onApiKeySelected?.(hasSecurityTrailsKey);
     handleClose();
   };

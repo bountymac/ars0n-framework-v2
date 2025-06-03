@@ -2112,7 +2112,10 @@ function App() {
           throw new Error('Failed to fetch API keys');
         }
         const data = await response.json();
-        const hasKey = data.some(key => key.tool_name === 'SecurityTrails' && key.api_key_value && key.api_key_value.trim() !== '');
+        const hasKey = Array.isArray(data) && data.some(key => 
+          key.tool_name === 'SecurityTrails' && 
+          key.key_values?.api_key?.trim() !== ''
+        );
         setHasSecurityTrailsApiKey(hasKey);
       } catch (error) {
         console.error('Error checking SecurityTrails API key:', error);

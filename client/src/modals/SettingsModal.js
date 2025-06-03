@@ -29,7 +29,11 @@ function SettingsModal({ show, handleClose, initialTab = 'rate-limits', onApiKey
   const [newApiKey, setNewApiKey] = useState({
     tool_name: '',
     api_key_name: '',
-    api_key_value: ''
+    key_values: {
+      api_key: '',
+      app_id: '',
+      app_secret: ''
+    }
   });
   const [saving, setSaving] = useState(false);
   const [showToast, setShowToast] = useState(false);
@@ -170,8 +174,48 @@ function SettingsModal({ show, handleClose, initialTab = 'rate-limits', onApiKey
     }
   };
 
+  const getKeyFieldsForTool = (toolName) => {
+    switch (toolName) {
+      case 'Censys':
+        return [
+          { name: 'app_id', label: 'App ID', type: 'text' },
+          { name: 'app_secret', label: 'App Secret', type: 'text' }
+        ];
+      default:
+        return [
+          { name: 'api_key', label: 'API Key', type: 'text' }
+        ];
+    }
+  };
+
   const handleCreateApiKey = async () => {
     try {
+      // Validate required fields
+      if (!newApiKey.tool_name || !newApiKey.api_key_name) {
+        setShowToast(true);
+        setToastMessage('Please fill in all required fields');
+        setToastVariant('danger');
+        return;
+      }
+
+      // Validate key values based on tool type
+      if (newApiKey.tool_name === 'Censys') {
+        if (!newApiKey.key_values.app_id || !newApiKey.key_values.app_secret) {
+          setShowToast(true);
+          setToastMessage('Please fill in both App ID and App Secret for Censys');
+          setToastVariant('danger');
+          return;
+        }
+      } else {
+        if (!newApiKey.key_values.api_key) {
+          setShowToast(true);
+          setToastMessage('Please fill in the API Key');
+          setToastVariant('danger');
+          return;
+        }
+      }
+
+      console.log('Sending API key data:', newApiKey);
       const response = await fetch(
         `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/api-keys`,
         {
@@ -184,7 +228,20 @@ function SettingsModal({ show, handleClose, initialTab = 'rate-limits', onApiKey
       );
 
       if (!response.ok) {
-        throw new Error('Failed to create API key');
+        let errorMessage = 'Failed to create API key';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorMessage;
+        } catch (e) {
+          // If response is not JSON, try to get text
+          try {
+            const text = await response.text();
+            errorMessage = text || errorMessage;
+          } catch (e) {
+            // If all else fails, use default message
+          }
+        }
+        throw new Error(errorMessage);
       }
 
       // Refresh the API keys list
@@ -194,12 +251,21 @@ function SettingsModal({ show, handleClose, initialTab = 'rate-limits', onApiKey
       setNewApiKey({
         tool_name: '',
         api_key_name: '',
-        api_key_value: ''
+        key_values: {
+          api_key: '',
+          app_id: '',
+          app_secret: ''
+        }
       });
+
+      // Show success message
+      setShowToast(true);
+      setToastMessage('API key created successfully');
+      setToastVariant('success');
     } catch (error) {
       console.error('Error creating API key:', error);
       setShowToast(true);
-      setToastMessage('Error creating API key');
+      setToastMessage(error.message || 'Error creating API key');
       setToastVariant('danger');
     }
   };
@@ -483,15 +549,15 @@ function SettingsModal({ show, handleClose, initialTab = 'rate-limits', onApiKey
                     <div className="mb-4">
                       <h6 className="text-white mb-3">Add New API Key</h6>
                       <Row className="mb-3">
-                        <Col md={4}>
+                        <Col md={6}>
                           <Form.Group>
                             <Form.Label className="text-white">Tool</Form.Label>
                             <Form.Select
                               value={newApiKey.tool_name}
-                              onChange={(e) => setNewApiKey({...newApiKey, tool_name: e.target.value})}
+                              onChange={(e) => setNewApiKey(prev => ({ ...prev, tool_name: e.target.value }))}
                               className="custom-input"
                             >
-                              <option value="">Select Tool</option>
+                              <option value="">Select a tool</option>
                               <option value="SecurityTrails">SecurityTrails</option>
                               <option value="Censys">Censys</option>
                               <option value="Shodan">Shodan</option>
@@ -499,32 +565,42 @@ function SettingsModal({ show, handleClose, initialTab = 'rate-limits', onApiKey
                             </Form.Select>
                           </Form.Group>
                         </Col>
-                        <Col md={4}>
+                        <Col md={6}>
                           <Form.Group>
                             <Form.Label className="text-white">Key Name</Form.Label>
                             <Form.Control
                               type="text"
-                              placeholder="e.g., API_KEY, X-API-Key"
                               value={newApiKey.api_key_name}
-                              onChange={(e) => setNewApiKey({...newApiKey, api_key_name: e.target.value})}
+                              onChange={(e) => setNewApiKey(prev => ({ ...prev, api_key_name: e.target.value }))}
+                              placeholder="Enter a name for this API key"
                               className="custom-input"
                             />
                           </Form.Group>
                         </Col>
-                        <Col md={4}>
-                          <Form.Group>
-                            <Form.Label className="text-white">API Key Value</Form.Label>
-                            <Form.Control
-                              type="text"
-                              placeholder="Enter your API key"
-                              value={newApiKey.api_key_value}
-                              onChange={(e) => setNewApiKey({...newApiKey, api_key_value: e.target.value})}
-                              className="custom-input"
-                              autoComplete="off"
-                              spellCheck="false"
-                            />
-                          </Form.Group>
-                        </Col>
+                      </Row>
+                      <Row className="mb-3">
+                        {getKeyFieldsForTool(newApiKey.tool_name).map((field) => {
+                          return (
+                            <Col key={field.name} md={field.name === 'api_key' ? 12 : 6}>
+                              <Form.Group>
+                                <Form.Label className="text-white">{field.label}</Form.Label>
+                                <Form.Control
+                                  type={field.type}
+                                  value={newApiKey.key_values[field.name]}
+                                  onChange={(e) => setNewApiKey(prev => ({
+                                    ...prev,
+                                    key_values: {
+                                      ...prev.key_values,
+                                      [field.name]: e.target.value
+                                    }
+                                  }))}
+                                  placeholder={`Enter ${field.label}`}
+                                  className="custom-input"
+                                />
+                              </Form.Group>
+                            </Col>
+                          );
+                        })}
                       </Row>
                       <Button 
                         variant="danger" 
@@ -552,7 +628,13 @@ function SettingsModal({ show, handleClose, initialTab = 'rate-limits', onApiKey
                               <div>
                                 <strong className="text-danger">{apiKey.tool_name}</strong>
                                 <br />
-                                <span className="text-white">{apiKey.api_key_name}: {apiKey.api_key_value}</span>
+                                <span className="text-white">
+                                  {apiKey.api_key_name}: {
+                                    apiKey.tool_name === 'Censys' 
+                                      ? `${apiKey.key_values.app_id}:${apiKey.key_values.app_secret}`
+                                      : apiKey.key_values.api_key
+                                  }
+                                </span>
                                 <br />
                                 <small className="text-white-50">
                                   Added: {new Date(apiKey.created_at).toLocaleDateString()}

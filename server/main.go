@@ -1222,21 +1222,47 @@ func getAPIKeys(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		// Mask the API key value for security
-		maskedValue := ""
-		if len(apiKeyValue) > 4 {
-			maskedValue = strings.Repeat("*", len(apiKeyValue)-4) + apiKeyValue[len(apiKeyValue)-4:]
-		} else {
-			maskedValue = strings.Repeat("*", len(apiKeyValue))
+		// Parse the key_values JSON
+		var keyValues struct {
+			APIKey    string `json:"api_key"`
+			AppID     string `json:"app_id"`
+			AppSecret string `json:"app_secret"`
+		}
+		if err := json.Unmarshal([]byte(apiKeyValue), &keyValues); err != nil {
+			log.Printf("Error parsing key values: %v", err)
+			continue
+		}
+
+		// Mask sensitive values
+		if keyValues.APIKey != "" {
+			if len(keyValues.APIKey) > 4 {
+				keyValues.APIKey = strings.Repeat("*", len(keyValues.APIKey)-4) + keyValues.APIKey[len(keyValues.APIKey)-4:]
+			} else {
+				keyValues.APIKey = strings.Repeat("*", len(keyValues.APIKey))
+			}
+		}
+		if keyValues.AppID != "" {
+			if len(keyValues.AppID) > 4 {
+				keyValues.AppID = strings.Repeat("*", len(keyValues.AppID)-4) + keyValues.AppID[len(keyValues.AppID)-4:]
+			} else {
+				keyValues.AppID = strings.Repeat("*", len(keyValues.AppID))
+			}
+		}
+		if keyValues.AppSecret != "" {
+			if len(keyValues.AppSecret) > 4 {
+				keyValues.AppSecret = strings.Repeat("*", len(keyValues.AppSecret)-4) + keyValues.AppSecret[len(keyValues.AppSecret)-4:]
+			} else {
+				keyValues.AppSecret = strings.Repeat("*", len(keyValues.AppSecret))
+			}
 		}
 
 		apiKeys = append(apiKeys, map[string]interface{}{
-			"id":            id,
-			"tool_name":     toolName,
-			"api_key_name":  apiKeyName,
-			"api_key_value": maskedValue,
-			"created_at":    createdAt,
-			"updated_at":    updatedAt,
+			"id":           id,
+			"tool_name":    toolName,
+			"api_key_name": apiKeyName,
+			"key_values":   keyValues,
+			"created_at":   createdAt,
+			"updated_at":   updatedAt,
 		})
 	}
 
@@ -1246,39 +1272,87 @@ func getAPIKeys(w http.ResponseWriter, r *http.Request) {
 
 func createAPIKey(w http.ResponseWriter, r *http.Request) {
 	var request struct {
-		ToolName    string `json:"tool_name"`
-		APIKeyName  string `json:"api_key_name"`
-		APIKeyValue string `json:"api_key_value"`
+		ToolName  string `json:"tool_name"`
+		KeyName   string `json:"api_key_name"`
+		KeyValues struct {
+			APIKey    string `json:"api_key"`
+			AppID     string `json:"app_id"`
+			AppSecret string `json:"app_secret"`
+		} `json:"key_values"`
 	}
 
-	err := json.NewDecoder(r.Body).Decode(&request)
-	if err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		log.Printf("[ERROR] Failed to decode API key request: %v", err)
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	if request.ToolName == "" || request.APIKeyName == "" || request.APIKeyValue == "" {
-		http.Error(w, "tool_name, api_key_name, and api_key_value are required", http.StatusBadRequest)
+	// Log the incoming request data
+	log.Printf("[DEBUG] Incoming API key request:")
+	log.Printf("  Tool Name: %s", request.ToolName)
+	log.Printf("  Key Name: %s", request.KeyName)
+	log.Printf("  Key Values:")
+	log.Printf("    API Key: %s", request.KeyValues.APIKey)
+	log.Printf("    App ID: %s", request.KeyValues.AppID)
+	log.Printf("    App Secret: %s", request.KeyValues.AppSecret)
+
+	// Validate required fields
+	if request.ToolName == "" || request.KeyName == "" {
+		log.Printf("[ERROR] Missing required fields - Tool Name: %v, Key Name: %v", request.ToolName == "", request.KeyName == "")
+		http.Error(w, "Missing required fields", http.StatusBadRequest)
 		return
 	}
 
-	var id string
-	err = dbPool.QueryRow(context.Background(), `
+	// Validate key values based on tool type
+	if request.ToolName == "Censys" {
+		if request.KeyValues.AppID == "" || request.KeyValues.AppSecret == "" {
+			log.Printf("[ERROR] Missing Censys credentials - App ID: %v, App Secret: %v", request.KeyValues.AppID == "", request.KeyValues.AppSecret == "")
+			http.Error(w, "Missing Censys credentials", http.StatusBadRequest)
+			return
+		}
+	} else {
+		if request.KeyValues.APIKey == "" {
+			log.Printf("[ERROR] Missing API key for tool: %s", request.ToolName)
+			http.Error(w, "Missing API key", http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Convert key_values to JSON string
+	keyValuesJSON, err := json.Marshal(request.KeyValues)
+	if err != nil {
+		log.Printf("[ERROR] Failed to marshal key values: %v", err)
+		http.Error(w, "Failed to process key values", http.StatusInternalServerError)
+		return
+	}
+
+	// Log the data being stored
+	log.Printf("[DEBUG] Storing API key in database:")
+	log.Printf("  Tool Name: %s", request.ToolName)
+	log.Printf("  Key Name: %s", request.KeyName)
+	log.Printf("  Key Values JSON: %s", string(keyValuesJSON))
+
+	// Try to insert the API key
+	_, err = dbPool.Exec(context.Background(), `
 		INSERT INTO api_keys (tool_name, api_key_name, api_key_value)
 		VALUES ($1, $2, $3)
-		ON CONFLICT (tool_name, api_key_name)
-		DO UPDATE SET api_key_value = EXCLUDED.api_key_value, updated_at = NOW()
-		RETURNING id
-	`, request.ToolName, request.APIKeyName, request.APIKeyValue).Scan(&id)
+	`, request.ToolName, request.KeyName, string(keyValuesJSON))
 
 	if err != nil {
-		log.Printf("Error creating API key: %v", err)
-		http.Error(w, "Failed to create API key", http.StatusInternalServerError)
+		// Check if this is a unique constraint violation
+		if strings.Contains(err.Error(), "unique constraint") {
+			log.Printf("[ERROR] API key with name '%s' already exists for tool '%s'", request.KeyName, request.ToolName)
+			http.Error(w, fmt.Sprintf("An API key with name '%s' already exists for %s", request.KeyName, request.ToolName), http.StatusConflict)
+			return
+		}
+		// Any other database error
+		log.Printf("[ERROR] Failed to store API key: %v", err)
+		http.Error(w, "Failed to store API key", http.StatusInternalServerError)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"id": id, "message": "API key created successfully"})
+	log.Printf("[DEBUG] API key stored successfully")
+	w.WriteHeader(http.StatusCreated)
 }
 
 func updateAPIKey(w http.ResponseWriter, r *http.Request) {
