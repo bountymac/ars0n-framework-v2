@@ -1,4 +1,4 @@
-FROM golang:1.21-alpine
+FROM golang:1.23-alpine
 RUN apk add --no-cache git
 RUN go install github.com/ffuf/ffuf/v2@latest
 WORKDIR /app
