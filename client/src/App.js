@@ -64,6 +64,8 @@ import { ReconResultsModal } from './modals/ReconResultsModal';
 import { UniqueSubdomainsModal } from './modals/UniqueSubdomainsModal';
 import consolidateSubdomains from './utils/consolidateSubdomains.js';
 import fetchConsolidatedSubdomains from './utils/fetchConsolidatedSubdomains.js';
+import consolidateCompanyDomains from './utils/consolidateCompanyDomains.js';
+import fetchConsolidatedCompanyDomains from './utils/fetchConsolidatedCompanyDomains.js';
 import monitorShuffleDNSScanStatus from './utils/monitorShuffleDNSScanStatus.js';
 import initiateShuffleDNSScan from './utils/initiateShuffleDNSScan.js';
 import initiateCeWLScan from './utils/initiateCeWLScan';
@@ -109,6 +111,10 @@ import monitorCensysCompanyScanStatus from './utils/monitorCensysCompanyScanStat
 import initiateGitHubReconScan from './utils/initiateGitHubReconScan';
 import monitorGitHubReconScanStatus from './utils/monitorGitHubReconScanStatus';
 import { GitHubReconResultsModal, GitHubReconHistoryModal } from './modals/GitHubReconResultsModal';
+import { ShodanCompanyResultsModal, ShodanCompanyHistoryModal } from './modals/ShodanCompanyResultsModal';
+import monitorShodanCompanyScanStatus from './utils/monitorShodanCompanyScanStatus.js';
+import initiateShodanCompanyScan from './utils/initiateShodanCompanyScan';
+import AddWildcardTargetsModal from './modals/AddWildcardTargetsModal.js';
 
 // Add helper function
 const getHttpxResultsCount = (scan) => {
@@ -293,6 +299,9 @@ function App() {
   const [consolidatedSubdomains, setConsolidatedSubdomains] = useState([]);
   const [isConsolidating, setIsConsolidating] = useState(false);
   const [consolidatedCount, setConsolidatedCount] = useState(0);
+  const [consolidatedCompanyDomains, setConsolidatedCompanyDomains] = useState([]);
+  const [consolidatedCompanyDomainsCount, setConsolidatedCompanyDomainsCount] = useState(0);
+  const [isConsolidatingCompanyDomains, setIsConsolidatingCompanyDomains] = useState(false);
   const [showUniqueSubdomainsModal, setShowUniqueSubdomainsModal] = useState(false);
   const [mostRecentCeWLScanStatus, setMostRecentCeWLScanStatus] = useState(null);
   const [mostRecentCeWLScan, setMostRecentCeWLScan] = useState(null);
@@ -385,6 +394,14 @@ function App() {
   const [mostRecentGitHubReconScanStatus, setMostRecentGitHubReconScanStatus] = useState(null);
   const [isGitHubReconScanning, setIsGitHubReconScanning] = useState(false);
   const [hasGitHubApiKey, setHasGitHubApiKey] = useState(false);
+  const [showShodanCompanyResultsModal, setShowShodanCompanyResultsModal] = useState(false);
+  const [showShodanCompanyHistoryModal, setShowShodanCompanyHistoryModal] = useState(false);
+  const [shodanCompanyScans, setShodanCompanyScans] = useState([]);
+  const [mostRecentShodanCompanyScan, setMostRecentShodanCompanyScan] = useState(null);
+  const [mostRecentShodanCompanyScanStatus, setMostRecentShodanCompanyScanStatus] = useState(null);
+  const [isShodanCompanyScanning, setIsShodanCompanyScanning] = useState(false);
+  const [hasShodanApiKey, setHasShodanApiKey] = useState(false);
+  const [showAddWildcardTargetsModal, setShowAddWildcardTargetsModal] = useState(false);
 
   const handleCloseSubdomainsModal = () => setShowSubdomainsModal(false);
   const handleCloseCloudDomainsModal = () => setShowCloudDomainsModal(false);
@@ -435,11 +452,23 @@ function App() {
             key.key_values?.app_secret?.trim() !== ''
           );
         setHasCensysApiKey(hasCensysKey);
+        
+        // Check Shodan API key based on localStorage selection
+        const selectedShodanKey = localStorage.getItem('selectedApiKey_Shodan');
+        const hasShodanKey = selectedShodanKey && 
+          Array.isArray(data) && 
+          data.some(key => 
+            key.tool_name === 'Shodan' && 
+            key.api_key_name === selectedShodanKey &&
+            key.key_values?.api_key?.trim() !== ''
+          );
+        setHasShodanApiKey(hasShodanKey);
       } catch (error) {
         console.error('[API-KEYS] Error checking API keys:', error);
         setHasSecurityTrailsApiKey(false);
         setHasGitHubApiKey(false);
         setHasCensysApiKey(false);
+        setHasShodanApiKey(false);
       }
     };
     checkApiKeys();
@@ -460,6 +489,44 @@ function App() {
   const handleOpenGitHubReconResultsModal = () => setShowGitHubReconResultsModal(true);
   const handleCloseGitHubReconHistoryModal = () => setShowGitHubReconHistoryModal(false);
   const handleOpenGitHubReconHistoryModal = () => setShowGitHubReconHistoryModal(true);
+  const handleCloseShodanCompanyResultsModal = () => setShowShodanCompanyResultsModal(false);
+  const handleOpenShodanCompanyResultsModal = () => setShowShodanCompanyResultsModal(true);
+
+  const handleCloseShodanCompanyHistoryModal = () => setShowShodanCompanyHistoryModal(false);
+  const handleOpenShodanCompanyHistoryModal = () => setShowShodanCompanyHistoryModal(true);
+
+  const handleCloseAddWildcardTargetsModal = () => setShowAddWildcardTargetsModal(false);
+  const handleOpenAddWildcardTargetsModal = () => setShowAddWildcardTargetsModal(true);
+
+  const handleAddWildcardTarget = async (domain) => {
+    try {
+      const response = await fetch(`${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/add`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: 'Wildcard',
+          mode: 'Passive',
+          scope_target: `*.${domain}`,
+          active: false,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to add wildcard target');
+      }
+
+      await fetchScopeTargets();
+      setToastTitle('Success');
+      setToastMessage(`Added ${domain} as Wildcard target successfully`);
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 3000);
+    } catch (error) {
+      console.error('Error adding wildcard target:', error);
+      throw error;
+    }
+  };
 
   useEffect(() => {
     fetchScopeTargets();
@@ -477,6 +544,7 @@ function App() {
       fetchAmassIntelScans(activeTarget, setAmassIntelScans, setMostRecentAmassIntelScan, setMostRecentAmassIntelScanStatus);
       fetchHttpxScans(activeTarget, setHttpxScans, setMostRecentHttpxScan, setMostRecentHttpxScanStatus);
       fetchConsolidatedSubdomains(activeTarget, setConsolidatedSubdomains, setConsolidatedCount);
+      fetchConsolidatedCompanyDomains(activeTarget, setConsolidatedCompanyDomains, setConsolidatedCompanyDomainsCount);
       fetchGoogleDorkingDomains();
       fetchReverseWhoisDomains();
     }
@@ -656,6 +724,7 @@ function App() {
       mostRecentShuffleDNSCustomScanStatus === 'success'
     )) {
       fetchConsolidatedSubdomains(activeTarget, setConsolidatedSubdomains, setConsolidatedCount);
+      fetchConsolidatedCompanyDomains(activeTarget, setConsolidatedCompanyDomains, setConsolidatedCompanyDomainsCount);
     }
   }, [
     activeTarget,
@@ -952,7 +1021,7 @@ function App() {
           body: JSON.stringify({
             type: selections.type,
             mode: 'Passive',
-            scope_target: selections.inputText,
+            scope_target: `*.${selections.inputText}`,
             active: false,
           }),
         });
@@ -1579,7 +1648,7 @@ function App() {
         },
         body: JSON.stringify({
           scope_target_id: activeTarget.id,
-          domain: domain,
+          domain: `*.${domain}`,
         }),
       });
 
@@ -1662,6 +1731,22 @@ function App() {
       console.error('Error during consolidation:', error);
     } finally {
       setIsConsolidating(false);
+    }
+  };
+
+  const handleConsolidateCompanyDomains = async () => {
+    if (!activeTarget) return;
+    
+    setIsConsolidatingCompanyDomains(true);
+    try {
+      const result = await consolidateCompanyDomains(activeTarget);
+      if (result) {
+        await fetchConsolidatedCompanyDomains(activeTarget, setConsolidatedCompanyDomains, setConsolidatedCompanyDomainsCount);
+      }
+    } catch (error) {
+      console.error('Error during company domain consolidation:', error);
+    } finally {
+      setIsConsolidatingCompanyDomains(false);
     }
   };
 
@@ -2078,7 +2163,7 @@ function App() {
         },
         body: JSON.stringify({
           scope_target_id: activeTarget.id,
-          domain: domain,
+          domain: `*.${domain}`,
         }),
       });
 
@@ -2224,11 +2309,23 @@ function App() {
             key.key_values?.app_secret?.trim() !== ''
           );
         setHasCensysApiKey(hasCensysKey);
+        
+        // Check Shodan API key based on localStorage selection
+        const selectedShodanKey = localStorage.getItem('selectedApiKey_Shodan');
+        const hasShodanKey = selectedShodanKey && 
+          Array.isArray(data) && 
+          data.some(key => 
+            key.tool_name === 'Shodan' && 
+            key.api_key_name === selectedShodanKey &&
+            key.key_values?.api_key?.trim() !== ''
+          );
+        setHasShodanApiKey(hasShodanKey);
       } catch (error) {
         console.error('[API-KEYS] Error checking API keys on mount:', error);
         setHasSecurityTrailsApiKey(false);
         setHasGitHubApiKey(false);
         setHasCensysApiKey(false);
+        setHasShodanApiKey(false);
       }
     };
     checkAllApiKeys();
@@ -2241,6 +2338,8 @@ function App() {
       setHasGitHubApiKey(hasKey);
     } else if (toolName === 'censys') {
       setHasCensysApiKey(hasKey);
+    } else if (toolName === 'shodan') {
+      setHasShodanApiKey(hasKey);
     }
   };
 
@@ -2303,11 +2402,28 @@ function App() {
         localStorage.removeItem('selectedApiKey_Censys');
       }
       setHasCensysApiKey(hasCensysKey);
+      
+      // Check Shodan API key based on localStorage selection
+      const selectedShodanKey = localStorage.getItem('selectedApiKey_Shodan');
+      const hasShodanKey = selectedShodanKey && 
+        Array.isArray(data) && 
+        data.some(key => 
+          key.tool_name === 'Shodan' && 
+          key.api_key_name === selectedShodanKey &&
+          key.key_values?.api_key?.trim() !== ''
+        );
+      
+      // If the selected key no longer exists, remove it from localStorage
+      if (selectedShodanKey && !hasShodanKey) {
+        localStorage.removeItem('selectedApiKey_Shodan');
+      }
+      setHasShodanApiKey(hasShodanKey);
     } catch (error) {
       console.error('[API-KEYS] Error checking API keys after deletion:', error);
       setHasSecurityTrailsApiKey(false);
       setHasGitHubApiKey(false);
       setHasCensysApiKey(false);
+      setHasShodanApiKey(false);
     }
   };
 
@@ -2341,6 +2457,36 @@ function App() {
     }
   }, [activeTarget]);
 
+  useEffect(() => {
+    if (activeTarget) {
+      const fetchShodanCompanyScans = async () => {
+        try {
+          const response = await fetch(
+            `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${activeTarget.id}/scans/shodan-company`
+          );
+          if (!response.ok) {
+            throw new Error('Failed to fetch Shodan Company scans');
+          }
+          const scans = await response.json();
+          if (Array.isArray(scans)) {
+            setShodanCompanyScans(scans);
+            if (scans.length > 0) {
+              const mostRecentScan = scans.reduce((latest, scan) => {
+                const scanDate = new Date(scan.created_at);
+                return scanDate > new Date(latest.created_at) ? scan : latest;
+              }, scans[0]);
+              setMostRecentShodanCompanyScan(mostRecentScan);
+              setMostRecentShodanCompanyScanStatus(mostRecentScan.status);
+            }
+          }
+        } catch (error) {
+          console.error('[SHODAN-COMPANY] Error fetching scans:', error);
+        }
+      };
+      fetchShodanCompanyScans();
+    }
+  }, [activeTarget]);
+
   const startCensysCompanyScan = () => {
     initiateCensysCompanyScan(
       activeTarget,
@@ -2349,6 +2495,17 @@ function App() {
       setCensysCompanyScans,
       setMostRecentCensysCompanyScanStatus,
       setMostRecentCensysCompanyScan
+    );
+  };
+
+  const startShodanCompanyScan = () => {
+    initiateShodanCompanyScan(
+      activeTarget,
+      monitorShodanCompanyScanStatus,
+      setIsShodanCompanyScanning,
+      setShodanCompanyScans,
+      setMostRecentShodanCompanyScanStatus,
+      setMostRecentShodanCompanyScan
     );
   };
 
@@ -2371,6 +2528,18 @@ function App() {
         setMostRecentGitHubReconScan,
         setIsGitHubReconScanning,
         setMostRecentGitHubReconScanStatus
+      );
+    }
+  }, [activeTarget]);
+
+  useEffect(() => {
+    if (activeTarget) {
+      monitorShodanCompanyScanStatus(
+        activeTarget,
+        setShodanCompanyScans,
+        setMostRecentShodanCompanyScan,
+        setIsShodanCompanyScanning,
+        setMostRecentShodanCompanyScanStatus
       );
     }
   }, [activeTarget]);
@@ -2820,7 +2989,7 @@ function App() {
                       onResults: handleOpenSecurityTrailsCompanyResultsModal,
                       onHistory: handleOpenSecurityTrailsCompanyHistoryModal,
                       resultCount: mostRecentSecurityTrailsCompanyScan && mostRecentSecurityTrailsCompanyScan.result ? 
-                        JSON.parse(mostRecentSecurityTrailsCompanyScan.result).domains.length : 0,
+                        mostRecentSecurityTrailsCompanyScan.result.split('\n').filter(line => line.trim()).length : 0,
                       disabled: !hasSecurityTrailsApiKey,
                       disabledMessage: !hasSecurityTrailsApiKey ? 'SecurityTrails API key not configured' : null
                     },
@@ -2835,7 +3004,7 @@ function App() {
                       onResults: handleOpenGitHubReconResultsModal,
                       onHistory: handleOpenGitHubReconHistoryModal,
                       resultCount: mostRecentGitHubReconScan && mostRecentGitHubReconScan.result ? 
-                        JSON.parse(mostRecentGitHubReconScan.result).domains.length : 0,
+                        mostRecentGitHubReconScan.result.split('\n').filter(line => line.trim()).length : 0,
                       disabled: !hasGitHubApiKey,
                       disabledMessage: !hasGitHubApiKey ? 'GitHub API key not configured' : null
                     },
@@ -2844,12 +3013,22 @@ function App() {
                       link: 'https://shodan.io',
                       description: 'Search engine for internet-connected devices and services.',
                       isActive: true,
-                      status: 'idle',
-                      isScanning: false,
-                      onScan: () => console.log('Shodan scan'),
-                      onResults: () => console.log('Shodan results'),
-                      onHistory: () => console.log('Shodan history'),
-                      resultCount: 0
+                      status: mostRecentShodanCompanyScanStatus,
+                      isScanning: isShodanCompanyScanning,
+                      onScan: startShodanCompanyScan,
+                      onResults: handleOpenShodanCompanyResultsModal,
+                      onHistory: handleOpenShodanCompanyHistoryModal,
+                      resultCount: mostRecentShodanCompanyScan && mostRecentShodanCompanyScan.result ? 
+                        (() => {
+                          try {
+                            const parsed = JSON.parse(mostRecentShodanCompanyScan.result);
+                            return parsed && parsed.domains ? parsed.domains.length : 0;
+                          } catch (e) {
+                            return 0;
+                          }
+                        })() : 0,
+                      disabled: !hasShodanApiKey,
+                      disabledMessage: !hasShodanApiKey ? 'Shodan API key not configured' : null
                     },
                     { 
                       name: 'Censys', 
@@ -2862,7 +3041,14 @@ function App() {
                       onResults: handleOpenCensysCompanyResultsModal,
                       onHistory: handleOpenCensysCompanyHistoryModal,
                       resultCount: mostRecentCensysCompanyScan && mostRecentCensysCompanyScan.result ? 
-                        JSON.parse(mostRecentCensysCompanyScan.result).domains.length : 0,
+                        (() => {
+                          try {
+                            const parsed = JSON.parse(mostRecentCensysCompanyScan.result);
+                            return parsed && parsed.domains ? parsed.domains.length : 0;
+                          } catch (e) {
+                            return 0;
+                          }
+                        })() : 0,
                       disabled: !hasCensysApiKey,
                       disabledMessage: !hasCensysApiKey ? 'Censys API key not configured' : null
                     },
@@ -2923,6 +3109,58 @@ function App() {
                       </Card>
                     </Col>
                   ))}
+                </Row>
+                
+                <h4 className="text-secondary mb-3 fs-5">Consolidate Root Domains</h4>
+                <Row className="mb-4">
+                  <Col>
+                    <Card className="shadow-sm h-100 text-center" style={{ minHeight: '200px' }}>
+                      <Card.Body className="d-flex flex-column">
+                        <Card.Title className="text-danger fs-4 mb-3">Consolidate Root Domains</Card.Title>
+                        <Card.Text className="text-white small fst-italic mb-4">
+                          Each tool has discovered root domains for the company. Consolidate them into a single list of unique domains and then add them as Wildcard targets for subdomain enumeration.
+                        </Card.Text>
+                        <div className="text-danger mb-4">
+                          <div className="row">
+                            <div className="col">
+                              <h3 className="mb-0">{consolidatedCompanyDomainsCount}</h3>
+                              <small className="text-white-50">Unique Root Domains</small>
+                            </div>
+                            <div className="col">
+                              <h3 className="mb-0">{scopeTargets.filter(target => 
+                                target.type === 'Wildcard' && 
+                                target.scope_target && 
+                                consolidatedCompanyDomains.includes(target.scope_target.replace('*.', ''))
+                              ).length}</h3>
+                              <small className="text-white-50">Wildcard Targets Created</small>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="d-flex justify-content-between mt-auto gap-2">
+                          <Button 
+                            variant="outline-danger" 
+                            className="flex-fill" 
+                            onClick={handleConsolidateCompanyDomains}
+                            disabled={isConsolidatingCompanyDomains}
+                          >
+                            <div className="btn-content">
+                              {isConsolidatingCompanyDomains ? (
+                                <div className="spinner"></div>
+                              ) : 'Consolidate'}
+                            </div>
+                          </Button>
+                          <Button 
+                            variant="outline-danger" 
+                            className="flex-fill"
+                            onClick={handleOpenAddWildcardTargetsModal}
+                            disabled={consolidatedCompanyDomainsCount === 0}
+                          >
+                            Add Wildcard Target
+                          </Button>
+                        </div>
+                      </Card.Body>
+                    </Card>
+                  </Col>
                 </Row>
                 
                 <h4 className="text-secondary mb-3 fs-5">IP Address Discovery</h4>
@@ -4041,6 +4279,24 @@ function App() {
         show={showGitHubReconHistoryModal}
         handleClose={handleCloseGitHubReconHistoryModal}
         scans={gitHubReconScans}
+      />
+      <ShodanCompanyResultsModal
+        show={showShodanCompanyResultsModal}
+        handleClose={handleCloseShodanCompanyResultsModal}
+        scan={mostRecentShodanCompanyScan}
+        setShowToast={setShowToast}
+      />
+      <ShodanCompanyHistoryModal
+        show={showShodanCompanyHistoryModal}
+        handleClose={handleCloseShodanCompanyHistoryModal}
+        scans={shodanCompanyScans}
+      />
+      <AddWildcardTargetsModal
+        show={showAddWildcardTargetsModal}
+        handleClose={handleCloseAddWildcardTargetsModal}
+        consolidatedCompanyDomains={consolidatedCompanyDomains}
+        onAddWildcardTarget={handleAddWildcardTarget}
+        scopeTargets={scopeTargets}
       />
     </Container>
   );

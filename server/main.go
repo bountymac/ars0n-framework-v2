@@ -100,6 +100,8 @@ func main() {
 	r.HandleFunc("/scopetarget/{id}/scans/subfinder", utils.GetSubfinderScansForScopeTarget).Methods("GET", "OPTIONS")
 	r.HandleFunc("/consolidate-subdomains/{id}", utils.HandleConsolidateSubdomains).Methods("GET", "OPTIONS")
 	r.HandleFunc("/consolidated-subdomains/{id}", utils.GetConsolidatedSubdomains).Methods("GET", "OPTIONS")
+	r.HandleFunc("/consolidate-company-domains/{id}", utils.HandleConsolidateCompanyDomains).Methods("GET", "OPTIONS")
+	r.HandleFunc("/consolidated-company-domains/{id}", utils.GetConsolidatedCompanyDomains).Methods("GET", "OPTIONS")
 	r.HandleFunc("/shuffledns/run", utils.RunShuffleDNSScan).Methods("POST", "OPTIONS")
 	r.HandleFunc("/shuffledns/{scan_id}", utils.GetShuffleDNSScanStatus).Methods("GET", "OPTIONS")
 	r.HandleFunc("/scopetarget/{id}/scans/shuffledns", utils.GetShuffleDNSScansForScopeTarget).Methods("GET", "OPTIONS")
@@ -153,6 +155,9 @@ func main() {
 	r.HandleFunc("/censys-company/run", utils.RunCensysCompanyScan).Methods("POST", "OPTIONS")
 	r.HandleFunc("/censys-company/status/{scan_id}", utils.GetCensysCompanyScanStatus).Methods("GET", "OPTIONS")
 	r.HandleFunc("/scopetarget/{id}/scans/censys-company", utils.GetCensysCompanyScansForScopeTarget).Methods("GET", "OPTIONS")
+	r.HandleFunc("/shodan-company/run", utils.RunShodanCompanyScan).Methods("POST", "OPTIONS")
+	r.HandleFunc("/shodan-company/status/{scan_id}", utils.GetShodanCompanyScanStatus).Methods("GET", "OPTIONS")
+	r.HandleFunc("/scopetarget/{id}/scans/shodan-company", utils.GetShodanCompanyScansForScopeTarget).Methods("GET", "OPTIONS")
 
 	// GitHub Recon routes
 	r.HandleFunc("/github-recon/run", utils.RunGitHubReconScan).Methods("POST", "OPTIONS")

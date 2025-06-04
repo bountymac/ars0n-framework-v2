@@ -195,7 +195,7 @@ function SettingsModal({ show, handleClose, initialTab = 'rate-limits', onApiKey
     }
 
     // Validate key values based on tool type
-    if ((newApiKey.toolName === 'SecurityTrails' || newApiKey.toolName === 'GitHub') && !newApiKey.apiKey) {
+    if ((newApiKey.toolName === 'SecurityTrails' || newApiKey.toolName === 'GitHub' || newApiKey.toolName === 'Shodan') && !newApiKey.apiKey) {
       setToastMessage('API Key is required for this tool');
       setToastVariant('danger');
       setShowToast(true);
@@ -217,7 +217,7 @@ function SettingsModal({ show, handleClose, initialTab = 'rate-limits', onApiKey
     try {
       const keyValues = {};
       
-      if (newApiKey.toolName === 'SecurityTrails' || newApiKey.toolName === 'GitHub') {
+      if (newApiKey.toolName === 'SecurityTrails' || newApiKey.toolName === 'GitHub' || newApiKey.toolName === 'Shodan') {
         keyValues.api_key = newApiKey.apiKey;
       } else if (newApiKey.toolName === 'Censys') {
         keyValues.app_id = newApiKey.appId;
@@ -254,6 +254,8 @@ function SettingsModal({ show, handleClose, initialTab = 'rate-limits', onApiKey
         } else if (newApiKey.toolName === 'GitHub') {
           onApiKeyDeleted?.();
         } else if (newApiKey.toolName === 'Censys') {
+          onApiKeyDeleted?.();
+        } else if (newApiKey.toolName === 'Shodan') {
           onApiKeyDeleted?.();
         }
       }

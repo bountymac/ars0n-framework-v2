@@ -109,15 +109,22 @@ function APIKeysConfigModal({ show, handleClose, onOpenSettings, onApiKeySelecte
         );
         if (selectedKey) {
           const hasValidKey = validateKeyForTool(toolName, selectedKey);
-          const toolKey = toolName.toLowerCase().replace('trails', 'trails');
-          onApiKeySelected?.(hasValidKey, toolKey);
+          if (toolName === 'SecurityTrails') {
+            onApiKeySelected?.(hasValidKey, 'securitytrails');
+          } else if (toolName === 'Censys') {
+            onApiKeySelected?.(hasValidKey, 'censys');
+          } else if (toolName === 'GitHub') {
+            onApiKeySelected?.(hasValidKey, 'github');
+          } else if (toolName === 'Shodan') {
+            onApiKeySelected?.(hasValidKey, 'shodan');
+          }
         }
       }
     });
   };
 
   const validateKeyForTool = (toolName, selectedKey) => {
-    if (toolName === 'SecurityTrails' || toolName === 'GitHub') {
+    if (toolName === 'SecurityTrails' || toolName === 'GitHub' || toolName === 'Shodan') {
       return selectedKey?.key_values?.api_key ? true : false;
     } else if (toolName === 'Censys') {
       return selectedKey?.key_values?.app_id && selectedKey?.key_values?.app_secret ? true : false;
@@ -143,8 +150,8 @@ function APIKeysConfigModal({ show, handleClose, onOpenSettings, onApiKeySelecte
     // Save to localStorage
     saveSelectedKeyToStorage(toolName, keyName);
 
-    // Notify parent when SecurityTrails, Censys, or GitHub key is selected
-    if ((toolName === 'SecurityTrails' || toolName === 'Censys' || toolName === 'GitHub') && keyName) {
+    // Notify parent when SecurityTrails, Censys, GitHub, or Shodan key is selected
+    if ((toolName === 'SecurityTrails' || toolName === 'Censys' || toolName === 'GitHub' || toolName === 'Shodan') && keyName) {
       const selectedKey = apiKeys.find(key => 
         key.tool_name === toolName && key.api_key_name === keyName
       );
@@ -155,6 +162,8 @@ function APIKeysConfigModal({ show, handleClose, onOpenSettings, onApiKeySelecte
         onApiKeySelected?.(hasValidKey, 'censys');
       } else if (toolName === 'GitHub') {
         onApiKeySelected?.(hasValidKey, 'github');
+      } else if (toolName === 'Shodan') {
+        onApiKeySelected?.(hasValidKey, 'shodan');
       }
     } else if (!keyName) {
       // Notify parent that key was deselected
@@ -164,6 +173,8 @@ function APIKeysConfigModal({ show, handleClose, onOpenSettings, onApiKeySelecte
         onApiKeySelected?.(false, 'censys');
       } else if (toolName === 'GitHub') {
         onApiKeySelected?.(false, 'github');
+      } else if (toolName === 'Shodan') {
+        onApiKeySelected?.(false, 'shodan');
       }
     }
   };
