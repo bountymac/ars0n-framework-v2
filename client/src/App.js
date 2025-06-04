@@ -103,6 +103,12 @@ import ReverseWhoisModal from './modals/ReverseWhoisModal.js';
 import initiateSecurityTrailsCompanyScan from './utils/initiateSecurityTrailsCompanyScan';
 import monitorSecurityTrailsCompanyScanStatus from './utils/monitorSecurityTrailsCompanyScanStatus';
 import { SecurityTrailsCompanyResultsModal, SecurityTrailsCompanyHistoryModal } from './modals/SecurityTrailsCompanyResultsModal';
+import { CensysCompanyResultsModal, CensysCompanyHistoryModal } from './modals/CensysCompanyResultsModal';
+import initiateCensysCompanyScan from './utils/initiateCensysCompanyScan';
+import monitorCensysCompanyScanStatus from './utils/monitorCensysCompanyScanStatus';
+import initiateGitHubReconScan from './utils/initiateGitHubReconScan';
+import monitorGitHubReconScanStatus from './utils/monitorGitHubReconScanStatus';
+import { GitHubReconResultsModal, GitHubReconHistoryModal } from './modals/GitHubReconResultsModal';
 
 // Add helper function
 const getHttpxResultsCount = (scan) => {
@@ -365,6 +371,20 @@ function App() {
   // Add state for history modal
   const [showSecurityTrailsCompanyHistoryModal, setShowSecurityTrailsCompanyHistoryModal] = useState(false);
   const [hasSecurityTrailsApiKey, setHasSecurityTrailsApiKey] = useState(false);
+  const [showCensysCompanyResultsModal, setShowCensysCompanyResultsModal] = useState(false);
+  const [showCensysCompanyHistoryModal, setShowCensysCompanyHistoryModal] = useState(false);
+  const [censysCompanyScans, setCensysCompanyScans] = useState([]);
+  const [mostRecentCensysCompanyScan, setMostRecentCensysCompanyScan] = useState(null);
+  const [mostRecentCensysCompanyScanStatus, setMostRecentCensysCompanyScanStatus] = useState(null);
+  const [isCensysCompanyScanning, setIsCensysCompanyScanning] = useState(false);
+  const [hasCensysApiKey, setHasCensysApiKey] = useState(false);
+  const [showGitHubReconResultsModal, setShowGitHubReconResultsModal] = useState(false);
+  const [showGitHubReconHistoryModal, setShowGitHubReconHistoryModal] = useState(false);
+  const [gitHubReconScans, setGitHubReconScans] = useState([]);
+  const [mostRecentGitHubReconScan, setMostRecentGitHubReconScan] = useState(null);
+  const [mostRecentGitHubReconScanStatus, setMostRecentGitHubReconScanStatus] = useState(null);
+  const [isGitHubReconScanning, setIsGitHubReconScanning] = useState(false);
+  const [hasGitHubApiKey, setHasGitHubApiKey] = useState(false);
 
   const handleCloseSubdomainsModal = () => setShowSubdomainsModal(false);
   const handleCloseCloudDomainsModal = () => setShowCloudDomainsModal(false);
@@ -372,7 +392,57 @@ function App() {
   const handleCloseMetaDataModal = () => setShowMetaDataModal(false);
   const handleCloseSettingsModal = () => {
     setShowSettingsModal(false);
-    setSettingsModalInitialTab('rate-limits');
+    const checkApiKeys = async () => {
+      try {
+        const response = await fetch(
+          `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/api-keys`
+        );
+        if (!response.ok) {
+          throw new Error('Failed to fetch API keys');
+        }
+        const data = await response.json();
+        
+        // Check SecurityTrails API key based on localStorage selection
+        const selectedSecurityTrailsKey = localStorage.getItem('selectedApiKey_SecurityTrails');
+        const hasSecurityTrailsKey = selectedSecurityTrailsKey && 
+          Array.isArray(data) && 
+          data.some(key => 
+            key.tool_name === 'SecurityTrails' && 
+            key.api_key_name === selectedSecurityTrailsKey &&
+            key.key_values?.api_key?.trim() !== ''
+          );
+        setHasSecurityTrailsApiKey(hasSecurityTrailsKey);
+        
+        // Check GitHub API key based on localStorage selection
+        const selectedGitHubKey = localStorage.getItem('selectedApiKey_GitHub');
+        const hasGitHubKey = selectedGitHubKey && 
+          Array.isArray(data) && 
+          data.some(key => 
+            key.tool_name === 'GitHub' && 
+            key.api_key_name === selectedGitHubKey &&
+            key.key_values?.api_key?.trim() !== ''
+          );
+        setHasGitHubApiKey(hasGitHubKey);
+        
+        // Check Censys API key based on localStorage selection
+        const selectedCensysKey = localStorage.getItem('selectedApiKey_Censys');
+        const hasCensysKey = selectedCensysKey && 
+          Array.isArray(data) && 
+          data.some(key => 
+            key.tool_name === 'Censys' && 
+            key.api_key_name === selectedCensysKey &&
+            key.key_values?.app_id?.trim() !== '' && 
+            key.key_values?.app_secret?.trim() !== ''
+          );
+        setHasCensysApiKey(hasCensysKey);
+      } catch (error) {
+        console.error('[API-KEYS] Error checking API keys:', error);
+        setHasSecurityTrailsApiKey(false);
+        setHasGitHubApiKey(false);
+        setHasCensysApiKey(false);
+      }
+    };
+    checkApiKeys();
   };
   const handleCloseExportModal = () => {
     setShowExportModal(false);
@@ -382,6 +452,14 @@ function App() {
   // Add handler for history modal
   const handleCloseSecurityTrailsCompanyHistoryModal = () => setShowSecurityTrailsCompanyHistoryModal(false);
   const handleOpenSecurityTrailsCompanyHistoryModal = () => setShowSecurityTrailsCompanyHistoryModal(true);
+  const handleCloseCensysCompanyResultsModal = () => setShowCensysCompanyResultsModal(false);
+  const handleOpenCensysCompanyResultsModal = () => setShowCensysCompanyResultsModal(true);
+  const handleCloseCensysCompanyHistoryModal = () => setShowCensysCompanyHistoryModal(false);
+  const handleOpenCensysCompanyHistoryModal = () => setShowCensysCompanyHistoryModal(true);
+  const handleCloseGitHubReconResultsModal = () => setShowGitHubReconResultsModal(false);
+  const handleOpenGitHubReconResultsModal = () => setShowGitHubReconResultsModal(true);
+  const handleCloseGitHubReconHistoryModal = () => setShowGitHubReconHistoryModal(false);
+  const handleOpenGitHubReconHistoryModal = () => setShowGitHubReconHistoryModal(true);
 
   useEffect(() => {
     fetchScopeTargets();
@@ -2103,7 +2181,7 @@ function App() {
   }, [activeTarget]);
 
   useEffect(() => {
-    const checkSecurityTrailsApiKey = async () => {
+    const checkAllApiKeys = async () => {
       try {
         const response = await fetch(
           `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/api-keys`
@@ -2112,26 +2190,190 @@ function App() {
           throw new Error('Failed to fetch API keys');
         }
         const data = await response.json();
-        const hasKey = Array.isArray(data) && data.some(key => 
-          key.tool_name === 'SecurityTrails' && 
-          key.key_values?.api_key?.trim() !== ''
-        );
-        setHasSecurityTrailsApiKey(hasKey);
+        
+        // Check SecurityTrails API key based on localStorage selection
+        const selectedSecurityTrailsKey = localStorage.getItem('selectedApiKey_SecurityTrails');
+        const hasSecurityTrailsKey = selectedSecurityTrailsKey && 
+          Array.isArray(data) && 
+          data.some(key => 
+            key.tool_name === 'SecurityTrails' && 
+            key.api_key_name === selectedSecurityTrailsKey &&
+            key.key_values?.api_key?.trim() !== ''
+          );
+        setHasSecurityTrailsApiKey(hasSecurityTrailsKey);
+        
+        // Check GitHub API key based on localStorage selection
+        const selectedGitHubKey = localStorage.getItem('selectedApiKey_GitHub');
+        const hasGitHubKey = selectedGitHubKey && 
+          Array.isArray(data) && 
+          data.some(key => 
+            key.tool_name === 'GitHub' && 
+            key.api_key_name === selectedGitHubKey &&
+            key.key_values?.api_key?.trim() !== ''
+          );
+        setHasGitHubApiKey(hasGitHubKey);
+        
+        // Check Censys API key based on localStorage selection
+        const selectedCensysKey = localStorage.getItem('selectedApiKey_Censys');
+        const hasCensysKey = selectedCensysKey && 
+          Array.isArray(data) && 
+          data.some(key => 
+            key.tool_name === 'Censys' && 
+            key.api_key_name === selectedCensysKey &&
+            key.key_values?.app_id?.trim() !== '' && 
+            key.key_values?.app_secret?.trim() !== ''
+          );
+        setHasCensysApiKey(hasCensysKey);
       } catch (error) {
-        console.error('Error checking SecurityTrails API key:', error);
+        console.error('[API-KEYS] Error checking API keys on mount:', error);
         setHasSecurityTrailsApiKey(false);
+        setHasGitHubApiKey(false);
+        setHasCensysApiKey(false);
       }
     };
-    checkSecurityTrailsApiKey();
+    checkAllApiKeys();
   }, []);
 
-  const handleApiKeySelected = (hasKey) => {
-    setHasSecurityTrailsApiKey(hasKey);
+  const handleApiKeySelected = (hasKey, toolName) => {
+    if (toolName === 'securitytrails') {
+      setHasSecurityTrailsApiKey(hasKey);
+    } else if (toolName === 'github') {
+      setHasGitHubApiKey(hasKey);
+    } else if (toolName === 'censys') {
+      setHasCensysApiKey(hasKey);
+    }
   };
 
-  const handleApiKeyDeleted = (hasKey) => {
-    setHasSecurityTrailsApiKey(hasKey);
+  const handleApiKeyDeleted = async () => {
+    // Re-check all API keys when one is deleted
+    try {
+      const response = await fetch(
+        `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/api-keys`
+      );
+      if (!response.ok) {
+        throw new Error('Failed to fetch API keys');
+      }
+      const data = await response.json();
+      
+      // Check SecurityTrails API key based on localStorage selection
+      const selectedSecurityTrailsKey = localStorage.getItem('selectedApiKey_SecurityTrails');
+      const hasSecurityTrailsKey = selectedSecurityTrailsKey && 
+        Array.isArray(data) && 
+        data.some(key => 
+          key.tool_name === 'SecurityTrails' && 
+          key.api_key_name === selectedSecurityTrailsKey &&
+          key.key_values?.api_key?.trim() !== ''
+        );
+      
+      // If the selected key no longer exists, remove it from localStorage
+      if (selectedSecurityTrailsKey && !hasSecurityTrailsKey) {
+        localStorage.removeItem('selectedApiKey_SecurityTrails');
+      }
+      setHasSecurityTrailsApiKey(hasSecurityTrailsKey);
+      
+      // Check GitHub API key based on localStorage selection
+      const selectedGitHubKey = localStorage.getItem('selectedApiKey_GitHub');
+      const hasGitHubKey = selectedGitHubKey && 
+        Array.isArray(data) && 
+        data.some(key => 
+          key.tool_name === 'GitHub' && 
+          key.api_key_name === selectedGitHubKey &&
+          key.key_values?.api_key?.trim() !== ''
+        );
+      
+      // If the selected key no longer exists, remove it from localStorage
+      if (selectedGitHubKey && !hasGitHubKey) {
+        localStorage.removeItem('selectedApiKey_GitHub');
+      }
+      setHasGitHubApiKey(hasGitHubKey);
+      
+      // Check Censys API key based on localStorage selection
+      const selectedCensysKey = localStorage.getItem('selectedApiKey_Censys');
+      const hasCensysKey = selectedCensysKey && 
+        Array.isArray(data) && 
+        data.some(key => 
+          key.tool_name === 'Censys' && 
+          key.api_key_name === selectedCensysKey &&
+          key.key_values?.app_id?.trim() !== '' && 
+          key.key_values?.app_secret?.trim() !== ''
+        );
+      
+      // If the selected key no longer exists, remove it from localStorage
+      if (selectedCensysKey && !hasCensysKey) {
+        localStorage.removeItem('selectedApiKey_Censys');
+      }
+      setHasCensysApiKey(hasCensysKey);
+    } catch (error) {
+      console.error('[API-KEYS] Error checking API keys after deletion:', error);
+      setHasSecurityTrailsApiKey(false);
+      setHasGitHubApiKey(false);
+      setHasCensysApiKey(false);
+    }
   };
+
+  useEffect(() => {
+    if (activeTarget) {
+      const fetchCensysCompanyScans = async () => {
+        try {
+          const response = await fetch(
+            `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${activeTarget.id}/scans/censys-company`
+          );
+          if (!response.ok) {
+            throw new Error('Failed to fetch Censys Company scans');
+          }
+          const scans = await response.json();
+          if (Array.isArray(scans)) {
+            setCensysCompanyScans(scans);
+            if (scans.length > 0) {
+              const mostRecentScan = scans.reduce((latest, scan) => {
+                const scanDate = new Date(scan.created_at);
+                return scanDate > new Date(latest.created_at) ? scan : latest;
+              }, scans[0]);
+              setMostRecentCensysCompanyScan(mostRecentScan);
+              setMostRecentCensysCompanyScanStatus(mostRecentScan.status);
+            }
+          }
+        } catch (error) {
+          console.error('[CENSYS-COMPANY] Error fetching scans:', error);
+        }
+      };
+      fetchCensysCompanyScans();
+    }
+  }, [activeTarget]);
+
+  const startCensysCompanyScan = () => {
+    initiateCensysCompanyScan(
+      activeTarget,
+      monitorCensysCompanyScanStatus,
+      setIsCensysCompanyScanning,
+      setCensysCompanyScans,
+      setMostRecentCensysCompanyScanStatus,
+      setMostRecentCensysCompanyScan
+    );
+  };
+
+  const startGitHubReconScan = () => {
+    initiateGitHubReconScan(
+      activeTarget,
+      monitorGitHubReconScanStatus,
+      setIsGitHubReconScanning,
+      setGitHubReconScans,
+      setMostRecentGitHubReconScanStatus,
+      setMostRecentGitHubReconScan
+    );
+  };
+
+  useEffect(() => {
+    if (activeTarget) {
+      monitorGitHubReconScanStatus(
+        activeTarget,
+        setGitHubReconScans,
+        setMostRecentGitHubReconScan,
+        setIsGitHubReconScanning,
+        setMostRecentGitHubReconScanStatus
+      );
+    }
+  }, [activeTarget]);
 
   return (
     <Container data-bs-theme="dark" className="App" style={{ padding: '20px' }}>
@@ -2583,16 +2825,19 @@ function App() {
                       disabledMessage: !hasSecurityTrailsApiKey ? 'SecurityTrails API key not configured' : null
                     },
                     { 
-                      name: 'Censys CLI / API', 
-                      link: 'https://censys.io',
-                      description: 'Internet-wide scanning platform for discovering and analyzing internet-connected devices.',
+                      name: 'GitHub Recon Tools', 
+                      link: 'https://github.com/gwen001/github-search',
+                      description: 'Looks for organization mentions and domain patterns in public GitHub repos to discover config files, email addresses, or links to other root domains.',
                       isActive: true,
-                      status: 'idle',
-                      isScanning: false,
-                      onScan: () => console.log('Censys scan'),
-                      onResults: () => console.log('Censys results'),
-                      onHistory: () => console.log('Censys history'),
-                      resultCount: 0
+                      status: mostRecentGitHubReconScanStatus,
+                      isScanning: isGitHubReconScanning,
+                      onScan: startGitHubReconScan,
+                      onResults: handleOpenGitHubReconResultsModal,
+                      onHistory: handleOpenGitHubReconHistoryModal,
+                      resultCount: mostRecentGitHubReconScan && mostRecentGitHubReconScan.result ? 
+                        JSON.parse(mostRecentGitHubReconScan.result).domains.length : 0,
+                      disabled: !hasGitHubApiKey,
+                      disabledMessage: !hasGitHubApiKey ? 'GitHub API key not configured' : null
                     },
                     { 
                       name: 'Shodan CLI / API', 
@@ -2607,20 +2852,28 @@ function App() {
                       resultCount: 0
                     },
                     { 
-                      name: 'GitHub Recon Tools', 
-                      link: 'https://github.com/gwen001/github-search',
-                      description: 'Looks for organization mentions and domain patterns in public GitHub repos to discover config files, email addresses, or links to other root domains.',
+                      name: 'Censys', 
+                      link: 'https://censys.io',
+                      description: 'Censys helps security teams discover, monitor, and analyze assets to prevent exposure and reduce risk.',
                       isActive: true,
-                      status: 'idle',
-                      isScanning: false,
-                      onScan: () => console.log('GitHub Recon scan'),
-                      onResults: () => console.log('GitHub Recon results'),
-                      onHistory: () => console.log('GitHub Recon history'),
-                      resultCount: 0
-                    }
+                      status: mostRecentCensysCompanyScanStatus,
+                      isScanning: isCensysCompanyScanning,
+                      onScan: startCensysCompanyScan,
+                      onResults: handleOpenCensysCompanyResultsModal,
+                      onHistory: handleOpenCensysCompanyHistoryModal,
+                      resultCount: mostRecentCensysCompanyScan && mostRecentCensysCompanyScan.result ? 
+                        JSON.parse(mostRecentCensysCompanyScan.result).domains.length : 0,
+                      disabled: !hasCensysApiKey,
+                      disabledMessage: !hasCensysApiKey ? 'Censys API key not configured' : null
+                    },
                   ].map((tool, index) => (
                     <Col key={index}>
-                      <Card className="shadow-sm h-100 text-center" style={{ minHeight: '250px' }}>
+                      <Card className="shadow-sm h-100 text-center position-relative" style={{ minHeight: '250px' }}>
+                        {(tool.name === 'Shodan CLI / API' || tool.name === 'Censys') && (
+                          <div className="position-absolute" style={{ top: '10px', right: '10px', zIndex: 1 }}>
+                            <i className="bi bi-currency-dollar text-danger" style={{ fontSize: '1.2rem' }} title="Requires paid API key"></i>
+                          </div>
+                        )}
                         <Card.Body className="d-flex flex-column">
                           <Card.Title className="text-danger mb-3">
                             <a href={tool.link} className="text-danger text-decoration-none">
@@ -2651,7 +2904,7 @@ function App() {
                               >
                                 <div className="btn-content">
                                   {tool.isScanning ? (
-                                    <Spinner animation="border" size="sm" />
+                                    <div className="spinner"></div>
                                   ) : (
                                     'Scan'
                                   )}
@@ -3764,6 +4017,30 @@ function App() {
         show={showSecurityTrailsCompanyHistoryModal}
         handleClose={handleCloseSecurityTrailsCompanyHistoryModal}
         scans={securityTrailsCompanyScans}
+      />
+
+      <CensysCompanyResultsModal
+        show={showCensysCompanyResultsModal}
+        handleClose={handleCloseCensysCompanyResultsModal}
+        scan={mostRecentCensysCompanyScan}
+        setShowToast={setShowToast}
+      />
+
+      <CensysCompanyHistoryModal
+        show={showCensysCompanyHistoryModal}
+        handleClose={handleCloseCensysCompanyHistoryModal}
+        scans={censysCompanyScans}
+      />
+      <GitHubReconResultsModal
+        show={showGitHubReconResultsModal}
+        handleClose={handleCloseGitHubReconResultsModal}
+        scan={mostRecentGitHubReconScan}
+        setShowToast={setShowToast}
+      />
+      <GitHubReconHistoryModal
+        show={showGitHubReconHistoryModal}
+        handleClose={handleCloseGitHubReconHistoryModal}
+        scans={gitHubReconScans}
       />
     </Container>
   );

@@ -27,13 +27,11 @@ function SettingsModal({ show, handleClose, initialTab = 'rate-limits', onApiKey
   const [apiKeys, setApiKeys] = useState([]);
   const [apiKeyLoading, setApiKeyLoading] = useState(false);
   const [newApiKey, setNewApiKey] = useState({
-    tool_name: '',
-    api_key_name: '',
-    key_values: {
-      api_key: '',
-      app_id: '',
-      app_secret: ''
-    }
+    toolName: '',
+    name: '',
+    apiKey: '',
+    appId: '',
+    appSecret: ''
   });
   const [saving, setSaving] = useState(false);
   const [showToast, setShowToast] = useState(false);
@@ -189,33 +187,43 @@ function SettingsModal({ show, handleClose, initialTab = 'rate-limits', onApiKey
   };
 
   const handleCreateApiKey = async () => {
+    if (!newApiKey.toolName || !newApiKey.name) {
+      setToastMessage('Please fill in all required fields');
+      setToastVariant('danger');
+      setShowToast(true);
+      return;
+    }
+
+    // Validate key values based on tool type
+    if ((newApiKey.toolName === 'SecurityTrails' || newApiKey.toolName === 'GitHub') && !newApiKey.apiKey) {
+      setToastMessage('API Key is required for this tool');
+      setToastVariant('danger');
+      setShowToast(true);
+      return;
+    }
+
+    if (newApiKey.toolName === 'Censys' && (!newApiKey.appId || !newApiKey.appSecret)) {
+      setToastMessage('App ID and App Secret are required for Censys');
+      setToastVariant('danger');
+      setShowToast(true);
+      return;
+    }
+
+    // Check if this is the first key for this tool
+    const existingKeysForTool = apiKeys.filter(key => key.tool_name === newApiKey.toolName);
+    const isFirstKeyForTool = existingKeysForTool.length === 0;
+    const hasExistingSelection = localStorage.getItem(`selectedApiKey_${newApiKey.toolName}`);
+
     try {
-      // Validate required fields
-      if (!newApiKey.tool_name || !newApiKey.api_key_name) {
-        setShowToast(true);
-        setToastMessage('Please fill in all required fields');
-        setToastVariant('danger');
-        return;
+      const keyValues = {};
+      
+      if (newApiKey.toolName === 'SecurityTrails' || newApiKey.toolName === 'GitHub') {
+        keyValues.api_key = newApiKey.apiKey;
+      } else if (newApiKey.toolName === 'Censys') {
+        keyValues.app_id = newApiKey.appId;
+        keyValues.app_secret = newApiKey.appSecret;
       }
 
-      // Validate key values based on tool type
-      if (newApiKey.tool_name === 'Censys') {
-        if (!newApiKey.key_values.app_id || !newApiKey.key_values.app_secret) {
-          setShowToast(true);
-          setToastMessage('Please fill in both App ID and App Secret for Censys');
-          setToastVariant('danger');
-          return;
-        }
-      } else {
-        if (!newApiKey.key_values.api_key) {
-          setShowToast(true);
-          setToastMessage('Please fill in the API Key');
-          setToastVariant('danger');
-          return;
-        }
-      }
-
-      console.log('Sending API key data:', newApiKey);
       const response = await fetch(
         `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/api-keys`,
         {
@@ -223,55 +231,62 @@ function SettingsModal({ show, handleClose, initialTab = 'rate-limits', onApiKey
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify(newApiKey),
+          body: JSON.stringify({
+            tool_name: newApiKey.toolName,
+            api_key_name: newApiKey.name,
+            key_values: keyValues,
+          }),
         }
       );
 
       if (!response.ok) {
-        let errorMessage = 'Failed to create API key';
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.message || errorMessage;
-        } catch (e) {
-          // If response is not JSON, try to get text
-          try {
-            const text = await response.text();
-            errorMessage = text || errorMessage;
-          } catch (e) {
-            // If all else fails, use default message
-          }
-        }
-        throw new Error(errorMessage);
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to create API key');
       }
+
+      // If this is the first key for the tool OR there's no existing selection, make it the default
+      if (isFirstKeyForTool || !hasExistingSelection) {
+        localStorage.setItem(`selectedApiKey_${newApiKey.toolName}`, newApiKey.name);
+        
+        // Notify parent component about the new default selection
+        if (newApiKey.toolName === 'SecurityTrails') {
+          onApiKeyDeleted?.(); // This will trigger a re-check of all API keys
+        } else if (newApiKey.toolName === 'GitHub') {
+          onApiKeyDeleted?.();
+        } else if (newApiKey.toolName === 'Censys') {
+          onApiKeyDeleted?.();
+        }
+      }
+
+      // Reset form
+      setNewApiKey({
+        toolName: '',
+        name: '',
+        apiKey: '',
+        appId: '',
+        appSecret: ''
+      });
 
       // Refresh the API keys list
       await fetchApiKeys();
-      
-      // Reset the form
-      setNewApiKey({
-        tool_name: '',
-        api_key_name: '',
-        key_values: {
-          api_key: '',
-          app_id: '',
-          app_secret: ''
-        }
-      });
 
-      // Show success message
-      setShowToast(true);
-      setToastMessage('API key created successfully');
+      setToastMessage(`API key "${newApiKey.name}" created successfully${(isFirstKeyForTool || !hasExistingSelection) ? ' and set as default' : ''}`);
       setToastVariant('success');
+      setShowToast(true);
     } catch (error) {
       console.error('Error creating API key:', error);
-      setShowToast(true);
       setToastMessage(error.message || 'Error creating API key');
       setToastVariant('danger');
+      setShowToast(true);
     }
   };
 
   const handleDeleteApiKey = async (id) => {
     try {
+      // Find the key being deleted to check if it's currently selected
+      const keyToDelete = apiKeys.find(key => key.id === id);
+      const selectedKeyName = keyToDelete ? localStorage.getItem(`selectedApiKey_${keyToDelete.tool_name}`) : null;
+      
       const response = await fetch(
         `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/api-keys/${id}`,
         {
@@ -283,11 +298,13 @@ function SettingsModal({ show, handleClose, initialTab = 'rate-limits', onApiKey
         throw new Error('Failed to delete API key');
       }
 
-      // Check if the deleted key was for SecurityTrails
-      const deletedKey = apiKeys.find(key => key.id === id);
-      if (deletedKey && deletedKey.tool_name === 'SecurityTrails') {
-        onApiKeyDeleted?.(false);
+      // If the deleted key was the selected one, remove it from localStorage
+      if (keyToDelete && selectedKeyName === keyToDelete.api_key_name) {
+        localStorage.removeItem(`selectedApiKey_${keyToDelete.tool_name}`);
       }
+
+      // Notify parent component to re-check API keys
+      onApiKeyDeleted?.();
 
       // Refresh the API keys list
       await fetchApiKeys();
@@ -553,8 +570,8 @@ function SettingsModal({ show, handleClose, initialTab = 'rate-limits', onApiKey
                           <Form.Group>
                             <Form.Label className="text-white">Tool</Form.Label>
                             <Form.Select
-                              value={newApiKey.tool_name}
-                              onChange={(e) => setNewApiKey(prev => ({ ...prev, tool_name: e.target.value }))}
+                              value={newApiKey.toolName}
+                              onChange={(e) => setNewApiKey(prev => ({ ...prev, toolName: e.target.value }))}
                               className="custom-input"
                             >
                               <option value="">Select a tool</option>
@@ -570,8 +587,8 @@ function SettingsModal({ show, handleClose, initialTab = 'rate-limits', onApiKey
                             <Form.Label className="text-white">Key Name</Form.Label>
                             <Form.Control
                               type="text"
-                              value={newApiKey.api_key_name}
-                              onChange={(e) => setNewApiKey(prev => ({ ...prev, api_key_name: e.target.value }))}
+                              value={newApiKey.name}
+                              onChange={(e) => setNewApiKey(prev => ({ ...prev, name: e.target.value }))}
                               placeholder="Enter a name for this API key"
                               className="custom-input"
                             />
@@ -579,21 +596,42 @@ function SettingsModal({ show, handleClose, initialTab = 'rate-limits', onApiKey
                         </Col>
                       </Row>
                       <Row className="mb-3">
-                        {getKeyFieldsForTool(newApiKey.tool_name).map((field) => {
+                        {getKeyFieldsForTool(newApiKey.toolName).map((field) => {
+                          const getFieldValue = (fieldName) => {
+                            switch (fieldName) {
+                              case 'api_key':
+                                return newApiKey.apiKey;
+                              case 'app_id':
+                                return newApiKey.appId;
+                              case 'app_secret':
+                                return newApiKey.appSecret;
+                              default:
+                                return '';
+                            }
+                          };
+
+                          const handleFieldChange = (fieldName, value) => {
+                            switch (fieldName) {
+                              case 'api_key':
+                                setNewApiKey(prev => ({ ...prev, apiKey: value }));
+                                break;
+                              case 'app_id':
+                                setNewApiKey(prev => ({ ...prev, appId: value }));
+                                break;
+                              case 'app_secret':
+                                setNewApiKey(prev => ({ ...prev, appSecret: value }));
+                                break;
+                            }
+                          };
+
                           return (
                             <Col key={field.name} md={field.name === 'api_key' ? 12 : 6}>
                               <Form.Group>
                                 <Form.Label className="text-white">{field.label}</Form.Label>
                                 <Form.Control
                                   type={field.type}
-                                  value={newApiKey.key_values[field.name]}
-                                  onChange={(e) => setNewApiKey(prev => ({
-                                    ...prev,
-                                    key_values: {
-                                      ...prev.key_values,
-                                      [field.name]: e.target.value
-                                    }
-                                  }))}
+                                  value={getFieldValue(field.name)}
+                                  onChange={(e) => handleFieldChange(field.name, e.target.value)}
                                   placeholder={`Enter ${field.label}`}
                                   className="custom-input"
                                 />

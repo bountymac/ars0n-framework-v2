@@ -150,6 +150,14 @@ func main() {
 	r.HandleFunc("/securitytrails-company/run", utils.RunSecurityTrailsCompanyScan).Methods("POST", "OPTIONS")
 	r.HandleFunc("/securitytrails-company/status/{scan_id}", utils.GetSecurityTrailsCompanyScanStatus).Methods("GET", "OPTIONS")
 	r.HandleFunc("/scopetarget/{id}/scans/securitytrails-company", utils.GetSecurityTrailsCompanyScansForScopeTarget).Methods("GET", "OPTIONS")
+	r.HandleFunc("/censys-company/run", utils.RunCensysCompanyScan).Methods("POST", "OPTIONS")
+	r.HandleFunc("/censys-company/status/{scan_id}", utils.GetCensysCompanyScanStatus).Methods("GET", "OPTIONS")
+	r.HandleFunc("/scopetarget/{id}/scans/censys-company", utils.GetCensysCompanyScansForScopeTarget).Methods("GET", "OPTIONS")
+
+	// GitHub Recon routes
+	r.HandleFunc("/github-recon/run", utils.RunGitHubReconScan).Methods("POST", "OPTIONS")
+	r.HandleFunc("/github-recon/status/{scan_id}", utils.GetGitHubReconScanStatus).Methods("GET", "OPTIONS")
+	r.HandleFunc("/scopetarget/{id}/scans/github-recon", utils.GetGitHubReconScansForScopeTarget).Methods("GET", "OPTIONS")
 
 	log.Println("API server started on :8080")
 	http.ListenAndServe(":8080", r)

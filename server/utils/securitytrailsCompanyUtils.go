@@ -111,14 +111,15 @@ func ExecuteSecurityTrailsCompanyScan(scanID, companyName string) {
 	log.Printf("[SECURITYTRAILS-COMPANY] [INFO] Starting SecurityTrails Company scan execution for company %s (scan ID: %s)", companyName, scanID)
 	startTime := time.Now()
 
-	var apiKey string
+	// Get SecurityTrails API key from database
+	var apiKeyJSON string
 	err := dbPool.QueryRow(context.Background(), `
 		SELECT api_key_value 
 		FROM api_keys 
 		WHERE tool_name = 'SecurityTrails' 
 		ORDER BY created_at DESC 
 		LIMIT 1
-	`).Scan(&apiKey)
+	`).Scan(&apiKeyJSON)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			log.Printf("[SECURITYTRAILS-COMPANY] [ERROR] No SecurityTrails API key found in database")
@@ -130,9 +131,18 @@ func ExecuteSecurityTrailsCompanyScan(scanID, companyName string) {
 		return
 	}
 
-	if apiKey == "" {
-		log.Printf("[SECURITYTRAILS-COMPANY] [ERROR] SecurityTrails API key is empty")
-		UpdateSecurityTrailsCompanyScanStatus(scanID, "error", "", "SecurityTrails API key is empty. Please configure your API key in the settings.", "", time.Since(startTime).String())
+	// Parse the API key JSON to extract the actual key
+	var keyData map[string]interface{}
+	if err := json.Unmarshal([]byte(apiKeyJSON), &keyData); err != nil {
+		log.Printf("[SECURITYTRAILS-COMPANY] [ERROR] Failed to parse API key JSON: %v", err)
+		UpdateSecurityTrailsCompanyScanStatus(scanID, "error", "", fmt.Sprintf("Failed to parse API key JSON: %v", err), "", time.Since(startTime).String())
+		return
+	}
+
+	apiKey, ok := keyData["api_key"].(string)
+	if !ok || apiKey == "" {
+		log.Printf("[SECURITYTRAILS-COMPANY] [ERROR] SecurityTrails API key is empty or invalid")
+		UpdateSecurityTrailsCompanyScanStatus(scanID, "error", "", "SecurityTrails API key is empty or invalid. Please configure your API key in the settings.", "", time.Since(startTime).String())
 		return
 	}
 
