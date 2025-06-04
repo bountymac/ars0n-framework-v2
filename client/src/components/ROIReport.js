@@ -368,7 +368,7 @@ const TargetSection = ({ targetURL, roiScore }) => {
                       ['NS', targetURL.dns_ns_records],
                       ['PTR', targetURL.dns_ptr_records],
                       ['SRV', targetURL.dns_srv_records]
-                    ].map(([type, records]) => records && records.length > 0 && (
+                    ].map(([type, records]) => records && Array.isArray(records) && records.length > 0 && (
                       <tr key={type}>
                         <td className="fw-bold" style={{ width: '100px' }}>{type}:</td>
                         <td>{records.join(', ')}</td>
@@ -400,7 +400,7 @@ const TargetSection = ({ targetURL, roiScore }) => {
               <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
                 <Table className="table-dark">
                   <tbody>
-                    {Object.entries(httpHeaders).map(([key, value]) => (
+                    {Object.entries(httpHeaders || {}).map(([key, value]) => (
                       <tr key={key}>
                         <td className="fw-bold" style={{ width: '150px' }}>{key}:</td>
                         <td>{typeof value === 'string' ? value : JSON.stringify(value)}</td>
@@ -431,12 +431,15 @@ const TargetSection = ({ targetURL, roiScore }) => {
 };
 
 const ROIReport = ({ show, onHide, targetURLs = [] }) => {
+  // Ensure targetURLs is always an array
+  const safeTargetURLs = targetURLs || [];
+  
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 1;
-  const totalPages = Math.ceil(targetURLs.length / itemsPerPage);
+  const totalPages = Math.ceil((safeTargetURLs || []).length / itemsPerPage);
   
-  const sortedTargets = Array.isArray(targetURLs) 
-    ? [...targetURLs].sort((a, b) => b.roi_score - a.roi_score)
+  const sortedTargets = Array.isArray(safeTargetURLs) 
+    ? [...safeTargetURLs].sort((a, b) => b.roi_score - a.roi_score)
     : [];
 
   const currentTarget = sortedTargets[currentPage - 1];

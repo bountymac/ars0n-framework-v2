@@ -11,7 +11,23 @@ export const GauResultsModal = ({
     try {
       return results.result.split('\n')
         .filter(line => line.trim())
-        .map(line => JSON.parse(line));
+        .map(line => {
+          try {
+            // Try to parse as JSON first
+            return JSON.parse(line);
+          } catch (jsonError) {
+            // If JSON parsing fails, treat as plain URL
+            if (line.startsWith('http')) {
+              return {
+                url: line.trim(),
+                method: 'GET',
+                status_code: 'Unknown',
+                source: 'GAU'
+              };
+            }
+            throw jsonError;
+          }
+        });
     } catch (error) {
       console.error('Error parsing GAU results:', error);
       return [];

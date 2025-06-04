@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Modal, Table, Button, Badge, Spinner, Alert } from 'react-bootstrap';
 
 const AddWildcardTargetsModal = ({ 
@@ -6,7 +6,8 @@ const AddWildcardTargetsModal = ({
   handleClose, 
   consolidatedCompanyDomains = [], 
   onAddWildcardTarget,
-  scopeTargets = []
+  scopeTargets = [],
+  fetchScopeTargets
 }) => {
   const [addingDomains, setAddingDomains] = useState(new Set());
   const [addedDomains, setAddedDomains] = useState(new Set());
@@ -19,8 +20,35 @@ const AddWildcardTargetsModal = ({
     setError('');
     
     try {
-      await onAddWildcardTarget(domain);
+      // Prepend *. to make it a wildcard format
+      const wildcardDomain = `*.${domain}`;
+      
+      const response = await fetch(`${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/add`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: 'Wildcard',
+          mode: 'Passive',
+          scope_target: wildcardDomain,
+          active: false,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to add wildcard target');
+      }
+
       setAddedDomains(prev => new Set([...prev, domain]));
+      
+      // Refresh scope targets list to update the count
+      try {
+        await fetchScopeTargets();
+      } catch (refreshError) {
+        console.warn('Failed to refresh scope targets:', refreshError);
+      }
+      
     } catch (err) {
       setError(`Failed to add ${domain}: ${err.message}`);
     } finally {
@@ -37,7 +65,8 @@ const AddWildcardTargetsModal = ({
       target && 
       target.type === 'Wildcard' && 
       target.scope_target && 
-      target.scope_target.toLowerCase() === `*.${domain.toLowerCase()}`
+      (target.scope_target.toLowerCase() === domain.toLowerCase() ||
+       target.scope_target.toLowerCase() === `*.${domain}`.toLowerCase())
     );
   };
 
@@ -61,7 +90,7 @@ const AddWildcardTargetsModal = ({
       'censys_company': 'danger',
       'github_recon': 'secondary',
       'shodan_company': 'dark',
-      'consolidated': 'primary'
+      'consolidated': 'info'
     };
     return sourceVariants[source] || 'light';
   };

@@ -508,7 +508,7 @@ function App() {
         body: JSON.stringify({
           type: 'Wildcard',
           mode: 'Passive',
-          scope_target: `*.${domain}`,
+          scope_target: domain,
           active: false,
         }),
       });
@@ -1021,7 +1021,7 @@ function App() {
           body: JSON.stringify({
             type: selections.type,
             mode: 'Passive',
-            scope_target: `*.${selections.inputText}`,
+            scope_target: selections.inputText,
             active: false,
           }),
         });
@@ -1648,7 +1648,7 @@ function App() {
         },
         body: JSON.stringify({
           scope_target_id: activeTarget.id,
-          domain: `*.${domain}`,
+          domain: domain,
         }),
       });
 
@@ -2163,7 +2163,7 @@ function App() {
         },
         body: JSON.stringify({
           scope_target_id: activeTarget.id,
-          domain: `*.${domain}`,
+          domain: domain,
         }),
       });
 
@@ -2989,7 +2989,14 @@ function App() {
                       onResults: handleOpenSecurityTrailsCompanyResultsModal,
                       onHistory: handleOpenSecurityTrailsCompanyHistoryModal,
                       resultCount: mostRecentSecurityTrailsCompanyScan && mostRecentSecurityTrailsCompanyScan.result ? 
-                        mostRecentSecurityTrailsCompanyScan.result.split('\n').filter(line => line.trim()).length : 0,
+                        (() => {
+                          try {
+                            const parsed = JSON.parse(mostRecentSecurityTrailsCompanyScan.result);
+                            return parsed && parsed.domains ? parsed.domains.length : 0;
+                          } catch (e) {
+                            return 0;
+                          }
+                        })() : 0,
                       disabled: !hasSecurityTrailsApiKey,
                       disabledMessage: !hasSecurityTrailsApiKey ? 'SecurityTrails API key not configured' : null
                     },
@@ -3004,7 +3011,28 @@ function App() {
                       onResults: handleOpenGitHubReconResultsModal,
                       onHistory: handleOpenGitHubReconHistoryModal,
                       resultCount: mostRecentGitHubReconScan && mostRecentGitHubReconScan.result ? 
-                        mostRecentGitHubReconScan.result.split('\n').filter(line => line.trim()).length : 0,
+                        (() => {
+                          try {
+                            // Handle null, undefined, or empty string cases
+                            if (!mostRecentGitHubReconScan.result || mostRecentGitHubReconScan.result === '' || 
+                                mostRecentGitHubReconScan.result === 'undefined' || mostRecentGitHubReconScan.result === 'null') {
+                              return 0;
+                            }
+                            
+                            const parsed = JSON.parse(mostRecentGitHubReconScan.result);
+                            
+                            // Handle different possible result structures
+                            if (Array.isArray(parsed)) {
+                              return parsed.length;
+                            } else if (parsed.domains && Array.isArray(parsed.domains)) {
+                              return parsed.domains.length;
+                            }
+                            
+                            return 0;
+                          } catch (e) {
+                            return 0;
+                          }
+                        })() : 0,
                       disabled: !hasGitHubApiKey,
                       disabledMessage: !hasGitHubApiKey ? 'GitHub API key not configured' : null
                     },
@@ -3127,11 +3155,22 @@ function App() {
                               <small className="text-white-50">Unique Root Domains</small>
                             </div>
                             <div className="col">
-                              <h3 className="mb-0">{scopeTargets.filter(target => 
-                                target.type === 'Wildcard' && 
-                                target.scope_target && 
-                                consolidatedCompanyDomains.includes(target.scope_target.replace('*.', ''))
-                              ).length}</h3>
+                              <h3 className="mb-0">{
+                                scopeTargets.filter(target => {
+                                  if (target.type !== 'Wildcard' || !target.scope_target) return false;
+                                  
+                                  // Remove *. prefix if present to get the base domain
+                                  const baseDomain = target.scope_target.startsWith('*.') 
+                                    ? target.scope_target.substring(2) 
+                                    : target.scope_target;
+                                  
+                                  // Check if this domain exists in consolidated company domains
+                                  return consolidatedCompanyDomains.some(item => {
+                                    const domain = typeof item === 'string' ? item : item.domain;
+                                    return domain && domain.toLowerCase() === baseDomain.toLowerCase();
+                                  });
+                                }).length
+                              }</h3>
                               <small className="text-white-50">Wildcard Targets Created</small>
                             </div>
                           </div>
@@ -4297,6 +4336,7 @@ function App() {
         consolidatedCompanyDomains={consolidatedCompanyDomains}
         onAddWildcardTarget={handleAddWildcardTarget}
         scopeTargets={scopeTargets}
+        fetchScopeTargets={fetchScopeTargets}
       />
     </Container>
   );
