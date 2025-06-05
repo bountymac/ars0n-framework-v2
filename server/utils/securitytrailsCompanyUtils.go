@@ -15,6 +15,31 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+type FlexibleString struct {
+	Value string
+}
+
+func (fs *FlexibleString) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		fs.Value = s
+		return nil
+	}
+
+	var arr []string
+	if err := json.Unmarshal(data, &arr); err == nil {
+		if len(arr) > 0 {
+			fs.Value = arr[0]
+		} else {
+			fs.Value = ""
+		}
+		return nil
+	}
+
+	fs.Value = ""
+	return nil
+}
+
 type SecurityTrailsCompanyScanStatus struct {
 	ID                string         `json:"id"`
 	ScanID            string         `json:"scan_id"`
@@ -190,10 +215,10 @@ func ExecuteSecurityTrailsCompanyScan(scanID, companyName string) {
 	// Parse response
 	var response struct {
 		Records []struct {
-			Hostname     string   `json:"hostname"`
-			HostProvider []string `json:"host_provider"`
-			MailProvider string   `json:"mail_provider"`
-			AlexaRank    int      `json:"alexa_rank"`
+			Hostname     string         `json:"hostname"`
+			HostProvider []string       `json:"host_provider"`
+			MailProvider FlexibleString `json:"mail_provider"`
+			AlexaRank    int            `json:"alexa_rank"`
 			Whois        struct {
 				CreatedDate int64  `json:"createdDate"`
 				ExpiresDate int64  `json:"expiresDate"`
@@ -219,7 +244,7 @@ func ExecuteSecurityTrailsCompanyScan(scanID, companyName string) {
 		domains[i] = map[string]interface{}{
 			"hostname":      record.Hostname,
 			"host_provider": record.HostProvider,
-			"mail_provider": record.MailProvider,
+			"mail_provider": record.MailProvider.Value,
 			"alexa_rank":    record.AlexaRank,
 			"whois": map[string]interface{}{
 				"created_date": time.Unix(record.Whois.CreatedDate/1000, 0).Format(time.RFC3339),
