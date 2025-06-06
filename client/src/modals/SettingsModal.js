@@ -354,6 +354,26 @@ function SettingsModal({ show, handleClose, initialTab = 'rate-limits', onApiKey
     nuclei_screenshot: "Controls concurrent screenshot requests. Higher values increase speed but may trigger anti-bot measures."
   };
 
+  const truncateApiKey = (key, maxLength = 20) => {
+    if (!key || key.length <= maxLength) {
+      return key;
+    }
+    
+    const prefixLength = Math.floor(maxLength / 3);
+    const suffixLength = Math.floor(maxLength / 3);
+    const prefix = key.substring(0, prefixLength);
+    const suffix = key.substring(key.length - suffixLength);
+    
+    return `${prefix}...${suffix}`;
+  };
+
+  const renderApiKeyValue = (apiKey) => {
+    if (apiKey.tool_name === 'Censys') {
+      return `${truncateApiKey(apiKey.key_values.app_id)}:${truncateApiKey(apiKey.key_values.app_secret)}`;
+    }
+    return truncateApiKey(apiKey.key_values.api_key);
+  };
+
   return (
     <Modal 
       show={show} 
@@ -665,14 +685,14 @@ function SettingsModal({ show, handleClose, initialTab = 'rate-limits', onApiKey
                         <div className="list-group" style={{ maxHeight: '300px', overflowY: 'auto' }}>
                           {apiKeys.map((apiKey) => (
                             <div key={apiKey.id} className="list-group-item bg-dark border-secondary d-flex justify-content-between align-items-center">
-                              <div>
+                              <div style={{ minWidth: 0, flex: 1 }}>
                                 <strong className="text-danger">{apiKey.tool_name}</strong>
                                 <br />
                                 <span className="text-white">
                                   {apiKey.api_key_name}: {
                                     apiKey.tool_name === 'Censys' 
-                                      ? `${apiKey.key_values.app_id}:${apiKey.key_values.app_secret}`
-                                      : apiKey.key_values.api_key
+                                      ? `${truncateApiKey(apiKey.key_values.app_id)}:${truncateApiKey(apiKey.key_values.app_secret)}`
+                                      : truncateApiKey(apiKey.key_values.api_key)
                                   }
                                 </span>
                                 <br />
@@ -685,6 +705,7 @@ function SettingsModal({ show, handleClose, initialTab = 'rate-limits', onApiKey
                                 size="sm"
                                 onClick={() => handleDeleteApiKey(apiKey.id)}
                                 disabled={apiKeyLoading}
+                                style={{ flexShrink: 0, marginLeft: '10px' }}
                               >
                                 Delete
                               </Button>

@@ -18,6 +18,6 @@ RUN chmod -R 777 /app/temp
 
 RUN go build -o main .
 
-EXPOSE 8080
+EXPOSE 8443
 
 CMD ["./main"]

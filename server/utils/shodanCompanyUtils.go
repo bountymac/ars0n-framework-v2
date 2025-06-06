@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -300,12 +302,80 @@ func extractRootDomain(hostname string) string {
 		hostname = hostname[2:]
 	}
 
+	if isIPAddress(hostname) {
+		return ""
+	}
+
+	if !isValidDomain(hostname) {
+		return ""
+	}
+
 	parts := strings.Split(hostname, ".")
 	if len(parts) < 2 {
 		return ""
 	}
 
 	return strings.Join(parts[len(parts)-2:], ".")
+}
+
+func isIPAddress(str string) bool {
+	if net.ParseIP(str) != nil {
+		return true
+	}
+
+	parts := strings.Split(str, ".")
+	if len(parts) != 4 {
+		return false
+	}
+
+	for _, part := range parts {
+		if num, err := strconv.Atoi(part); err != nil || num < 0 || num > 255 {
+			return false
+		}
+	}
+	return true
+}
+
+func isValidDomain(domain string) bool {
+	if len(domain) == 0 || len(domain) > 253 {
+		return false
+	}
+
+	if domain[len(domain)-1] == '.' {
+		domain = domain[:len(domain)-1]
+	}
+
+	parts := strings.Split(domain, ".")
+	if len(parts) < 2 {
+		return false
+	}
+
+	for _, part := range parts {
+		if len(part) == 0 || len(part) > 63 {
+			return false
+		}
+
+		if part[0] == '-' || part[len(part)-1] == '-' {
+			return false
+		}
+
+		for _, char := range part {
+			if !((char >= 'a' && char <= 'z') || (char >= '0' && char <= '9') || char == '-') {
+				return false
+			}
+		}
+	}
+
+	lastPart := parts[len(parts)-1]
+	hasLetter := false
+	for _, char := range lastPart {
+		if char >= 'a' && char <= 'z' {
+			hasLetter = true
+			break
+		}
+	}
+
+	return hasLetter
 }
 
 func UpdateShodanCompanyScanStatus(scanID, status, result, stderr, command, execTime string) {

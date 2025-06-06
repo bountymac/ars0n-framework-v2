@@ -99,10 +99,10 @@ const AddWildcardTargetsModal = ({
     const sourceNames = {
       'google_dorking': 'Google Dorking',
       'reverse_whois': 'Reverse Whois',
-      'ctl_company': 'CTL Company',
+      'ctl_company': 'Certificate Transparency',
       'securitytrails_company': 'SecurityTrails',
       'censys_company': 'Censys',
-      'github_recon': 'GitHub Recon',
+      'github_recon': 'GitHub',
       'shodan_company': 'Shodan',
       'consolidated': 'Multiple Sources'
     };
@@ -148,7 +148,7 @@ const AddWildcardTargetsModal = ({
               <thead>
                 <tr>
                   <th>Domain</th>
-                  <th>Source</th>
+                  <th>Discovery Source</th>
                   <th>Discovered</th>
                   <th>Status</th>
                   <th>Action</th>
@@ -156,7 +156,6 @@ const AddWildcardTargetsModal = ({
               </thead>
               <tbody>
                 {consolidatedCompanyDomains.map((item, index) => {
-                  // Handle both string format and object format
                   const domain = typeof item === 'string' ? item : item.domain;
                   const source = typeof item === 'string' ? 'consolidated' : item.source;
                   const created_at = typeof item === 'string' ? new Date().toISOString() : item.created_at;
@@ -166,13 +165,12 @@ const AddWildcardTargetsModal = ({
                   }
                   
                   const status = getDomainStatus(domain);
+                  
                   return (
                     <tr key={index}>
                       <td className="text-white fw-bold">{domain}</td>
-                      <td>
-                        <Badge bg={getSourceBadgeVariant(source)}>
-                          {getSourceDisplayName(source)}
-                        </Badge>
+                      <td className="text-white-50">
+                        {getSourceDisplayName(source)}
                       </td>
                       <td className="text-white-50 small">
                         {new Date(created_at).toLocaleDateString()}
@@ -206,13 +204,13 @@ const AddWildcardTargetsModal = ({
                             disabled={addingDomains.has(domain)}
                           >
                             <i className="bi bi-plus-circle me-1"></i>
-                            Add Wildcard Target
+                            Add Target
                           </Button>
                         )}
                         {(status === 'added' || isAlreadyTarget(domain)) && (
                           <Button variant="success" size="sm" disabled>
                             <i className="bi bi-check-circle me-1"></i>
-                            Target Exists
+                            Exists
                           </Button>
                         )}
                         {status === 'adding' && (
@@ -227,19 +225,6 @@ const AddWildcardTargetsModal = ({
                 })}
               </tbody>
             </Table>
-            
-            <div className="mt-3 p-3 bg-dark border border-secondary rounded">
-              <h6 className="text-danger mb-2">
-                <i className="bi bi-info-circle me-2"></i>
-                What happens when you add a Wildcard target?
-              </h6>
-              <ul className="text-white-50 small mb-0">
-                <li>A new Wildcard scope target will be created for subdomain enumeration</li>
-                <li>You can then switch to the new target and run the full subdomain discovery workflow</li>
-                <li>Tools like Amass, Sublist3r, Assetfinder, and others will discover subdomains</li>
-                <li>The workflow includes consolidation, live web server discovery, and ROI analysis</li>
-              </ul>
-            </div>
           </div>
         )}
       </Modal.Body>

@@ -164,8 +164,8 @@ func main() {
 	r.HandleFunc("/github-recon/status/{scan_id}", utils.GetGitHubReconScanStatus).Methods("GET", "OPTIONS")
 	r.HandleFunc("/scopetarget/{id}/scans/github-recon", utils.GetGitHubReconScansForScopeTarget).Methods("GET", "OPTIONS")
 
-	log.Println("API server started on :8080")
-	http.ListenAndServe(":8080", r)
+	log.Println("API server started on :8443")
+	http.ListenAndServe(":8443", r)
 }
 
 func corsMiddleware(next http.Handler) http.Handler {

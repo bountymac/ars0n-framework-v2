@@ -1151,10 +1151,12 @@ func ConsolidateCompanyDomains(scopeTargetID string) ([]string, error) {
 		}
 	}
 
-	// 3. Get domains from CTL Company scans
+	// 3. Get domains from CTL Company scans (most recent only)
 	log.Printf("[INFO] Fetching CTL Company domains...")
 	ctlRows, err := tx.Query(context.Background(),
-		`SELECT result FROM ctl_company_scans WHERE scope_target_id = $1 AND status = 'success' AND result IS NOT NULL`,
+		`SELECT result FROM ctl_company_scans 
+		 WHERE scope_target_id = $1 AND status = 'success' AND result IS NOT NULL 
+		 ORDER BY created_at DESC LIMIT 1`,
 		scopeTargetID)
 	if err != nil {
 		log.Printf("[ERROR] Failed to get CTL Company domains: %v", err)
@@ -1176,10 +1178,12 @@ func ConsolidateCompanyDomains(scopeTargetID string) ([]string, error) {
 		}
 	}
 
-	// 4. Get domains from SecurityTrails Company scans
+	// 4. Get domains from SecurityTrails Company scans (most recent only)
 	log.Printf("[INFO] Fetching SecurityTrails Company domains...")
 	stRows, err := tx.Query(context.Background(),
-		`SELECT result FROM securitytrails_company_scans WHERE scope_target_id = $1 AND status = 'success' AND result IS NOT NULL`,
+		`SELECT result FROM securitytrails_company_scans 
+		 WHERE scope_target_id = $1 AND status = 'success' AND result IS NOT NULL 
+		 ORDER BY created_at DESC LIMIT 1`,
 		scopeTargetID)
 	if err != nil {
 		log.Printf("[ERROR] Failed to get SecurityTrails Company domains: %v", err)
@@ -1207,10 +1211,12 @@ func ConsolidateCompanyDomains(scopeTargetID string) ([]string, error) {
 		}
 	}
 
-	// 5. Get domains from Censys Company scans
+	// 5. Get domains from Censys Company scans (most recent only)
 	log.Printf("[INFO] Fetching Censys Company domains...")
 	censysRows, err := tx.Query(context.Background(),
-		`SELECT result FROM censys_company_scans WHERE scope_target_id = $1 AND status = 'success' AND result IS NOT NULL`,
+		`SELECT result FROM censys_company_scans 
+		 WHERE scope_target_id = $1 AND status = 'success' AND result IS NOT NULL 
+		 ORDER BY created_at DESC LIMIT 1`,
 		scopeTargetID)
 	if err != nil {
 		log.Printf("[ERROR] Failed to get Censys Company domains: %v", err)
@@ -1238,10 +1244,12 @@ func ConsolidateCompanyDomains(scopeTargetID string) ([]string, error) {
 		}
 	}
 
-	// 6. Get domains from GitHub Recon scans
+	// 6. Get domains from GitHub Recon scans (most recent only)
 	log.Printf("[INFO] Fetching GitHub Recon domains...")
 	githubRows, err := tx.Query(context.Background(),
-		`SELECT result FROM github_recon_scans WHERE scope_target_id = $1 AND status = 'success' AND result IS NOT NULL`,
+		`SELECT result FROM github_recon_scans 
+		 WHERE scope_target_id = $1 AND status = 'success' AND result IS NOT NULL 
+		 ORDER BY created_at DESC LIMIT 1`,
 		scopeTargetID)
 	if err != nil {
 		log.Printf("[ERROR] Failed to get GitHub Recon domains: %v", err)
@@ -1269,10 +1277,12 @@ func ConsolidateCompanyDomains(scopeTargetID string) ([]string, error) {
 		}
 	}
 
-	// 7. Get domains from Shodan Company scans
+	// 7. Get domains from Shodan Company scans (most recent only)
 	log.Printf("[INFO] Fetching Shodan Company domains...")
 	shodanRows, err := tx.Query(context.Background(),
-		`SELECT result FROM shodan_company_scans WHERE scope_target_id = $1 AND status = 'success' AND result IS NOT NULL`,
+		`SELECT result FROM shodan_company_scans 
+		 WHERE scope_target_id = $1 AND status = 'success' AND result IS NOT NULL 
+		 ORDER BY created_at DESC LIMIT 1`,
 		scopeTargetID)
 	if err != nil {
 		log.Printf("[ERROR] Failed to get Shodan Company domains: %v", err)
