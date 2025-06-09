@@ -5,8 +5,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -112,20 +114,19 @@ func ExecuteAndParseCTLCompanyScan(scanID, companyName string) {
 	log.Printf("[CTL-COMPANY] [INFO] Starting CTL Company scan execution for company %s (scan ID: %s)", companyName, scanID)
 	startTime := time.Now()
 
-	url := fmt.Sprintf("https://crt.sh/?O=%s&output=json", companyName)
-	log.Printf("[CTL-COMPANY] [DEBUG] Requesting URL: %s", url)
+	encodedCompanyName := url.QueryEscape(companyName)
+	requestURL := fmt.Sprintf("https://crt.sh/?O=%s&output=json", encodedCompanyName)
+	log.Printf("[CTL-COMPANY] [DEBUG] Requesting URL: %s", requestURL)
 
 	client := &http.Client{Timeout: 60 * time.Second}
 
-	// Create request with realistic browser headers
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest("GET", requestURL, nil)
 	if err != nil {
 		log.Printf("[CTL-COMPANY] [ERROR] Failed to create HTTP request: %v", err)
 		UpdateCTLCompanyScanStatus(scanID, "error", "", fmt.Sprintf("Failed to create HTTP request: %v", err), "", time.Since(startTime).String())
 		return
 	}
 
-	// Add realistic browser headers to avoid rate limiting
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 	req.Header.Set("Accept", "application/json, text/plain, */*")
 	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
@@ -144,7 +145,42 @@ func ExecuteAndParseCTLCompanyScan(scanID, companyName string) {
 
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("[CTL-COMPANY] [ERROR] crt.sh returned non-200 status code: %d", resp.StatusCode)
-		UpdateCTLCompanyScanStatus(scanID, "error", "", fmt.Sprintf("crt.sh returned status code: %d", resp.StatusCode), "", time.Since(startTime).String())
+
+		var errorMsg string
+		switch resp.StatusCode {
+		case 503:
+			errorMsg = fmt.Sprintf("crt.sh is temporarily unavailable (503 Service Unavailable). This typically occurs when:\n\n• crt.sh servers are experiencing high load or maintenance\n• The query for '%s' would return too many results and was rejected\n• Database timeout occurred due to query complexity\n\nRecommendations:\n• Try again in a few minutes\n• Use a more specific company name if '%s' is too broad\n• Consider that large companies may have thousands of certificates", companyName, companyName)
+		case 400:
+			errorMsg = fmt.Sprintf("crt.sh rejected the request (400 Bad Request). This usually means:\n\n• Invalid characters in company name '%s'\n• Query format is not accepted by crt.sh\n• Company name contains special characters that need encoding\n\nRecommendations:\n• Try using only alphanumeric characters\n• Remove special symbols from the company name\n• Use a simplified version of the company name", companyName)
+		case 429:
+			errorMsg = fmt.Sprintf("crt.sh rate limit exceeded (429 Too Many Requests). This means:\n\n• Too many requests have been made to crt.sh recently\n• Your IP address is temporarily blocked\n\nRecommendations:\n• Wait 5-10 minutes before trying again\n• Avoid running multiple company scans simultaneously\n• Try again during off-peak hours")
+		case 500:
+			errorMsg = fmt.Sprintf("crt.sh internal server error (500 Internal Server Error). This indicates:\n\n• Technical issues on crt.sh servers\n• Database problems processing the query for '%s'\n• Unexpected error in their system\n\nRecommendations:\n• Try again in a few minutes\n• Check crt.sh status at https://crt.sh directly\n• Try a different company name to test if the issue is specific", companyName)
+		case 502, 504:
+			errorMsg = fmt.Sprintf("crt.sh gateway/timeout error (%d). This suggests:\n\n• Network connectivity issues to crt.sh\n• Proxy/gateway problems\n• Request timeout due to query complexity\n\nRecommendations:\n• Try again in a few minutes\n• Check your internet connection\n• Use a more specific company name to reduce query complexity", resp.StatusCode)
+		default:
+			errorMsg = fmt.Sprintf("crt.sh returned unexpected status code %d. This is an unusual error that may indicate:\n\n• New error condition not yet handled by our system\n• Temporary technical issues with crt.sh\n• Network connectivity problems\n\nRecommendations:\n• Try again in a few minutes\n• Check if crt.sh is accessible at https://crt.sh\n• Contact support if the issue persists", resp.StatusCode)
+		}
+
+		UpdateCTLCompanyScanStatus(scanID, "error", "", errorMsg, "", time.Since(startTime).String())
+		return
+	}
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("[CTL-COMPANY] [ERROR] Failed to read response body: %v", err)
+		UpdateCTLCompanyScanStatus(scanID, "error", "", fmt.Sprintf("Failed to read response body: %v", err), "", time.Since(startTime).String())
+		return
+	}
+
+	bodyString := string(bodyBytes)
+
+	if strings.Contains(bodyString, "Sorry, something went wrong") ||
+		strings.Contains(bodyString, "searches that would produce many results may never succeed") ||
+		strings.Contains(bodyString, "crt.sh  Certificate Search") {
+		log.Printf("[CTL-COMPANY] [WARN] crt.sh returned error page indicating too many results for company: %s", companyName)
+		errorMsg := fmt.Sprintf("crt.sh query for '%s' returned too many results. The search was terminated by crt.sh because it would produce an excessive number of results. Try using a more specific company name or consider that this company may have too many certificates to process efficiently.", companyName)
+		UpdateCTLCompanyScanStatus(scanID, "error", "", errorMsg, "", time.Since(startTime).String())
 		return
 	}
 
@@ -152,9 +188,14 @@ func ExecuteAndParseCTLCompanyScan(scanID, companyName string) {
 		CommonName string `json:"common_name"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&results); err != nil {
+	if err := json.Unmarshal(bodyBytes, &results); err != nil {
 		log.Printf("[CTL-COMPANY] [ERROR] Failed to decode crt.sh response: %v", err)
-		UpdateCTLCompanyScanStatus(scanID, "error", "", fmt.Sprintf("Failed to decode crt.sh response: %v", err), "", time.Since(startTime).String())
+		logLength := 500
+		if len(bodyString) < logLength {
+			logLength = len(bodyString)
+		}
+		log.Printf("[CTL-COMPANY] [DEBUG] Response body (first %d chars): %s", logLength, bodyString[:logLength])
+		UpdateCTLCompanyScanStatus(scanID, "error", "", fmt.Sprintf("Failed to decode crt.sh response: %v. Response may not be valid JSON.", err), "", time.Since(startTime).String())
 		return
 	}
 
@@ -169,18 +210,15 @@ func ExecuteAndParseCTLCompanyScan(scanID, companyName string) {
 			continue
 		}
 
-		// Skip entries that don't look like domains (contain spaces, commas, or "inc")
 		if strings.Contains(domain, " ") || strings.Contains(domain, ",") || strings.Contains(domain, "inc") {
 			log.Printf("[CTL-COMPANY] [DEBUG] Skipping non-domain entry: %s", domain)
 			continue
 		}
 
-		// Only process entries that contain at least one dot and look like domains
 		parts := strings.Split(domain, ".")
 		if len(parts) >= 2 {
-			// Validate that it's a proper domain format
 			lastPart := parts[len(parts)-1]
-			if len(lastPart) >= 2 && len(lastPart) <= 6 { // Valid TLD length
+			if len(lastPart) >= 2 && len(lastPart) <= 6 {
 				log.Printf("[CTL-COMPANY] [DEBUG] Keeping full domain: %s", domain)
 				uniqueDomains[domain] = true
 			} else {
@@ -201,7 +239,7 @@ func ExecuteAndParseCTLCompanyScan(scanID, companyName string) {
 	log.Printf("[CTL-COMPANY] [DEBUG] Final processed result contains %d unique domains", len(domains))
 	log.Printf("[CTL-COMPANY] [DEBUG] Domains found: %v", domains)
 
-	UpdateCTLCompanyScanStatus(scanID, "success", result, "", fmt.Sprintf("GET %s", url), time.Since(startTime).String())
+	UpdateCTLCompanyScanStatus(scanID, "success", result, "", fmt.Sprintf("GET %s", requestURL), time.Since(startTime).String())
 	log.Printf("[CTL-COMPANY] [INFO] CTL Company scan completed and results stored successfully for company %s", companyName)
 }
 
