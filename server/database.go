@@ -576,6 +576,21 @@ func createTables() {
 			UNIQUE(scope_target_id, domain)
 		);`,
 
+		`CREATE TABLE IF NOT EXISTS investigate_scans (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scan_id UUID NOT NULL UNIQUE,
+			scope_target_id UUID NOT NULL,
+			status VARCHAR(50) NOT NULL,
+			result TEXT,
+			error TEXT,
+			stdout TEXT,
+			stderr TEXT,
+			command TEXT,
+			execution_time TEXT,
+			created_at TIMESTAMP DEFAULT NOW(),
+			FOREIGN KEY (scope_target_id) REFERENCES scope_targets(id) ON DELETE CASCADE
+		);`,
+
 		// Add auto_scan_session_id to all scan tables
 		`DO $$ BEGIN BEGIN ALTER TABLE amass_scans ADD COLUMN IF NOT EXISTS auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL; EXCEPTION WHEN duplicate_column THEN RAISE NOTICE 'Column already exists.'; END; END $$;`,
 		`DO $$ BEGIN BEGIN ALTER TABLE httpx_scans ADD COLUMN IF NOT EXISTS auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL; EXCEPTION WHEN duplicate_column THEN RAISE NOTICE 'Column already exists.'; END; END $$;`,

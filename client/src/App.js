@@ -115,6 +115,8 @@ import { ShodanCompanyResultsModal, ShodanCompanyHistoryModal } from './modals/S
 import monitorShodanCompanyScanStatus from './utils/monitorShodanCompanyScanStatus.js';
 import initiateShodanCompanyScan from './utils/initiateShodanCompanyScan';
 import AddWildcardTargetsModal from './modals/AddWildcardTargetsModal.js';
+import initiateInvestigateScan from './utils/initiateInvestigateScan';
+import monitorInvestigateScanStatus from './utils/monitorInvestigateScanStatus';
 
 // Add helper function
 const getHttpxResultsCount = (scan) => {
@@ -330,6 +332,10 @@ function App() {
   const [mostRecentMetaDataScan, setMostRecentMetaDataScan] = useState(null);
   const [isMetaDataScanning, setIsMetaDataScanning] = useState(false);
   const [showMetaDataModal, setShowMetaDataModal] = useState(false);
+  const [investigateScans, setInvestigateScans] = useState([]);
+  const [mostRecentInvestigateScanStatus, setMostRecentInvestigateScanStatus] = useState(null);
+  const [mostRecentInvestigateScan, setMostRecentInvestigateScan] = useState(null);
+  const [isInvestigateScanning, setIsInvestigateScanning] = useState(false);
   const [targetURLs, setTargetURLs] = useState([]);
   const [showROIReport, setShowROIReport] = useState(false);
   const [selectedTargetURL, setSelectedTargetURL] = useState(null);
@@ -497,6 +503,21 @@ function App() {
 
   const handleCloseAddWildcardTargetsModal = () => setShowAddWildcardTargetsModal(false);
   const handleOpenAddWildcardTargetsModal = () => setShowAddWildcardTargetsModal(true);
+
+  const handleInvestigateRootDomains = () => {
+    initiateInvestigateScan(
+      activeTarget,
+      monitorInvestigateScanStatus,
+      setIsInvestigateScanning,
+      setInvestigateScans,
+      setMostRecentInvestigateScanStatus,
+      setMostRecentInvestigateScan
+    );
+  };
+
+  const handleValidateRootDomains = () => {
+    console.log('Validate Root Domains clicked');
+  };
 
   const handleAddWildcardTarget = async (domain) => {
     try {
@@ -1162,6 +1183,20 @@ function App() {
     setReverseWhoisDomains([]);
     setReverseWhoisError('');
     
+    // Reset company scan states
+    setSecurityTrailsCompanyScans([]);
+    setMostRecentSecurityTrailsCompanyScan(null);
+    setMostRecentSecurityTrailsCompanyScanStatus(null);
+    setCensysCompanyScans([]);
+    setMostRecentCensysCompanyScan(null);
+    setMostRecentCensysCompanyScanStatus(null);
+    setShodanCompanyScans([]);
+    setMostRecentShodanCompanyScan(null);
+    setMostRecentShodanCompanyScanStatus(null);
+    setGitHubReconScans([]);
+    setMostRecentGitHubReconScan(null);
+    setMostRecentGitHubReconScanStatus(null);
+    
     setActiveTarget(target);
     // Update the backend to set this target as active
     try {
@@ -1244,6 +1279,82 @@ function App() {
           if (shufflednsCustomData && shufflednsCustomData.length > 0) {
             setMostRecentShuffleDNSCustomScan(shufflednsCustomData[0]);
             setMostRecentShuffleDNSCustomScanStatus(shufflednsCustomData[0].status);
+          }
+        }
+
+        // Fetch SecurityTrails Company scans
+        const securitytrailsResponse = await fetch(
+          `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${target.id}/scans/securitytrails-company`
+        );
+        if (securitytrailsResponse.ok) {
+          const securitytrailsData = await securitytrailsResponse.json();
+          if (Array.isArray(securitytrailsData)) {
+            setSecurityTrailsCompanyScans(securitytrailsData);
+            if (securitytrailsData.length > 0) {
+              const mostRecentScan = securitytrailsData.reduce((latest, scan) => {
+                const scanDate = new Date(scan.created_at);
+                return scanDate > new Date(latest.created_at) ? scan : latest;
+              }, securitytrailsData[0]);
+              setMostRecentSecurityTrailsCompanyScan(mostRecentScan);
+              setMostRecentSecurityTrailsCompanyScanStatus(mostRecentScan.status);
+            }
+          }
+        }
+
+        // Fetch Censys Company scans
+        const censysResponse = await fetch(
+          `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${target.id}/scans/censys-company`
+        );
+        if (censysResponse.ok) {
+          const censysData = await censysResponse.json();
+          if (Array.isArray(censysData)) {
+            setCensysCompanyScans(censysData);
+            if (censysData.length > 0) {
+              const mostRecentScan = censysData.reduce((latest, scan) => {
+                const scanDate = new Date(scan.created_at);
+                return scanDate > new Date(latest.created_at) ? scan : latest;
+              }, censysData[0]);
+              setMostRecentCensysCompanyScan(mostRecentScan);
+              setMostRecentCensysCompanyScanStatus(mostRecentScan.status);
+            }
+          }
+        }
+
+        // Fetch Shodan Company scans
+        const shodanResponse = await fetch(
+          `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${target.id}/scans/shodan-company`
+        );
+        if (shodanResponse.ok) {
+          const shodanData = await shodanResponse.json();
+          if (Array.isArray(shodanData)) {
+            setShodanCompanyScans(shodanData);
+            if (shodanData.length > 0) {
+              const mostRecentScan = shodanData.reduce((latest, scan) => {
+                const scanDate = new Date(scan.created_at);
+                return scanDate > new Date(latest.created_at) ? scan : latest;
+              }, shodanData[0]);
+              setMostRecentShodanCompanyScan(mostRecentScan);
+              setMostRecentShodanCompanyScanStatus(mostRecentScan.status);
+            }
+          }
+        }
+
+        // Fetch GitHub Recon scans
+        const githubResponse = await fetch(
+          `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${target.id}/scans/github-recon`
+        );
+        if (githubResponse.ok) {
+          const githubData = await githubResponse.json();
+          if (Array.isArray(githubData)) {
+            setGitHubReconScans(githubData);
+            if (githubData.length > 0) {
+              const mostRecentScan = githubData.reduce((latest, scan) => {
+                const scanDate = new Date(scan.created_at);
+                return scanDate > new Date(latest.created_at) ? scan : latest;
+              }, githubData[0]);
+              setMostRecentGitHubReconScan(mostRecentScan);
+              setMostRecentGitHubReconScanStatus(mostRecentScan.status);
+            }
           }
         }
       }
@@ -1855,6 +1966,18 @@ function App() {
         setMostRecentMetaDataScan,
         setIsMetaDataScanning,
         setMostRecentMetaDataScanStatus
+      );
+    }
+  }, [activeTarget]);
+
+  useEffect(() => {
+    if (activeTarget && activeTarget.id) {
+      monitorInvestigateScanStatus(
+        activeTarget,
+        setInvestigateScans,
+        setMostRecentInvestigateScan,
+        setIsInvestigateScanning,
+        setMostRecentInvestigateScanStatus
       );
     }
   }, [activeTarget]);
@@ -3191,6 +3314,26 @@ function App() {
                           <Button 
                             variant="outline-danger" 
                             className="flex-fill"
+                            onClick={handleInvestigateRootDomains}
+                            disabled={consolidatedCompanyDomainsCount === 0 || isInvestigateScanning}
+                          >
+                            <div className="btn-content">
+                              {isInvestigateScanning ? (
+                                <div className="spinner"></div>
+                              ) : 'Investigate'}
+                            </div>
+                          </Button>
+                          <Button 
+                            variant="outline-danger" 
+                            className="flex-fill"
+                            onClick={handleValidateRootDomains}
+                            disabled={true}
+                          >
+                            Validate
+                          </Button>
+                          <Button 
+                            variant="outline-danger" 
+                            className="flex-fill"
                             onClick={handleOpenAddWildcardTargetsModal}
                             disabled={consolidatedCompanyDomainsCount === 0}
                           >
@@ -4337,6 +4480,7 @@ function App() {
         onAddWildcardTarget={handleAddWildcardTarget}
         scopeTargets={scopeTargets}
         fetchScopeTargets={fetchScopeTargets}
+        investigateResults={mostRecentInvestigateScan?.result ? JSON.parse(mostRecentInvestigateScan.result) : []}
       />
     </Container>
   );
