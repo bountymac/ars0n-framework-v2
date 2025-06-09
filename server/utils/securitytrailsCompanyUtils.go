@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/google/uuid"
@@ -177,7 +178,7 @@ func ExecuteSecurityTrailsCompanyScan(scanID, companyName string) {
 	client := &http.Client{Timeout: 60 * time.Second}
 
 	// Create request to SecurityTrails API
-	url := fmt.Sprintf("https://api.securitytrails.com/v1/domains/list?whois_organization=%s", companyName)
+	url := fmt.Sprintf("https://api.securitytrails.com/v1/domains/list?whois_organization=%s", url.QueryEscape(companyName))
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		log.Printf("[SECURITYTRAILS-COMPANY] [ERROR] Failed to create HTTP request: %v", err)
