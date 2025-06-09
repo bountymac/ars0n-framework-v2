@@ -146,6 +146,14 @@ func ExecuteGitHubReconScan(scanID, companyName string) {
 
 	log.Printf("[GITHUB-RECON] [INFO] Successfully retrieved GitHub API key")
 
+	// Transform company name to domain-like format (lowercase, no spaces, no special characters)
+	domainName := strings.ToLower(companyName)
+	domainName = strings.ReplaceAll(domainName, " ", "")
+	// Remove special characters using regex - keep only alphanumeric characters
+	reg := regexp.MustCompile(`[^a-zA-Z0-9]`)
+	domainName = reg.ReplaceAllString(domainName, "")
+	log.Printf("[GITHUB-RECON] [INFO] Transformed company name '%s' to domain format '%s'", companyName, domainName)
+
 	// First, check if the GitHub recon container is running
 	checkCmd := exec.Command("docker", "ps", "--filter", "name=ars0n-framework-v2-github-recon-1", "--format", "{{.Status}}")
 	checkOutput, err := checkCmd.Output()
@@ -191,12 +199,19 @@ func ExecuteGitHubReconScan(scanID, companyName string) {
 		log.Printf("[GITHUB-RECON] [DEBUG] Script help output:\n%s", string(helpOutput))
 	}
 
-	// Construct the command
-	cmd := exec.Command("docker", "exec", "ars0n-framework-v2-github-recon-1", "python3", "/app/github-search/github-endpoints.py", "-d", companyName, "-t", apiKey)
+	// Construct the command with unbuffered Python output
+	cmd := exec.Command("docker", "exec", "ars0n-framework-v2-github-recon-1", "python3", "-u", "/app/github-search/github-endpoints.py", "-d", domainName, "-t", apiKey)
 	log.Printf("[GITHUB-RECON] [DEBUG] Executing command: %s", cmd.String())
 
 	// Set up separate stdout and stderr pipes
 	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	// Add timeout context
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	cmd = exec.CommandContext(ctx, "docker", "exec", "ars0n-framework-v2-github-recon-1", "python3", "-u", "/app/github-search/github-endpoints.py", "-d", domainName, "-t", apiKey)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
