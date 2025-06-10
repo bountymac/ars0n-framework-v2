@@ -605,6 +605,7 @@ function ManageScopeTargets({
                     variant="outline-danger" 
                     className="flex-fill" 
                     onClick={onOpenAutoScanHistory}
+                    disabled={activeTarget?.type !== 'Wildcard'}
                   >
                     Scan History
                   </Button>
@@ -612,6 +613,7 @@ function ManageScopeTargets({
                     variant="outline-danger" 
                     className="flex-fill" 
                     onClick={handleConfigure}
+                    disabled={activeTarget?.type !== 'Wildcard'}
                   >
                     Configure
                   </Button>
@@ -619,7 +621,7 @@ function ManageScopeTargets({
                     variant="outline-danger" 
                     className="flex-fill" 
                     onClick={onAutoScan}
-                    disabled={isAutoScanning}
+                    disabled={isAutoScanning || activeTarget?.type !== 'Wildcard'}
                   >
                     <div className="btn-content">
                       {isAutoScanning ? (
