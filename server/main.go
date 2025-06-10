@@ -167,6 +167,11 @@ func main() {
 	r.HandleFunc("/github-recon/status/{scan_id}", utils.GetGitHubReconScanStatus).Methods("GET", "OPTIONS")
 	r.HandleFunc("/scopetarget/{id}/scans/github-recon", utils.GetGitHubReconScansForScopeTarget).Methods("GET", "OPTIONS")
 
+	// Company domain management routes
+	r.HandleFunc("/api/company-domains/{scope_target_id}/{tool}", getCompanyDomainsByTool).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/company-domains/{scope_target_id}/{tool}/all", deleteAllCompanyDomainsFromTool).Methods("DELETE", "OPTIONS")
+	r.HandleFunc("/api/company-domains/{scope_target_id}/{tool}/{domain}", deleteCompanyDomainFromTool).Methods("DELETE", "OPTIONS")
+
 	log.Println("API server started on :8443")
 	http.ListenAndServe(":8443", r)
 }
@@ -1435,4 +1440,174 @@ func deleteAPIKey(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"message": "API key deleted successfully"})
+}
+
+func getCompanyDomainsByTool(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	scopeTargetID := vars["scope_target_id"]
+	tool := vars["tool"]
+
+	if scopeTargetID == "" || tool == "" {
+		http.Error(w, "scope_target_id and tool are required", http.StatusBadRequest)
+		return
+	}
+
+	var domains []string
+	var err error
+
+	switch tool {
+	case "google_dorking":
+		domains, err = utils.GetGoogleDorkingDomainsForTool(scopeTargetID)
+	case "reverse_whois":
+		domains, err = utils.GetReverseWhoisDomainsForTool(scopeTargetID)
+	case "ctl_company":
+		domains, err = utils.GetCTLCompanyDomainsForTool(scopeTargetID)
+	case "securitytrails_company":
+		domains, err = utils.GetSecurityTrailsCompanyDomainsForTool(scopeTargetID)
+	case "censys_company":
+		domains, err = utils.GetCensysCompanyDomainsForTool(scopeTargetID)
+	case "github_recon":
+		domains, err = utils.GetGitHubReconDomainsForTool(scopeTargetID)
+	case "shodan_company":
+		domains, err = utils.GetShodanCompanyDomainsForTool(scopeTargetID)
+	default:
+		http.Error(w, "Invalid tool specified", http.StatusBadRequest)
+		return
+	}
+
+	if err != nil {
+		log.Printf("Error fetching domains for tool %s: %v", tool, err)
+		http.Error(w, "Failed to fetch domains", http.StatusInternalServerError)
+		return
+	}
+
+	if domains == nil {
+		domains = []string{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"domains": domains,
+		"count":   len(domains),
+	})
+}
+
+func deleteCompanyDomainFromTool(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	scopeTargetID := vars["scope_target_id"]
+	tool := vars["tool"]
+	domain := vars["domain"]
+
+	log.Printf("[DOMAIN-API] [DEBUG] Individual delete request: scope_target_id=%s, tool=%s, domain='%s'", scopeTargetID, tool, domain)
+
+	if scopeTargetID == "" || tool == "" || domain == "" {
+		log.Printf("[DOMAIN-API] [ERROR] Missing required parameters: scope_target_id='%s', tool='%s', domain='%s'", scopeTargetID, tool, domain)
+		http.Error(w, "scope_target_id, tool, and domain are required", http.StatusBadRequest)
+		return
+	}
+
+	var err error
+	var success bool
+
+	log.Printf("[DOMAIN-API] [DEBUG] Processing individual delete for tool: %s, domain: '%s'", tool, domain)
+
+	switch tool {
+	case "google_dorking":
+		success, err = utils.DeleteGoogleDorkingDomainFromTool(scopeTargetID, domain)
+	case "reverse_whois":
+		success, err = utils.DeleteReverseWhoisDomainFromTool(scopeTargetID, domain)
+	case "ctl_company":
+		success, err = utils.DeleteCTLCompanyDomainFromTool(scopeTargetID, domain)
+	case "securitytrails_company":
+		success, err = utils.DeleteSecurityTrailsCompanyDomainFromTool(scopeTargetID, domain)
+	case "censys_company":
+		success, err = utils.DeleteCensysCompanyDomainFromTool(scopeTargetID, domain)
+	case "github_recon":
+		success, err = utils.DeleteGitHubReconDomainFromTool(scopeTargetID, domain)
+	case "shodan_company":
+		success, err = utils.DeleteShodanCompanyDomainFromTool(scopeTargetID, domain)
+	default:
+		log.Printf("[DOMAIN-API] [ERROR] Invalid tool specified: %s", tool)
+		http.Error(w, "Invalid tool specified", http.StatusBadRequest)
+		return
+	}
+
+	if err != nil {
+		log.Printf("[DOMAIN-API] [ERROR] Error deleting domain '%s' from tool %s: %v", domain, tool, err)
+		http.Error(w, "Failed to delete domain", http.StatusInternalServerError)
+		return
+	}
+
+	if !success {
+		log.Printf("[DOMAIN-API] [WARNING] Domain '%s' not found in tool %s", domain, tool)
+		http.Error(w, "Domain not found", http.StatusNotFound)
+		return
+	}
+
+	log.Printf("[DOMAIN-API] [INFO] Successfully deleted domain '%s' from tool %s", domain, tool)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Domain deleted successfully",
+	})
+}
+
+func deleteAllCompanyDomainsFromTool(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	scopeTargetID := vars["scope_target_id"]
+	tool := vars["tool"]
+
+	log.Printf("[DOMAIN-API] [DEBUG] Delete all domains request: scope_target_id=%s, tool=%s", scopeTargetID, tool)
+	log.Printf("[DOMAIN-API] [DEBUG] Request URL: %s", r.URL.Path)
+
+	if scopeTargetID == "" || tool == "" {
+		log.Printf("[DOMAIN-API] [ERROR] Missing parameters: scope_target_id=%s, tool=%s", scopeTargetID, tool)
+		http.Error(w, "scope_target_id and tool are required", http.StatusBadRequest)
+		return
+	}
+
+	var err error
+	var count int64
+
+	log.Printf("[DOMAIN-API] [DEBUG] Processing delete all for tool: %s", tool)
+
+	switch tool {
+	case "google_dorking":
+		count, err = utils.DeleteAllGoogleDorkingDomainsFromTool(scopeTargetID)
+	case "reverse_whois":
+		count, err = utils.DeleteAllReverseWhoisDomainsFromTool(scopeTargetID)
+	case "ctl_company":
+		log.Printf("[DOMAIN-API] [DEBUG] Calling DeleteAllCTLCompanyDomainsFromTool")
+		count, err = utils.DeleteAllCTLCompanyDomainsFromTool(scopeTargetID)
+	case "securitytrails_company":
+		count, err = utils.DeleteAllSecurityTrailsCompanyDomainsFromTool(scopeTargetID)
+	case "censys_company":
+		count, err = utils.DeleteAllCensysCompanyDomainsFromTool(scopeTargetID)
+	case "github_recon":
+		count, err = utils.DeleteAllGitHubReconDomainsFromTool(scopeTargetID)
+	case "shodan_company":
+		count, err = utils.DeleteAllShodanCompanyDomainsFromTool(scopeTargetID)
+	default:
+		log.Printf("[DOMAIN-API] [ERROR] Invalid tool specified: %s", tool)
+		http.Error(w, "Invalid tool specified", http.StatusBadRequest)
+		return
+	}
+
+	if err != nil {
+		log.Printf("[DOMAIN-API] [ERROR] Error deleting all domains from tool %s: %v", tool, err)
+		http.Error(w, "Failed to delete domains", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("[DOMAIN-API] [INFO] Successfully deleted %d domains from tool %s", count, tool)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": fmt.Sprintf("Deleted %d domains successfully", count),
+		"count":   count,
+	})
 }

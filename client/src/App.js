@@ -117,6 +117,7 @@ import initiateShodanCompanyScan from './utils/initiateShodanCompanyScan';
 import AddWildcardTargetsModal from './modals/AddWildcardTargetsModal.js';
 import initiateInvestigateScan from './utils/initiateInvestigateScan';
 import monitorInvestigateScanStatus from './utils/monitorInvestigateScanStatus';
+import TrimRootDomainsModal from './modals/TrimRootDomainsModal.js';
 
 // Add helper function
 const getHttpxResultsCount = (scan) => {
@@ -408,6 +409,8 @@ function App() {
   const [isShodanCompanyScanning, setIsShodanCompanyScanning] = useState(false);
   const [hasShodanApiKey, setHasShodanApiKey] = useState(false);
   const [showAddWildcardTargetsModal, setShowAddWildcardTargetsModal] = useState(false);
+  const [showTrimRootDomainsModal, setShowTrimRootDomainsModal] = useState(false);
+  const [rootDomainsByTool, setRootDomainsByTool] = useState({});
 
   const handleCloseSubdomainsModal = () => setShowSubdomainsModal(false);
   const handleCloseCloudDomainsModal = () => setShowCloudDomainsModal(false);
@@ -503,6 +506,9 @@ function App() {
 
   const handleCloseAddWildcardTargetsModal = () => setShowAddWildcardTargetsModal(false);
   const handleOpenAddWildcardTargetsModal = () => setShowAddWildcardTargetsModal(true);
+
+  const handleCloseTrimRootDomainsModal = () => setShowTrimRootDomainsModal(false);
+  const handleOpenTrimRootDomainsModal = () => setShowTrimRootDomainsModal(true);
 
   const handleInvestigateRootDomains = () => {
     initiateInvestigateScan(
@@ -2667,6 +2673,68 @@ function App() {
     }
   }, [activeTarget]);
 
+  const handleDomainsDeleted = async () => {
+    if (activeTarget) {
+      try {
+        // Refresh individual tool scan data to update domain counts on cards
+        
+        // Refresh Google Dorking domains
+        await fetchGoogleDorkingDomains();
+        
+        // Refresh Reverse Whois domains  
+        await fetchReverseWhoisDomains();
+        
+        // Refresh CTL Company scans
+        monitorCTLCompanyScanStatus(
+          activeTarget,
+          setCTLCompanyScans,
+          setMostRecentCTLCompanyScan,
+          setIsCTLCompanyScanning,
+          setMostRecentCTLCompanyScanStatus
+        );
+        
+        // Refresh SecurityTrails Company scans
+        monitorSecurityTrailsCompanyScanStatus(
+          activeTarget,
+          setSecurityTrailsCompanyScans,
+          setMostRecentSecurityTrailsCompanyScan,
+          setIsSecurityTrailsCompanyScanning,
+          setMostRecentSecurityTrailsCompanyScanStatus
+        );
+        
+        // Refresh Censys Company scans
+        monitorCensysCompanyScanStatus(
+          activeTarget,
+          setCensysCompanyScans,
+          setMostRecentCensysCompanyScan,
+          setIsCensysCompanyScanning,
+          setMostRecentCensysCompanyScanStatus
+        );
+        
+        // Refresh GitHub Recon scans
+        monitorGitHubReconScanStatus(
+          activeTarget,
+          setGitHubReconScans,
+          setMostRecentGitHubReconScan,
+          setIsGitHubReconScanning,
+          setMostRecentGitHubReconScanStatus
+        );
+        
+        // Refresh Shodan Company scans
+        monitorShodanCompanyScanStatus(
+          activeTarget,
+          setShodanCompanyScans,
+          setMostRecentShodanCompanyScan,
+          setIsShodanCompanyScanning,
+          setMostRecentShodanCompanyScanStatus
+        );
+        
+      } catch (error) {
+        console.error('Error refreshing individual tool scan data after deletion:', error);
+      }
+    }
+  };
+
   return (
     <Container data-bs-theme="dark" className="App" style={{ padding: '20px' }}>
       <style>
@@ -3299,6 +3367,14 @@ function App() {
                           </div>
                         </div>
                         <div className="d-flex justify-content-between mt-auto gap-2">
+                          <Button 
+                            variant="outline-danger" 
+                            className="flex-fill" 
+                            onClick={handleOpenTrimRootDomainsModal}
+                            disabled={consolidatedCompanyDomainsCount === 0}
+                          >
+                            Trim Root Domains
+                          </Button>
                           <Button 
                             variant="outline-danger" 
                             className="flex-fill" 
@@ -4481,6 +4557,12 @@ function App() {
         scopeTargets={scopeTargets}
         fetchScopeTargets={fetchScopeTargets}
         investigateResults={mostRecentInvestigateScan?.result ? JSON.parse(mostRecentInvestigateScan.result) : []}
+      />
+      <TrimRootDomainsModal
+        show={showTrimRootDomainsModal}
+        handleClose={handleCloseTrimRootDomainsModal}
+        activeTarget={activeTarget}
+        onDomainsDeleted={handleDomainsDeleted}
       />
     </Container>
   );
