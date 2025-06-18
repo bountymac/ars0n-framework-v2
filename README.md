@@ -5,12 +5,17 @@ Ars0n Framework v2
 <h3 align="center">Learn & Automate <a href="https://youtube.com/@rs0n_live">rs0n's</a> Bug Bounty Hunting Methodology</h3>
 
 <p align="center">
-    <em>Coming DEFCON 2025 (hopefully...probably.....feelin' pretty good about it right now... 🙏)</em>
+    <em>🚨 Pre-Alpha Release Out now!!  Beta Launch @ DEFCON 33 Bug Bounty Hunting Village!!! 🚨</em>
 </p>
 
 <div align="center">
+  <p>Walkthrough of Pre-Alpha Release</p>
   <a href="https://www.youtube.com/watch?v=u-yPpd0UH8w">
     <img src="thumbnail.png" width="600px" alt="Youtube Thumbnail" style="border-radius: 12px;">
+  </a>
+  <p>New Features Added to Pre-Alpha Release</p>
+  <a href="https://www.youtube.com/watch?v=kAO0stO-hBg">
+    <img src="thumbnail2.png" width="600px" alt="Youtube Thumbnail" style="border-radius: 12px;">
   </a>
 </div>
 
