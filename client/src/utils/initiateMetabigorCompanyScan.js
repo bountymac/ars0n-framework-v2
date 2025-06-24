@@ -10,6 +10,8 @@ export const initiateMetabigorCompanyScan = async (
 ) => {
   if (!activeTarget || activeTarget.type !== 'Company') return;
 
+  setMetabigorNetworkRanges([]);
+
   let companyName = activeTarget.scope_target;
 
   console.log(`Initiating Metabigor Company scan for: ${companyName}`);

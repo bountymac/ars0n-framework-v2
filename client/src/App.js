@@ -17,19 +17,19 @@ import Ars0nFrameworkHeader from './components/ars0nFrameworkHeader.js';
 import ManageScopeTargets from './components/manageScopeTargets.js';
 import fetchAmassScans from './utils/fetchAmassScans.js';
 import {
-    Container,
-    Fade,
-    Card,
-    Row,
-    Col,
-    Button,
-    ListGroup,
-    Accordion,
-    Modal,
-    Table,
-    Toast,
-    ToastContainer,
-    Spinner,
+  Container,
+  Fade,
+  Card,
+  Row,
+  Col,
+  Button,
+  ListGroup,
+  Accordion,
+  Modal,
+  Table,
+  Toast,
+  ToastContainer,
+  Spinner,
 } from 'react-bootstrap';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'bootstrap-icons/font/bootstrap-icons.css';
@@ -37,14 +37,14 @@ import initiateAmassScan from './utils/initiateAmassScan';
 import monitorScanStatus from './utils/monitorScanStatus';
 import validateInput from './utils/validateInput.js';
 import {
-    getTypeIcon,
-    getLastScanDate,
-    getLatestScanStatus,
-    getLatestScanTime,
-    getLatestScanId,
-    getExecutionTime,
-    getResultLength,
-    copyToClipboard,
+  getTypeIcon,
+  getLastScanDate,
+  getLatestScanStatus,
+  getLatestScanTime,
+  getLatestScanId,
+  getExecutionTime,
+  getResultLength,
+  copyToClipboard,
 } from './utils/miscUtils.js';
 import { MdCopyAll, MdCheckCircle } from 'react-icons/md';
 import initiateHttpxScan from './utils/initiateHttpxScan';
@@ -86,9 +86,9 @@ import fetchHttpxScans from './utils/fetchHttpxScans';
 import ROIReport from './components/ROIReport';
 import HelpMeLearn from './components/HelpMeLearn';
 import {
-    AUTO_SCAN_STEPS,
-    resumeAutoScan as resumeAutoScanUtil,
-    startAutoScan as startAutoScanUtil
+  AUTO_SCAN_STEPS,
+  resumeAutoScan as resumeAutoScanUtil,
+  startAutoScan as startAutoScanUtil
 } from './utils/wildcardAutoScan';
 import getAutoScanSteps from './utils/autoScanSteps';
 import fetchAmassIntelScans from './utils/fetchAmassIntelScans';
@@ -1181,6 +1181,10 @@ function App() {
     setMostRecentAmassScanStatus(null);
     setMostRecentAmassIntelScan(null);
     setMostRecentAmassIntelScanStatus(null);
+    setMostRecentMetabigorCompanyScan(null);
+    setMostRecentMetabigorCompanyScanStatus(null);
+    setAmassIntelNetworkRanges([]);
+    setMetabigorNetworkRanges([]);
     setHttpxScans([]);
     setMostRecentHttpxScan(null);
     setMostRecentHttpxScanStatus(null);
@@ -3400,7 +3404,6 @@ function App() {
                             variant="outline-danger" 
                             className="flex-fill" 
                             onClick={handleOpenTrimRootDomainsModal}
-                            disabled={consolidatedCompanyDomainsCount === 0}
                           >
                             Trim Root Domains
                           </Button>
@@ -3450,7 +3453,7 @@ function App() {
                   </Col>
                 </Row>
                 
-                <h4 className="text-secondary mb-3 fs-5">IP Address Discovery</h4>
+                <h4 className="text-secondary mb-3 fs-5">ASN (On-Prem) Network Ranges</h4>
                 <Row className="mb-4">
                   {[
                     {
@@ -3463,7 +3466,12 @@ function App() {
                       onScan: startAmassIntelScan,
                       onResults: handleOpenAmassIntelResultsModal,
                       onHistory: handleOpenAmassIntelHistoryModal,
-                      resultCount: getAmassIntelNetworkRangesCount(amassIntelNetworkRanges),
+                      resultCount: (() => {
+                        // If no scan exists, show 0 immediately
+                        if (!mostRecentAmassIntelScan) return 0;
+                        // If scan exists but state not yet populated, show 0 while fetching
+                        return amassIntelNetworkRanges.length;
+                      })(),
                       resultLabel: 'Network Ranges'
                     },
                     {
@@ -3476,7 +3484,12 @@ function App() {
                       onScan: startMetabigorCompanyScan,
                       onResults: handleOpenMetabigorCompanyResultsModal,
                       onHistory: handleOpenMetabigorCompanyHistoryModal,
-                      resultCount: getMetabigorNetworkRangesCount(metabigorNetworkRanges),
+                      resultCount: (() => {
+                        // If no scan exists, show 0 immediately  
+                        if (!mostRecentMetabigorCompanyScan) return 0;
+                        // If scan exists but state not yet populated, show 0 while fetching
+                        return metabigorNetworkRanges.length;
+                      })(),
                       resultLabel: 'Network Ranges'
                     }
                   ].map((tool, index) => (

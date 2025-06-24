@@ -24,8 +24,8 @@ const monitorMetabigorCompanyScanStatus = (
         setMostRecentMetabigorCompanyScan(mostRecentScan);
         setMostRecentMetabigorCompanyScanStatus(mostRecentScan.status);
 
-        // Fetch network ranges when scan is completed successfully
-        if (mostRecentScan.status === 'success' && mostRecentScan.scan_id && setMetabigorNetworkRanges) {
+        // Fetch network ranges for the most recent scan
+        if (mostRecentScan.scan_id && setMetabigorNetworkRanges) {
           try {
             const networkRangesResponse = await fetch(
               `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/metabigor-company/${mostRecentScan.scan_id}/networks`
@@ -44,6 +44,8 @@ const monitorMetabigorCompanyScanStatus = (
           setIsMetabigorCompanyScanning(false);
           clearInterval(intervalId);
         }
+      } else {
+        setMetabigorNetworkRanges([]);
       }
     } catch (error) {
       console.error('Error monitoring Metabigor Company scan status:', error);

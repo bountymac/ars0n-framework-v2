@@ -1,6 +1,8 @@
 export const initiateAmassIntelScan = async (activeTarget, monitorScanStatus, setIsScanning, setAmassIntelScans, setMostRecentAmassIntelScanStatus, setMostRecentAmassIntelScan, setAmassIntelNetworkRanges, autoScanSessionId) => {
     if (!activeTarget || activeTarget.type !== 'Company') return;
     
+    setAmassIntelNetworkRanges([]);
+    
     let companyName = activeTarget.scope_target;
     
     try {
