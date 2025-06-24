@@ -8,9 +8,9 @@ export const AmassIntelResultsModal = ({
   amassIntelResults,
   setShowToast 
 }) => {
-  const [activeTab, setActiveTab] = useState('domains');
-  const [rootDomains, setRootDomains] = useState([]);
-  const [whoisData, setWhoisData] = useState([]);
+  const [activeTab, setActiveTab] = useState('networks');
+  const [networkRanges, setNetworkRanges] = useState([]);
+  const [asnData, setAsnData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -18,7 +18,6 @@ export const AmassIntelResultsModal = ({
     if (showAmassIntelResultsModal && amassIntelResults && amassIntelResults.scan_id) {
       fetchAmassIntelData(amassIntelResults.scan_id);
     } else if (showAmassIntelResultsModal && amassIntelResults) {
-      // Handle case where scan failed or has no scan_id
       if (amassIntelResults.status === 'error') {
         setError('Scan failed. Please check the scan details and try again.');
         setLoading(false);
@@ -32,34 +31,32 @@ export const AmassIntelResultsModal = ({
   const fetchAmassIntelData = async (scanId) => {
     setLoading(true);
     setError(null);
-    setRootDomains([]);
-    setWhoisData([]);
+    setNetworkRanges([]);
+    setAsnData([]);
 
     try {
-      // Fetch root domains
-      const domainsResponse = await fetch(
-        `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/amass-intel/${scanId}/domains`
+      const networkResponse = await fetch(
+        `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/amass-intel/${scanId}/networks`
       );
       
-      if (domainsResponse.ok) {
-        const domainsData = await domainsResponse.json();
-        setRootDomains(Array.isArray(domainsData) ? domainsData : []);
+      if (networkResponse.ok) {
+        const networkData = await networkResponse.json();
+        setNetworkRanges(Array.isArray(networkData) ? networkData : []);
       } else {
-        console.warn('Failed to fetch root domains:', domainsResponse.status);
-        setRootDomains([]);
+        console.warn('Failed to fetch network ranges:', networkResponse.status);
+        setNetworkRanges([]);
       }
 
-      // Fetch WHOIS data
-      const whoisResponse = await fetch(
-        `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/amass-intel/${scanId}/whois`
+      const asnResponse = await fetch(
+        `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/amass-intel/${scanId}/asn`
       );
       
-      if (whoisResponse.ok) {
-        const whoisDataResult = await whoisResponse.json();
-        setWhoisData(Array.isArray(whoisDataResult) ? whoisDataResult : []);
+      if (asnResponse.ok) {
+        const asnDataResult = await asnResponse.json();
+        setAsnData(Array.isArray(asnDataResult) ? asnDataResult : []);
       } else {
-        console.warn('Failed to fetch WHOIS data:', whoisResponse.status);
-        setWhoisData([]);
+        console.warn('Failed to fetch ASN data:', asnResponse.status);
+        setAsnData([]);
       }
 
     } catch (error) {
@@ -70,29 +67,19 @@ export const AmassIntelResultsModal = ({
     }
   };
 
-  const handleCopyDomain = async (domain) => {
+  const handleCopyText = async (text) => {
     try {
-      await navigator.clipboard.writeText(domain);
+      await navigator.clipboard.writeText(text);
       setShowToast(true);
       setTimeout(() => setShowToast(false), 3000);
     } catch (err) {
-      console.error('Failed to copy domain:', err);
+      console.error('Failed to copy text:', err);
     }
   };
 
   const getResultCount = () => {
     if (!amassIntelResults || amassIntelResults.status === 'error') return 0;
-    
-    try {
-      if (amassIntelResults.result && typeof amassIntelResults.result === 'string') {
-        const lines = amassIntelResults.result.split('\n').filter(line => line.trim());
-        return lines.length;
-      }
-      return rootDomains.length;
-    } catch (error) {
-      console.error('Error calculating result count:', error);
-      return 0;
-    }
+    return networkRanges.length + asnData.length;
   };
 
   const getExecutionTime = () => {
@@ -115,7 +102,6 @@ export const AmassIntelResultsModal = ({
   };
 
   const renderContent = () => {
-    // Handle scan failure
     if (amassIntelResults && amassIntelResults.status === 'error') {
       return (
         <div className="text-center py-5">
@@ -136,7 +122,6 @@ export const AmassIntelResultsModal = ({
       );
     }
 
-    // Handle loading state
     if (loading) {
       return (
         <div className="text-center py-5">
@@ -148,7 +133,6 @@ export const AmassIntelResultsModal = ({
       );
     }
 
-    // Handle error state
     if (error) {
       return (
         <div className="text-center py-5">
@@ -161,73 +145,86 @@ export const AmassIntelResultsModal = ({
       );
     }
 
-    // Handle no results
-    if (rootDomains.length === 0 && whoisData.length === 0) {
+    if (networkRanges.length === 0 && asnData.length === 0) {
       return (
         <div className="text-center py-5">
           <div className="text-muted mb-3">
-            <i className="bi bi-search" style={{ fontSize: '3rem' }}></i>
+            <i className="bi bi-cloud" style={{ fontSize: '3rem' }}></i>
           </div>
-          <h5 className="text-muted mb-3">No Results Found</h5>
+          <h5 className="text-muted mb-3">No Network Ranges Found</h5>
           <p className="text-muted">
-            No root domains were discovered for this company. This could be due to:
+            The scan completed successfully but found no network ranges or ASN data. This typically indicates:
           </p>
           <ul className="list-unstyled text-muted small">
-            <li>• Company name not found in WHOIS records</li>
-            <li>• No certificates registered to this organization</li>
-            <li>• Network timeout during scan</li>
+            <li>• <strong>Cloud-First Infrastructure:</strong> Company likely uses cloud providers (AWS, Azure, GCP)</li>
+            <li>• <strong>No Direct ASN Ownership:</strong> Infrastructure hosted under cloud provider ASNs</li>
+            <li>• <strong>Modern Architecture:</strong> Serverless, containerized, or fully managed services</li>
+            <li>• <strong>Attack Surface:</strong> Focus on web applications, APIs, and cloud services instead</li>
           </ul>
+          <div className="alert alert-info mt-3">
+            <small>
+              <i className="bi bi-info-circle me-2"></i>
+              <strong>Recommendation:</strong> Consider using subdomain enumeration, cloud asset discovery, or web application testing tools for cloud-native targets.
+            </small>
+          </div>
         </div>
       );
     }
 
-    // Render normal results
     return (
       <>
         <Nav variant="tabs" className="mb-3">
           <Nav.Item>
             <Nav.Link 
-              active={activeTab === 'domains'} 
-              onClick={() => setActiveTab('domains')}
-              className={activeTab === 'domains' ? 'text-danger' : 'text-white'}
+              active={activeTab === 'networks'} 
+              onClick={() => setActiveTab('networks')}
+              className={activeTab === 'networks' ? 'text-danger' : 'text-white'}
             >
-              Root Domains ({rootDomains.length})
+              Network Ranges ({networkRanges.length})
             </Nav.Link>
           </Nav.Item>
           <Nav.Item>
             <Nav.Link 
-              active={activeTab === 'whois'} 
-              onClick={() => setActiveTab('whois')}
-              className={activeTab === 'whois' ? 'text-danger' : 'text-white'}
+              active={activeTab === 'asn'} 
+              onClick={() => setActiveTab('asn')}
+              className={activeTab === 'asn' ? 'text-danger' : 'text-white'}
             >
-              WHOIS Data ({whoisData.length})
+              ASN Data ({asnData.length})
             </Nav.Link>
           </Nav.Item>
         </Nav>
 
-        {activeTab === 'domains' && (
+        {activeTab === 'networks' && (
           <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-            {rootDomains.length > 0 ? (
+            {networkRanges.length > 0 ? (
               <Table striped bordered hover variant="dark" className="mb-0">
                 <thead>
                   <tr>
-                    <th>Domain</th>
-                    <th>Source</th>
+                    <th>CIDR Block</th>
+                    <th>ASN</th>
+                    <th>Organization</th>
+                    <th>Description</th>
+                    <th>Country</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rootDomains.map((domain, index) => (
+                  {networkRanges.map((network, index) => (
                     <tr key={index}>
-                      <td className="font-monospace">{domain.domain}</td>
+                      <td className="font-monospace">{network.cidr_block}</td>
+                      <td className="font-monospace">{network.asn || 'N/A'}</td>
+                      <td>{network.organization || 'N/A'}</td>
+                      <td>{network.description || 'N/A'}</td>
                       <td>
-                        <span className="badge bg-secondary">{domain.source || 'intel'}</span>
+                        {network.country ? (
+                          <span className="badge bg-secondary">{network.country}</span>
+                        ) : 'N/A'}
                       </td>
                       <td>
                         <button 
-                          onClick={() => handleCopyDomain(domain.domain)}
+                          onClick={() => handleCopyText(network.cidr_block)}
                           className="btn btn-sm btn-outline-danger"
-                          title="Copy domain"
+                          title="Copy CIDR block"
                         >
                           <MdCopyAll size={14} />
                         </button>
@@ -238,35 +235,41 @@ export const AmassIntelResultsModal = ({
               </Table>
             ) : (
               <div className="text-center py-4">
-                <p className="text-muted">No root domains found.</p>
+                <p className="text-muted">No network ranges found.</p>
               </div>
             )}
           </div>
         )}
 
-        {activeTab === 'whois' && (
+        {activeTab === 'asn' && (
           <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-            {whoisData.length > 0 ? (
+            {asnData.length > 0 ? (
               <Table striped bordered hover variant="dark" className="mb-0">
                 <thead>
                   <tr>
-                    <th>Domain</th>
-                    <th>Registrant</th>
+                    <th>ASN Number</th>
                     <th>Organization</th>
+                    <th>Description</th>
+                    <th>Country</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {whoisData.map((whois, index) => (
+                  {asnData.map((asn, index) => (
                     <tr key={index}>
-                      <td className="font-monospace">{whois.domain}</td>
-                      <td>{whois.registrant || 'N/A'}</td>
-                      <td>{whois.organization || 'N/A'}</td>
+                      <td className="font-monospace">AS{asn.asn_number}</td>
+                      <td>{asn.organization || 'N/A'}</td>
+                      <td>{asn.description || 'N/A'}</td>
+                      <td>
+                        {asn.country ? (
+                          <span className="badge bg-secondary">{asn.country}</span>
+                        ) : 'N/A'}
+                      </td>
                       <td>
                         <button 
-                          onClick={() => handleCopyDomain(whois.domain)}
+                          onClick={() => handleCopyText(`AS${asn.asn_number}`)}
                           className="btn btn-sm btn-outline-danger"
-                          title="Copy domain"
+                          title="Copy ASN"
                         >
                           <MdCopyAll size={14} />
                         </button>
@@ -277,7 +280,7 @@ export const AmassIntelResultsModal = ({
               </Table>
             ) : (
               <div className="text-center py-4">
-                <p className="text-muted">No WHOIS data found.</p>
+                <p className="text-muted">No ASN data found.</p>
               </div>
             )}
           </div>
@@ -296,7 +299,7 @@ export const AmassIntelResultsModal = ({
     >
       <Modal.Header closeButton>
         <Modal.Title className="text-danger">
-          Amass Intel Results
+          Amass Intel Results - Network Ranges
           {amassIntelResults && (
             <span className="text-white fs-6 ms-3">
               Company: {amassIntelResults.company_name}
@@ -318,12 +321,12 @@ export const AmassIntelResultsModal = ({
               <div className="text-white">{getExecutionTime()}</div>
             </Col>
             <Col md={3}>
-              <small className="text-white-50">Root Domains:</small>
-              <div className="text-danger fw-bold">{rootDomains.length}</div>
+              <small className="text-white-50">Network Ranges:</small>
+              <div className="text-danger fw-bold">{networkRanges.length}</div>
             </Col>
             <Col md={3}>
-              <small className="text-white-50">WHOIS Records:</small>
-              <div className="text-info fw-bold">{whoisData.length}</div>
+              <small className="text-white-50">ASN Records:</small>
+              <div className="text-info fw-bold">{asnData.length}</div>
             </Col>
           </Row>
         )}
@@ -345,10 +348,10 @@ export const AmassIntelHistoryModal = ({
 
   const getStatusBadge = (status) => {
     const statusColors = {
-      'completed': 'success',
+      'success': 'success',
       'running': 'primary',
       'pending': 'warning',
-      'failed': 'danger'
+      'error': 'danger'
     };
     return <span className={`badge bg-${statusColors[status] || 'secondary'}`}>{status}</span>;
   };
@@ -361,7 +364,7 @@ export const AmassIntelHistoryModal = ({
       className="text-white"
     >
       <Modal.Header closeButton className="bg-dark border-danger">
-        <Modal.Title className="text-danger">Amass Intel Scan History</Modal.Title>
+        <Modal.Title className="text-danger">Amass Intel Scan History - Network Discovery</Modal.Title>
       </Modal.Header>
       <Modal.Body className="bg-dark">
         {amassIntelScans && amassIntelScans.length > 0 ? (
@@ -371,7 +374,6 @@ export const AmassIntelHistoryModal = ({
                 <th>Company Name</th>
                 <th>Status</th>
                 <th>Execution Time</th>
-                <th>Root Domains Found</th>
                 <th>Created At</th>
               </tr>
             </thead>
@@ -381,18 +383,6 @@ export const AmassIntelHistoryModal = ({
                   <td>{scan.company_name}</td>
                   <td>{getStatusBadge(scan.status)}</td>
                   <td>{scan.execution_time || 'N/A'}</td>
-                  <td>
-                    {scan.result && scan.status === 'completed' 
-                      ? (() => {
-                          try {
-                            return JSON.parse(scan.result).length;
-                          } catch {
-                            return 'Error parsing results';
-                          }
-                        })()
-                      : 'N/A'
-                    }
-                  </td>
                   <td>{formatDate(scan.created_at)}</td>
                 </tr>
               ))}

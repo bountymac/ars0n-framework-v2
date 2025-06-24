@@ -17,19 +17,19 @@ import Ars0nFrameworkHeader from './components/ars0nFrameworkHeader.js';
 import ManageScopeTargets from './components/manageScopeTargets.js';
 import fetchAmassScans from './utils/fetchAmassScans.js';
 import {
-  Container,
-  Fade,
-  Card,
-  Row,
-  Col,
-  Button,
-  ListGroup,
-  Accordion,
-  Modal,
-  Table,
-  Toast,
-  ToastContainer,
-  Spinner,
+    Container,
+    Fade,
+    Card,
+    Row,
+    Col,
+    Button,
+    ListGroup,
+    Accordion,
+    Modal,
+    Table,
+    Toast,
+    ToastContainer,
+    Spinner,
 } from 'react-bootstrap';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'bootstrap-icons/font/bootstrap-icons.css';
@@ -37,14 +37,14 @@ import initiateAmassScan from './utils/initiateAmassScan';
 import monitorScanStatus from './utils/monitorScanStatus';
 import validateInput from './utils/validateInput.js';
 import {
-  getTypeIcon,
-  getLastScanDate,
-  getLatestScanStatus,
-  getLatestScanTime,
-  getLatestScanId,
-  getExecutionTime,
-  getResultLength,
-  copyToClipboard,
+    getTypeIcon,
+    getLastScanDate,
+    getLatestScanStatus,
+    getLatestScanTime,
+    getLatestScanId,
+    getExecutionTime,
+    getResultLength,
+    copyToClipboard,
 } from './utils/miscUtils.js';
 import { MdCopyAll, MdCheckCircle } from 'react-icons/md';
 import initiateHttpxScan from './utils/initiateHttpxScan';
@@ -86,9 +86,9 @@ import fetchHttpxScans from './utils/fetchHttpxScans';
 import ROIReport from './components/ROIReport';
 import HelpMeLearn from './components/HelpMeLearn';
 import {
-  AUTO_SCAN_STEPS,
-  resumeAutoScan as resumeAutoScanUtil,
-  startAutoScan as startAutoScanUtil
+    AUTO_SCAN_STEPS,
+    resumeAutoScan as resumeAutoScanUtil,
+    startAutoScan as startAutoScanUtil
 } from './utils/wildcardAutoScan';
 import getAutoScanSteps from './utils/autoScanSteps';
 import fetchAmassIntelScans from './utils/fetchAmassIntelScans';
@@ -118,11 +118,22 @@ import AddWildcardTargetsModal from './modals/AddWildcardTargetsModal.js';
 import initiateInvestigateScan from './utils/initiateInvestigateScan';
 import monitorInvestigateScanStatus from './utils/monitorInvestigateScanStatus';
 import TrimRootDomainsModal from './modals/TrimRootDomainsModal.js';
+import fetchMetabigorCompanyScans from './utils/fetchMetabigorCompanyScans';
 
 // Add helper function
 const getHttpxResultsCount = (scan) => {
   if (!scan?.result?.String) return 0;
   return scan.result.String.split('\n').filter(line => line.trim()).length;
+};
+
+// Add helper function to get network ranges count for Amass Intel
+const getAmassIntelNetworkRangesCount = (networkRanges) => {
+  return Array.isArray(networkRanges) ? networkRanges.length : 0;
+};
+
+// Add helper function to get network ranges count for Metabigor
+const getMetabigorNetworkRangesCount = (networkRanges) => {
+  return Array.isArray(networkRanges) ? networkRanges.length : 0;
 };
 
 // Add this function before the App component
@@ -255,6 +266,8 @@ function App() {
   const [isAmassIntelScanning, setIsAmassIntelScanning] = useState(false);
   const [showAmassIntelResultsModal, setShowAmassIntelResultsModal] = useState(false);
   const [showAmassIntelHistoryModal, setShowAmassIntelHistoryModal] = useState(false);
+  const [amassIntelNetworkRanges, setAmassIntelNetworkRanges] = useState([]);
+  const [metabigorNetworkRanges, setMetabigorNetworkRanges] = useState([]);
   const [subdomains, setSubdomains] = useState([]);
   const [showSubdomainsModal, setShowSubdomainsModal] = useState(false);
   const [cloudDomains, setCloudDomains] = useState([]);
@@ -568,7 +581,8 @@ function App() {
   useEffect(() => {
     if (activeTarget) {
       fetchAmassScans(activeTarget, setAmassScans, setMostRecentAmassScan, setMostRecentAmassScanStatus, setDnsRecords, setSubdomains, setCloudDomains);
-      fetchAmassIntelScans(activeTarget, setAmassIntelScans, setMostRecentAmassIntelScan, setMostRecentAmassIntelScanStatus);
+              fetchAmassIntelScans(activeTarget, setAmassIntelScans, setMostRecentAmassIntelScan, setMostRecentAmassIntelScanStatus, setAmassIntelNetworkRanges);
+      fetchMetabigorCompanyScans(activeTarget, setMetabigorCompanyScans, setMostRecentMetabigorCompanyScan, setMostRecentMetabigorCompanyScanStatus, setMetabigorNetworkRanges);
       fetchHttpxScans(activeTarget, setHttpxScans, setMostRecentHttpxScan, setMostRecentHttpxScanStatus);
       fetchConsolidatedSubdomains(activeTarget, setConsolidatedSubdomains, setConsolidatedCount);
       fetchConsolidatedCompanyDomains(activeTarget, setConsolidatedCompanyDomains, setConsolidatedCompanyDomainsCount);
@@ -599,7 +613,21 @@ function App() {
         setAmassIntelScans,
         setMostRecentAmassIntelScan,
         setIsAmassIntelScanning,
-        setMostRecentAmassIntelScanStatus
+        setMostRecentAmassIntelScanStatus,
+        setAmassIntelNetworkRanges
+      );
+    }
+  }, [activeTarget]);
+
+  useEffect(() => {
+    if (activeTarget) {
+      monitorMetabigorCompanyScanStatus(
+        activeTarget,
+        setMetabigorCompanyScans,
+        setMostRecentMetabigorCompanyScan,
+        setIsMetabigorCompanyScanning,
+        setMostRecentMetabigorCompanyScanStatus,
+        setMetabigorNetworkRanges
       );
     }
   }, [activeTarget]);
@@ -1384,7 +1412,7 @@ function App() {
   }
 
   const startAmassIntelScan = () => {
-    initiateAmassIntelScan(activeTarget, monitorAmassIntelScanStatus, setIsAmassIntelScanning, setAmassIntelScans, setMostRecentAmassIntelScanStatus, setMostRecentAmassIntelScan)
+    initiateAmassIntelScan(activeTarget, monitorAmassIntelScanStatus, setIsAmassIntelScanning, setAmassIntelScans, setMostRecentAmassIntelScanStatus, setMostRecentAmassIntelScan, setAmassIntelNetworkRanges)
   }
 
   const handleOpenAmassIntelResultsModal = () => setShowAmassIntelResultsModal(true);
@@ -1604,7 +1632,8 @@ function App() {
       setIsMetabigorCompanyScanning,
       setMetabigorCompanyScans,
       setMostRecentMetabigorCompanyScanStatus,
-      setMostRecentMetabigorCompanyScan
+      setMostRecentMetabigorCompanyScan,
+      setMetabigorNetworkRanges
     );
   };
 
@@ -3427,15 +3456,15 @@ function App() {
                     {
                       name: 'Amass Intel',
                       link: 'https://github.com/OWASP/Amass',
-                      description: 'Intelligence gathering and ASN enumeration for comprehensive company domain discovery.',
+                      description: 'Intelligence gathering and ASN enumeration for comprehensive network range discovery.',
                       isActive: true,
                       status: mostRecentAmassIntelScanStatus,
                       isScanning: isAmassIntelScanning,
                       onScan: startAmassIntelScan,
                       onResults: handleOpenAmassIntelResultsModal,
                       onHistory: handleOpenAmassIntelHistoryModal,
-                      resultCount: mostRecentAmassIntelScan?.result ? JSON.parse(mostRecentAmassIntelScan.result).length : 0,
-                      resultLabel: 'Domains'
+                      resultCount: getAmassIntelNetworkRangesCount(amassIntelNetworkRanges),
+                      resultLabel: 'Network Ranges'
                     },
                     {
                       name: 'Metabigor',
@@ -3447,8 +3476,7 @@ function App() {
                       onScan: startMetabigorCompanyScan,
                       onResults: handleOpenMetabigorCompanyResultsModal,
                       onHistory: handleOpenMetabigorCompanyHistoryModal,
-                      resultCount: mostRecentMetabigorCompanyScan && mostRecentMetabigorCompanyScan.result ? 
-                        mostRecentMetabigorCompanyScan.result.split('\n').filter(line => line.trim()).length : 0,
+                      resultCount: getMetabigorNetworkRangesCount(metabigorNetworkRanges),
                       resultLabel: 'Network Ranges'
                     }
                   ].map((tool, index) => (

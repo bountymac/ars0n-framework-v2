@@ -501,23 +501,25 @@ func createTables() {
 			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
 		);`,
 
-		`CREATE TABLE IF NOT EXISTS intel_root_domains (
+		`CREATE TABLE IF NOT EXISTS intel_network_ranges (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			scan_id UUID NOT NULL,
-			domain TEXT NOT NULL,
-			source TEXT DEFAULT 'intel',
-			raw_data TEXT,
+			cidr_block TEXT NOT NULL,
+			asn TEXT,
+			organization TEXT,
+			description TEXT,
+			country TEXT,
 			created_at TIMESTAMP DEFAULT NOW(),
 			FOREIGN KEY (scan_id) REFERENCES amass_intel_scans(scan_id) ON DELETE CASCADE
 		);`,
 
-		`CREATE TABLE IF NOT EXISTS intel_whois_data (
+		`CREATE TABLE IF NOT EXISTS intel_asn_data (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			scan_id UUID NOT NULL,
-			domain TEXT,
-			registrant TEXT,
+			asn_number TEXT NOT NULL,
 			organization TEXT,
-			raw_whois TEXT,
+			description TEXT,
+			country TEXT,
 			created_at TIMESTAMP DEFAULT NOW(),
 			FOREIGN KEY (scan_id) REFERENCES amass_intel_scans(scan_id) ON DELETE CASCADE
 		);`,

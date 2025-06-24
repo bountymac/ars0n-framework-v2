@@ -2,7 +2,8 @@ const fetchAmassIntelScans = async (
   activeTarget,
   setAmassIntelScans,
   setMostRecentAmassIntelScan,
-  setMostRecentAmassIntelScanStatus
+  setMostRecentAmassIntelScanStatus,
+  setAmassIntelNetworkRanges
 ) => {
   if (!activeTarget || !activeTarget.id) return;
 
@@ -20,9 +21,28 @@ const fetchAmassIntelScans = async (
       const mostRecentScan = scans[0];
       setMostRecentAmassIntelScan(mostRecentScan);
       setMostRecentAmassIntelScanStatus(mostRecentScan.status);
+      
+      // Fetch network ranges for the most recent scan
+      if (mostRecentScan.scan_id && setAmassIntelNetworkRanges) {
+        try {
+          const networkRangesResponse = await fetch(
+            `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/amass-intel/${mostRecentScan.scan_id}/networks`
+          );
+          if (networkRangesResponse.ok) {
+            const networkRanges = await networkRangesResponse.json();
+            setAmassIntelNetworkRanges(Array.isArray(networkRanges) ? networkRanges : []);
+          }
+        } catch (networkError) {
+          console.error('Error fetching network ranges:', networkError);
+          setAmassIntelNetworkRanges([]);
+        }
+      }
+    } else {
+      setAmassIntelNetworkRanges([]);
     }
   } catch (error) {
     console.error('Error fetching Amass Intel scans:', error);
+    setAmassIntelNetworkRanges([]);
   }
 };
 

@@ -1,4 +1,4 @@
-export const initiateAmassIntelScan = async (activeTarget, monitorScanStatus, setIsScanning, setAmassIntelScans, setMostRecentAmassIntelScanStatus, setMostRecentAmassIntelScan, autoScanSessionId) => {
+export const initiateAmassIntelScan = async (activeTarget, monitorScanStatus, setIsScanning, setAmassIntelScans, setMostRecentAmassIntelScanStatus, setMostRecentAmassIntelScan, setAmassIntelNetworkRanges, autoScanSessionId) => {
     if (!activeTarget || activeTarget.type !== 'Company') return;
     
     let companyName = activeTarget.scope_target;
@@ -18,7 +18,7 @@ export const initiateAmassIntelScan = async (activeTarget, monitorScanStatus, se
         }
 
         setIsScanning(true);
-        monitorScanStatus && monitorScanStatus(activeTarget, setAmassIntelScans, setMostRecentAmassIntelScan, setIsScanning, setMostRecentAmassIntelScanStatus);
+        monitorScanStatus && monitorScanStatus(activeTarget, setAmassIntelScans, setMostRecentAmassIntelScan, setIsScanning, setMostRecentAmassIntelScanStatus, setAmassIntelNetworkRanges);
     } catch (error) {
         console.error('Error initiating Amass Intel scan:', error);
     }

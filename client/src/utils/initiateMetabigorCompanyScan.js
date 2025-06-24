@@ -1,17 +1,23 @@
-const initiateMetabigorCompanyScan = async (
+export const initiateMetabigorCompanyScan = async (
   activeTarget,
   monitorScanStatus,
   setIsScanning,
-  setScans,
-  setMostRecentScanStatus,
-  setMostRecentScan
+  setMetabigorCompanyScans,
+  setMostRecentMetabigorCompanyScanStatus,
+  setMostRecentMetabigorCompanyScan,
+  setMetabigorNetworkRanges,
+  autoScanSessionId
 ) => {
-  const companyName = activeTarget.scope_target;
+  if (!activeTarget || activeTarget.type !== 'Company') return;
+
+  let companyName = activeTarget.scope_target;
 
   console.log(`Initiating Metabigor Company scan for: ${companyName}`);
-  setIsScanning(true);
 
   try {
+    const body = { company_name: companyName };
+    if (autoScanSessionId) body.auto_scan_session_id = autoScanSessionId;
+
     const response = await fetch(
       `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/metabigor-company/run`,
       {
@@ -19,7 +25,7 @@ const initiateMetabigorCompanyScan = async (
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ company_name: companyName }),
+        body: JSON.stringify(body),
       }
     );
 
@@ -30,13 +36,16 @@ const initiateMetabigorCompanyScan = async (
     const data = await response.json();
     console.log('Metabigor Company scan initiated:', data);
 
-    monitorScanStatus(
-      activeTarget,
-      setScans,
-      setMostRecentScan,
-      setIsScanning,
-      setMostRecentScanStatus
-    );
+    setIsScanning(true);
+    monitorScanStatus &&
+      monitorScanStatus(
+        activeTarget,
+        setMetabigorCompanyScans,
+        setMostRecentMetabigorCompanyScan,
+        setIsScanning,
+        setMostRecentMetabigorCompanyScanStatus,
+        setMetabigorNetworkRanges
+      );
   } catch (error) {
     console.error('Error initiating Metabigor Company scan:', error);
     setIsScanning(false);

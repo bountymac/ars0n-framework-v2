@@ -31,18 +31,20 @@ type AmassIntelScanStatus struct {
 	AutoScanSessionID sql.NullString `json:"auto_scan_session_id"`
 }
 
-type IntelRootDomainResponse struct {
-	Domain  string `json:"domain"`
-	Source  string `json:"source"`
-	RawData string `json:"raw_data,omitempty"`
-	ScanID  string `json:"scan_id"`
+type IntelNetworkRangeResponse struct {
+	CIDRBlock    string `json:"cidr_block"`
+	ASN          string `json:"asn"`
+	Organization string `json:"organization"`
+	Description  string `json:"description"`
+	Country      string `json:"country"`
+	ScanID       string `json:"scan_id"`
 }
 
-type IntelWhoisResponse struct {
-	Domain       string `json:"domain,omitempty"`
-	Registrant   string `json:"registrant,omitempty"`
-	Organization string `json:"organization,omitempty"`
-	RawWhois     string `json:"raw_whois"`
+type IntelASNResponse struct {
+	ASNNumber    string `json:"asn_number"`
+	Organization string `json:"organization"`
+	Description  string `json:"description"`
+	Country      string `json:"country"`
 	ScanID       string `json:"scan_id"`
 }
 
@@ -94,10 +96,6 @@ func ExecuteAmassIntelScan(scanID, companyName string) {
 	log.Printf("[INFO] Starting Amass Intel scan for company %s (scan ID: %s)", companyName, scanID)
 	startTime := time.Now()
 
-	// Generate domain from company name: remove spaces, lowercase, add .com
-	domain := strings.ToLower(strings.ReplaceAll(companyName, " ", "")) + ".com"
-	log.Printf("[INFO] Generated domain for scan: %s", domain)
-
 	cmd := exec.Command(
 		"docker", "run", "--rm",
 		"caffix/amass",
@@ -105,8 +103,7 @@ func ExecuteAmassIntelScan(scanID, companyName string) {
 		"-org", companyName,
 		"-whois",
 		"-active",
-		"-d", domain,
-		"-timeout", "60",
+		"-timeout", "120",
 	)
 
 	log.Printf("[INFO] Executing command: %s", cmd.String())
@@ -130,26 +127,30 @@ func ExecuteAmassIntelScan(scanID, companyName string) {
 	log.Printf("[DEBUG] Raw output length: %d bytes", len(result))
 
 	if result != "" {
-		log.Printf("[INFO] Starting to parse Intel results for scan %s", scanID)
-		ParseAndStoreIntelResults(scanID, companyName, result)
-		log.Printf("[INFO] Finished parsing Intel results for scan %s", scanID)
+		log.Printf("[INFO] Starting to parse Intel network range results for scan %s", scanID)
+		ParseAndStoreIntelNetworkResults(scanID, companyName, result)
+		log.Printf("[INFO] Finished parsing Intel network range results for scan %s", scanID)
 	} else {
 		log.Printf("[WARN] No output from Amass Intel scan for company %s", companyName)
 	}
 
-	UpdateIntelScanStatus(scanID, "success", result, stderr.String(), cmd.String(), execTime)
+	UpdateIntelScanStatus(scanID, "success", "{}", stderr.String(), cmd.String(), execTime)
 	log.Printf("[INFO] Intel scan status updated for scan %s", scanID)
 }
 
-func ParseAndStoreIntelResults(scanID, companyName, result string) {
-	log.Printf("[INFO] Starting to parse Intel results for scan %s on company %s", scanID, companyName)
+func ParseAndStoreIntelNetworkResults(scanID, companyName, result string) {
+	log.Printf("[INFO] Starting to parse Intel network results for scan %s on company %s", scanID, companyName)
 
 	lines := strings.Split(result, "\n")
 	log.Printf("[INFO] Processing %d lines of Intel output", len(lines))
 
-	domainPattern := regexp.MustCompile(`^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$`)
+	asnPattern := regexp.MustCompile(`^ASN:\s*(\d+)\s*-\s*(.+?)\s*-\s*(.+)$`)
+	cidrPattern := regexp.MustCompile(`^\s+(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/\d{1,2})\s*$`)
+
+	var currentASN, currentDescription, currentOrganization string
 
 	for lineNum, line := range lines {
+		originalLine := line
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
@@ -157,45 +158,53 @@ func ParseAndStoreIntelResults(scanID, companyName, result string) {
 
 		log.Printf("[DEBUG] Processing line %d: %s", lineNum+1, line)
 
-		if domainPattern.MatchString(line) {
-			log.Printf("[DEBUG] Valid root domain found: %s", line)
-			InsertIntelRootDomain(scanID, line, "intel", line)
-		} else if strings.Contains(strings.ToLower(line), "whois") {
-			log.Printf("[DEBUG] Potential WHOIS data found: %s", line)
-			ParseWhoisCorrelation(scanID, line)
+		if asnPattern.MatchString(line) {
+			matches := asnPattern.FindStringSubmatch(line)
+			if len(matches) == 4 {
+				currentASN = matches[1]
+				currentDescription = strings.TrimSpace(matches[2])
+				currentOrganization = strings.TrimSpace(matches[3])
+
+				InsertIntelASNData(scanID, currentASN, currentOrganization, currentDescription, "")
+				log.Printf("[DEBUG] Parsed ASN: AS%s, Org: %s, Desc: %s", currentASN, currentOrganization, currentDescription)
+			}
+		} else if cidrPattern.MatchString(originalLine) {
+			matches := cidrPattern.FindStringSubmatch(originalLine)
+			if len(matches) == 2 {
+				cidrBlock := matches[1]
+
+				asn := ""
+				if currentASN != "" {
+					asn = "AS" + currentASN
+				}
+
+				InsertIntelNetworkRange(scanID, cidrBlock, asn, currentOrganization, currentDescription, "")
+				log.Printf("[DEBUG] Parsed network range: %s, ASN: %s, Org: %s", cidrBlock, asn, currentOrganization)
+			}
 		}
 	}
-	log.Printf("[INFO] Completed parsing Intel results for scan %s", scanID)
+	log.Printf("[INFO] Completed parsing Intel network results for scan %s", scanID)
 }
 
-func ParseWhoisCorrelation(scanID, line string) {
-	parts := strings.Fields(line)
-	if len(parts) > 1 {
-		domain := parts[0]
-		whoisData := strings.Join(parts[1:], " ")
-		InsertIntelWhoisData(scanID, domain, "", "", whoisData)
+func InsertIntelNetworkRange(scanID, cidrBlock, asn, organization, description, country string) {
+	log.Printf("[INFO] Inserting Intel network range: %s", cidrBlock)
+	query := `INSERT INTO intel_network_ranges (scan_id, cidr_block, asn, organization, description, country) VALUES ($1, $2, $3, $4, $5, $6)`
+	_, err := dbPool.Exec(context.Background(), query, scanID, cidrBlock, asn, organization, description, country)
+	if err != nil {
+		log.Printf("[ERROR] Failed to insert Intel network range: %v", err)
+	} else {
+		log.Printf("[INFO] Successfully inserted Intel network range: %s", cidrBlock)
 	}
 }
 
-func InsertIntelRootDomain(scanID, domain, source, rawData string) {
-	log.Printf("[INFO] Inserting Intel root domain: %s", domain)
-	query := `INSERT INTO intel_root_domains (scan_id, domain, source, raw_data) VALUES ($1, $2, $3, $4)`
-	_, err := dbPool.Exec(context.Background(), query, scanID, domain, source, rawData)
+func InsertIntelASNData(scanID, asnNumber, organization, description, country string) {
+	log.Printf("[INFO] Inserting Intel ASN data: AS%s", asnNumber)
+	query := `INSERT INTO intel_asn_data (scan_id, asn_number, organization, description, country) VALUES ($1, $2, $3, $4, $5)`
+	_, err := dbPool.Exec(context.Background(), query, scanID, asnNumber, organization, description, country)
 	if err != nil {
-		log.Printf("[ERROR] Failed to insert Intel root domain: %v", err)
+		log.Printf("[ERROR] Failed to insert Intel ASN data: %v", err)
 	} else {
-		log.Printf("[INFO] Successfully inserted Intel root domain: %s", domain)
-	}
-}
-
-func InsertIntelWhoisData(scanID, domain, registrant, organization, rawWhois string) {
-	log.Printf("[INFO] Inserting Intel WHOIS data for domain: %s", domain)
-	query := `INSERT INTO intel_whois_data (scan_id, domain, registrant, organization, raw_whois) VALUES ($1, $2, $3, $4, $5)`
-	_, err := dbPool.Exec(context.Background(), query, scanID, domain, registrant, organization, rawWhois)
-	if err != nil {
-		log.Printf("[ERROR] Failed to insert Intel WHOIS data: %v", err)
-	} else {
-		log.Printf("[INFO] Successfully inserted Intel WHOIS data for domain: %s", domain)
+		log.Printf("[INFO] Successfully inserted Intel ASN data: AS%s", asnNumber)
 	}
 }
 
@@ -318,7 +327,7 @@ func GetAmassIntelScansForScopeTarget(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(scans)
 }
 
-func GetIntelRootDomains(w http.ResponseWriter, r *http.Request) {
+func GetIntelNetworkRanges(w http.ResponseWriter, r *http.Request) {
 	scanID := mux.Vars(r)["scan_id"]
 	if scanID == "" || scanID == "No scans available" {
 		w.Header().Set("Content-Type", "application/json")
@@ -331,30 +340,30 @@ func GetIntelRootDomains(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := `SELECT domain, source, raw_data, scan_id FROM intel_root_domains WHERE scan_id = $1 ORDER BY created_at DESC`
+	query := `SELECT cidr_block, asn, organization, description, country, scan_id FROM intel_network_ranges WHERE scan_id = $1 ORDER BY created_at DESC`
 	rows, err := dbPool.Query(context.Background(), query, scanID)
 	if err != nil {
-		http.Error(w, "Failed to fetch Intel root domains", http.StatusInternalServerError)
+		http.Error(w, "Failed to fetch Intel network ranges", http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
 
-	var domains []IntelRootDomainResponse
+	var networkRanges []IntelNetworkRangeResponse
 	for rows.Next() {
-		var domain IntelRootDomainResponse
-		if err := rows.Scan(&domain.Domain, &domain.Source, &domain.RawData, &domain.ScanID); err != nil {
-			http.Error(w, "Error scanning Intel root domain", http.StatusInternalServerError)
+		var networkRange IntelNetworkRangeResponse
+		if err := rows.Scan(&networkRange.CIDRBlock, &networkRange.ASN, &networkRange.Organization, &networkRange.Description, &networkRange.Country, &networkRange.ScanID); err != nil {
+			http.Error(w, "Error scanning Intel network range", http.StatusInternalServerError)
 			return
 		}
-		domains = append(domains, domain)
+		networkRanges = append(networkRanges, networkRange)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(domains)
+	json.NewEncoder(w).Encode(networkRanges)
 }
 
-func GetIntelWhoisData(w http.ResponseWriter, r *http.Request) {
+func GetIntelASNData(w http.ResponseWriter, r *http.Request) {
 	scanID := mux.Vars(r)["scan_id"]
 	if scanID == "" || scanID == "No scans available" {
 		w.Header().Set("Content-Type", "application/json")
@@ -367,25 +376,25 @@ func GetIntelWhoisData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := `SELECT domain, registrant, organization, raw_whois, scan_id FROM intel_whois_data WHERE scan_id = $1 ORDER BY created_at DESC`
+	query := `SELECT asn_number, organization, description, country, scan_id FROM intel_asn_data WHERE scan_id = $1 ORDER BY created_at DESC`
 	rows, err := dbPool.Query(context.Background(), query, scanID)
 	if err != nil {
-		http.Error(w, "Failed to fetch Intel WHOIS data", http.StatusInternalServerError)
+		http.Error(w, "Failed to fetch Intel ASN data", http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
 
-	var whoisData []IntelWhoisResponse
+	var asnData []IntelASNResponse
 	for rows.Next() {
-		var whois IntelWhoisResponse
-		if err := rows.Scan(&whois.Domain, &whois.Registrant, &whois.Organization, &whois.RawWhois, &whois.ScanID); err != nil {
-			http.Error(w, "Error scanning Intel WHOIS data", http.StatusInternalServerError)
+		var asn IntelASNResponse
+		if err := rows.Scan(&asn.ASNNumber, &asn.Organization, &asn.Description, &asn.Country, &asn.ScanID); err != nil {
+			http.Error(w, "Error scanning Intel ASN data", http.StatusInternalServerError)
 			return
 		}
-		whoisData = append(whoisData, whois)
+		asnData = append(asnData, asn)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(whoisData)
+	json.NewEncoder(w).Encode(asnData)
 }
