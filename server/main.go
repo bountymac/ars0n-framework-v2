@@ -179,6 +179,13 @@ func main() {
 	r.HandleFunc("/github-recon/status/{scan_id}", utils.GetGitHubReconScanStatus).Methods("GET", "OPTIONS")
 	r.HandleFunc("/scopetarget/{id}/scans/github-recon", utils.GetGitHubReconScansForScopeTarget).Methods("GET", "OPTIONS")
 
+	// IP/Port scan routes
+	r.HandleFunc("/ip-port-scan/run", utils.RunIPPortScan).Methods("POST", "OPTIONS")
+	r.HandleFunc("/ip-port-scan/status/{scan_id}", utils.GetIPPortScanStatus).Methods("GET", "OPTIONS")
+	r.HandleFunc("/scopetarget/{id}/scans/ip-port", utils.GetIPPortScansForScopeTarget).Methods("GET", "OPTIONS")
+	r.HandleFunc("/ip-port-scan/{scan_id}/live-web-servers", utils.GetLiveWebServers).Methods("GET", "OPTIONS")
+	r.HandleFunc("/ip-port-scan/{scan_id}/discovered-ips", utils.GetDiscoveredIPs).Methods("GET", "OPTIONS")
+
 	// Company domain management routes
 	r.HandleFunc("/api/company-domains/{scope_target_id}/{tool}", getCompanyDomainsByTool).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/company-domains/{scope_target_id}/{tool}/all", deleteAllCompanyDomainsFromTool).Methods("DELETE", "OPTIONS")

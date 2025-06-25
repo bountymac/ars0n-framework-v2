@@ -608,6 +608,52 @@ func createTables() {
 		`DO $$ BEGIN BEGIN ALTER TABLE subdomainizer_scans ADD COLUMN IF NOT EXISTS auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL; EXCEPTION WHEN duplicate_column THEN RAISE NOTICE 'Column already exists.'; END; END $$;`,
 		`DO $$ BEGIN BEGIN ALTER TABLE nuclei_screenshots ADD COLUMN IF NOT EXISTS auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL; EXCEPTION WHEN duplicate_column THEN RAISE NOTICE 'Column already exists.'; END; END $$;`,
 		`DO $$ BEGIN BEGIN ALTER TABLE metadata_scans ADD COLUMN IF NOT EXISTS auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL; EXCEPTION WHEN duplicate_column THEN RAISE NOTICE 'Column already exists.'; END; END $$;`,
+
+		// IP/Port scan tables
+		`CREATE TABLE IF NOT EXISTS ip_port_scans (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scan_id UUID NOT NULL UNIQUE,
+			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
+			status VARCHAR(50) NOT NULL,
+			total_network_ranges INT DEFAULT 0,
+			processed_network_ranges INT DEFAULT 0,
+			total_ips_discovered INT DEFAULT 0,
+			total_ports_scanned INT DEFAULT 0,
+			live_web_servers_found INT DEFAULT 0,
+			error_message TEXT,
+			command TEXT,
+			execution_time TEXT,
+			created_at TIMESTAMP DEFAULT NOW(),
+			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
+		);`,
+		`CREATE TABLE IF NOT EXISTS discovered_live_ips (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scan_id UUID REFERENCES ip_port_scans(scan_id) ON DELETE CASCADE,
+			ip_address INET NOT NULL,
+			network_range TEXT NOT NULL,
+			ping_time_ms FLOAT,
+			discovered_at TIMESTAMP DEFAULT NOW()
+		);`,
+		`CREATE TABLE IF NOT EXISTS live_web_servers (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scan_id UUID REFERENCES ip_port_scans(scan_id) ON DELETE CASCADE,
+			ip_address INET NOT NULL,
+			port INT NOT NULL,
+			protocol VARCHAR(10) NOT NULL,
+			url TEXT NOT NULL,
+			status_code INT,
+			title TEXT,
+			server_header TEXT,
+			content_length BIGINT,
+			technologies JSONB,
+			response_time_ms FLOAT,
+			screenshot_path TEXT,
+			last_checked TIMESTAMP DEFAULT NOW(),
+			UNIQUE(scan_id, ip_address, port, protocol)
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_discovered_live_ips_scan_id ON discovered_live_ips(scan_id);`,
+		`CREATE INDEX IF NOT EXISTS idx_live_web_servers_scan_id ON live_web_servers(scan_id);`,
+		`CREATE INDEX IF NOT EXISTS idx_live_web_servers_ip_port ON live_web_servers(ip_address, port);`,
 	}
 
 	for _, query := range queries {
@@ -636,7 +682,8 @@ func createTables() {
 		DELETE FROM gospider_scans WHERE status = 'pending';
 		DELETE FROM subdomainizer_scans WHERE status = 'pending';
 		DELETE FROM nuclei_screenshots WHERE status = 'pending';
-		DELETE FROM metadata_scans WHERE status = 'pending';`
+		DELETE FROM metadata_scans WHERE status = 'pending';
+		DELETE FROM ip_port_scans WHERE status = 'pending';`
 	_, err := dbPool.Exec(context.Background(), deletePendingScansQuery)
 	if err != nil {
 		log.Fatalf("[ERROR] Failed to delete pending scans: %v", err)

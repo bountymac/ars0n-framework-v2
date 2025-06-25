@@ -124,6 +124,10 @@ import TrimNetworkRangesModal from './modals/TrimNetworkRangesModal.js';
 import LiveWebServersResultsModal from './modals/LiveWebServersResultsModal.js';
 import fetchMetabigorCompanyScans from './utils/fetchMetabigorCompanyScans';
 
+import monitorIPPortScanStatus from './utils/monitorIPPortScanStatus';
+import initiateIPPortScan from './utils/initiateIPPortScan';
+import fetchIPPortScans from './utils/fetchIPPortScans';
+
 // Add helper function
 const getHttpxResultsCount = (scan) => {
   if (!scan?.result?.String) return 0;
@@ -433,6 +437,11 @@ function App() {
   const [showTrimNetworkRangesModal, setShowTrimNetworkRangesModal] = useState(false);
   const [rootDomainsByTool, setRootDomainsByTool] = useState({});
   const [showLiveWebServersResultsModal, setShowLiveWebServersResultsModal] = useState(false);
+  const [ipPortScans, setIPPortScans] = useState([]);
+  const [mostRecentIPPortScan, setMostRecentIPPortScan] = useState(null);
+  const [mostRecentIPPortScanStatus, setMostRecentIPPortScanStatus] = useState(null);
+  const [isIPPortScanning, setIsIPPortScanning] = useState(false);
+
 
   const handleCloseSubdomainsModal = () => setShowSubdomainsModal(false);
   const handleCloseCloudDomainsModal = () => setShowCloudDomainsModal(false);
@@ -558,8 +567,42 @@ function App() {
     }
   };
 
-  const handleDiscoverLiveIPs = () => {
-    console.log('IP/Port Scan clicked - functionality to be implemented');
+  const handleDiscoverLiveIPs = async () => {
+    if (!activeTarget) {
+      console.warn('No active target available for IP/Port scan');
+      return;
+    }
+
+    try {
+      setIsIPPortScanning(true);
+      const response = await initiateIPPortScan(activeTarget.id);
+      console.log('IP/Port scan initiated:', response);
+
+      // Start monitoring the scan status
+      if (response.scan_id) {
+        monitorIPPortScanStatus(
+          response.scan_id,
+          (statusData) => {
+            setMostRecentIPPortScanStatus(statusData);
+            console.log('IP/Port scan status update:', statusData);
+          },
+          (completedData) => {
+            console.log('IP/Port scan completed:', completedData);
+            setMostRecentIPPortScan(completedData);
+            setIsIPPortScanning(false);
+            // Refresh IP/Port scans list
+            fetchIPPortScans(activeTarget, setIPPortScans, setMostRecentIPPortScan, setMostRecentIPPortScanStatus);
+          },
+          (error) => {
+            console.error('IP/Port scan error:', error);
+            setIsIPPortScanning(false);
+          }
+        );
+      }
+    } catch (error) {
+      console.error('Error initiating IP/Port scan:', error);
+      setIsIPPortScanning(false);
+    }
   };
 
   const handlePortScanning = () => {
@@ -567,7 +610,7 @@ function App() {
   };
 
   const handleLiveWebServersResults = () => {
-    handleOpenLiveWebServersResultsModal();
+    setShowLiveWebServersResultsModal(true);
   };
 
   const handleInvestigateRootDomains = () => {
@@ -636,6 +679,7 @@ function App() {
       fetchConsolidatedNetworkRanges(activeTarget, setConsolidatedNetworkRanges, setConsolidatedNetworkRangesCount);
       fetchGoogleDorkingDomains();
       fetchReverseWhoisDomains();
+      fetchIPPortScans(activeTarget, setIPPortScans, setMostRecentIPPortScan, setMostRecentIPPortScanStatus);
     }
   }, [activeTarget]);
 
@@ -3610,7 +3654,7 @@ function App() {
                               <small className="text-white-50">Network Ranges</small>
                             </div>
                             <div className="col">
-                              <h3 className="mb-0">0</h3>
+                              <h3 className="mb-0">{mostRecentIPPortScan?.live_web_servers_found || 0}</h3>
                               <small className="text-white-50">Live Web Servers</small>
                             </div>
                           </div>
@@ -3639,8 +3683,13 @@ function App() {
                             variant="outline-danger" 
                             className="flex-fill"
                             onClick={handleDiscoverLiveIPs}
+                            disabled={isIPPortScanning}
                           >
-                            IP/Port Scan
+                            <div className="btn-content">
+                              {isIPPortScanning ? (
+                                <div className="spinner"></div>
+                              ) : 'IP/Port Scan'}
+                            </div>
                           </Button>
                           <Button 
                             variant="outline-danger" 
@@ -3653,6 +3702,7 @@ function App() {
                             variant="outline-danger" 
                             className="flex-fill"
                             onClick={handleLiveWebServersResults}
+                            disabled={!mostRecentIPPortScan || !mostRecentIPPortScan.scan_id}
                           >
                             Results
                           </Button>
@@ -4732,7 +4782,9 @@ function App() {
         onHide={handleCloseLiveWebServersResultsModal}
         activeTarget={activeTarget}
         consolidatedNetworkRanges={consolidatedNetworkRanges}
+        mostRecentIPPortScan={mostRecentIPPortScan}
       />
+
     </Container>
   );
 }
