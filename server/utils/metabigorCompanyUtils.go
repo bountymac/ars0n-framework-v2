@@ -36,6 +36,7 @@ type MetabigorCompanyScanStatus struct {
 
 // New structured data types
 type MetabigorNetworkRange struct {
+	ID           string `json:"id"`
 	CIDRBlock    string `json:"cidr_block"`
 	ASN          string `json:"asn"`
 	Organization string `json:"organization"`
@@ -45,6 +46,7 @@ type MetabigorNetworkRange struct {
 }
 
 type MetabigorASNData struct {
+	ID           string `json:"id"`
 	ASNNumber    string `json:"asn_number"`
 	Organization string `json:"organization"`
 	Country      string `json:"country"`
@@ -547,7 +549,7 @@ func GetMetabigorNetworkRanges(w http.ResponseWriter, r *http.Request) {
 	scanID := vars["scan_id"]
 	log.Printf("[METABIGOR] [INFO] Retrieving network ranges for scan ID: %s", scanID)
 
-	query := `SELECT cidr_block, asn, organization, country, scan_type FROM metabigor_network_ranges WHERE scan_id = $1 ORDER BY cidr_block`
+	query := `SELECT id, cidr_block, asn, organization, country, scan_type FROM metabigor_network_ranges WHERE scan_id = $1 ORDER BY cidr_block`
 	rows, err := dbPool.Query(context.Background(), query, scanID)
 	if err != nil {
 		log.Printf("[METABIGOR] [ERROR] Failed to get network ranges: %v", err)
@@ -559,7 +561,7 @@ func GetMetabigorNetworkRanges(w http.ResponseWriter, r *http.Request) {
 	var networkRanges []MetabigorNetworkRange
 	for rows.Next() {
 		var nr MetabigorNetworkRange
-		err := rows.Scan(&nr.CIDRBlock, &nr.ASN, &nr.Organization, &nr.Country, &nr.ScanType)
+		err := rows.Scan(&nr.ID, &nr.CIDRBlock, &nr.ASN, &nr.Organization, &nr.Country, &nr.ScanType)
 		if err != nil {
 			log.Printf("[METABIGOR] [ERROR] Error scanning network range row: %v", err)
 			continue
@@ -579,7 +581,7 @@ func GetMetabigorASNData(w http.ResponseWriter, r *http.Request) {
 	scanID := vars["scan_id"]
 	log.Printf("[METABIGOR] [INFO] Retrieving ASN data for scan ID: %s", scanID)
 
-	query := `SELECT asn_number, organization, country, scan_type FROM metabigor_asn_data WHERE scan_id = $1 ORDER BY asn_number`
+	query := `SELECT id, asn_number, organization, country, scan_type FROM metabigor_asn_data WHERE scan_id = $1 ORDER BY asn_number`
 	rows, err := dbPool.Query(context.Background(), query, scanID)
 	if err != nil {
 		log.Printf("[METABIGOR] [ERROR] Failed to get ASN data: %v", err)
@@ -591,7 +593,7 @@ func GetMetabigorASNData(w http.ResponseWriter, r *http.Request) {
 	var asnData []MetabigorASNData
 	for rows.Next() {
 		var asn MetabigorASNData
-		err := rows.Scan(&asn.ASNNumber, &asn.Organization, &asn.Country, &asn.ScanType)
+		err := rows.Scan(&asn.ID, &asn.ASNNumber, &asn.Organization, &asn.Country, &asn.ScanType)
 		if err != nil {
 			log.Printf("[METABIGOR] [ERROR] Error scanning ASN data row: %v", err)
 			continue
@@ -921,4 +923,65 @@ func GetMetabigorIPIntelligence(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(ipIntel)
+}
+
+func DeleteMetabigorNetworkRange(w http.ResponseWriter, r *http.Request) {
+	networkRangeID := mux.Vars(r)["id"]
+	if networkRangeID == "" {
+		http.Error(w, "Network range ID is required", http.StatusBadRequest)
+		return
+	}
+
+	if _, err := uuid.Parse(networkRangeID); err != nil {
+		http.Error(w, "Invalid network range ID format", http.StatusBadRequest)
+		return
+	}
+
+	query := `DELETE FROM metabigor_network_ranges WHERE id = $1`
+	result, err := dbPool.Exec(context.Background(), query, networkRangeID)
+	if err != nil {
+		log.Printf("[METABIGOR] [ERROR] Failed to delete network range %s: %v", networkRangeID, err)
+		http.Error(w, "Failed to delete network range", http.StatusInternalServerError)
+		return
+	}
+
+	rowsAffected := result.RowsAffected()
+	if rowsAffected == 0 {
+		http.Error(w, "Network range not found", http.StatusNotFound)
+		return
+	}
+
+	log.Printf("[METABIGOR] [INFO] Successfully deleted network range %s", networkRangeID)
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"message": "Network range deleted successfully"})
+}
+
+func DeleteAllMetabigorNetworkRanges(w http.ResponseWriter, r *http.Request) {
+	scanID := mux.Vars(r)["scan_id"]
+	if scanID == "" {
+		http.Error(w, "Scan ID is required", http.StatusBadRequest)
+		return
+	}
+
+	if _, err := uuid.Parse(scanID); err != nil {
+		http.Error(w, "Invalid scan ID format", http.StatusBadRequest)
+		return
+	}
+
+	query := `DELETE FROM metabigor_network_ranges WHERE scan_id = $1`
+	result, err := dbPool.Exec(context.Background(), query, scanID)
+	if err != nil {
+		log.Printf("[METABIGOR] [ERROR] Failed to delete all network ranges for scan %s: %v", scanID, err)
+		http.Error(w, "Failed to delete network ranges", http.StatusInternalServerError)
+		return
+	}
+
+	rowsAffected := result.RowsAffected()
+	log.Printf("[METABIGOR] [INFO] Successfully deleted %d network ranges for scan %s", rowsAffected, scanID)
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message":       "All network ranges deleted successfully",
+		"deleted_count": rowsAffected,
+	})
 }

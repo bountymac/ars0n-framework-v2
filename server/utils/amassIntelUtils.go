@@ -32,6 +32,7 @@ type AmassIntelScanStatus struct {
 }
 
 type IntelNetworkRangeResponse struct {
+	ID           string `json:"id"`
 	CIDRBlock    string `json:"cidr_block"`
 	ASN          string `json:"asn"`
 	Organization string `json:"organization"`
@@ -340,7 +341,7 @@ func GetIntelNetworkRanges(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := `SELECT cidr_block, asn, organization, description, country, scan_id FROM intel_network_ranges WHERE scan_id = $1 ORDER BY created_at DESC`
+	query := `SELECT id, cidr_block, asn, organization, description, country, scan_id FROM intel_network_ranges WHERE scan_id = $1 ORDER BY created_at DESC`
 	rows, err := dbPool.Query(context.Background(), query, scanID)
 	if err != nil {
 		http.Error(w, "Failed to fetch Intel network ranges", http.StatusInternalServerError)
@@ -351,7 +352,7 @@ func GetIntelNetworkRanges(w http.ResponseWriter, r *http.Request) {
 	var networkRanges []IntelNetworkRangeResponse
 	for rows.Next() {
 		var networkRange IntelNetworkRangeResponse
-		if err := rows.Scan(&networkRange.CIDRBlock, &networkRange.ASN, &networkRange.Organization, &networkRange.Description, &networkRange.Country, &networkRange.ScanID); err != nil {
+		if err := rows.Scan(&networkRange.ID, &networkRange.CIDRBlock, &networkRange.ASN, &networkRange.Organization, &networkRange.Description, &networkRange.Country, &networkRange.ScanID); err != nil {
 			http.Error(w, "Error scanning Intel network range", http.StatusInternalServerError)
 			return
 		}
@@ -397,4 +398,65 @@ func GetIntelASNData(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(asnData)
+}
+
+func DeleteIntelNetworkRange(w http.ResponseWriter, r *http.Request) {
+	networkRangeID := mux.Vars(r)["id"]
+	if networkRangeID == "" {
+		http.Error(w, "Network range ID is required", http.StatusBadRequest)
+		return
+	}
+
+	if _, err := uuid.Parse(networkRangeID); err != nil {
+		http.Error(w, "Invalid network range ID format", http.StatusBadRequest)
+		return
+	}
+
+	query := `DELETE FROM intel_network_ranges WHERE id = $1`
+	result, err := dbPool.Exec(context.Background(), query, networkRangeID)
+	if err != nil {
+		log.Printf("[AMASS-INTEL] [ERROR] Failed to delete network range %s: %v", networkRangeID, err)
+		http.Error(w, "Failed to delete network range", http.StatusInternalServerError)
+		return
+	}
+
+	rowsAffected := result.RowsAffected()
+	if rowsAffected == 0 {
+		http.Error(w, "Network range not found", http.StatusNotFound)
+		return
+	}
+
+	log.Printf("[AMASS-INTEL] [INFO] Successfully deleted network range %s", networkRangeID)
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"message": "Network range deleted successfully"})
+}
+
+func DeleteAllIntelNetworkRanges(w http.ResponseWriter, r *http.Request) {
+	scanID := mux.Vars(r)["scan_id"]
+	if scanID == "" {
+		http.Error(w, "Scan ID is required", http.StatusBadRequest)
+		return
+	}
+
+	if _, err := uuid.Parse(scanID); err != nil {
+		http.Error(w, "Invalid scan ID format", http.StatusBadRequest)
+		return
+	}
+
+	query := `DELETE FROM intel_network_ranges WHERE scan_id = $1`
+	result, err := dbPool.Exec(context.Background(), query, scanID)
+	if err != nil {
+		log.Printf("[AMASS-INTEL] [ERROR] Failed to delete all network ranges for scan %s: %v", scanID, err)
+		http.Error(w, "Failed to delete network ranges", http.StatusInternalServerError)
+		return
+	}
+
+	rowsAffected := result.RowsAffected()
+	log.Printf("[AMASS-INTEL] [INFO] Successfully deleted %d network ranges for scan %s", rowsAffected, scanID)
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message":       "All network ranges deleted successfully",
+		"deleted_count": rowsAffected,
+	})
 }

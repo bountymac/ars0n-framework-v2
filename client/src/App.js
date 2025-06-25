@@ -66,6 +66,8 @@ import consolidateSubdomains from './utils/consolidateSubdomains.js';
 import fetchConsolidatedSubdomains from './utils/fetchConsolidatedSubdomains.js';
 import consolidateCompanyDomains from './utils/consolidateCompanyDomains.js';
 import fetchConsolidatedCompanyDomains from './utils/fetchConsolidatedCompanyDomains.js';
+import consolidateNetworkRanges from './utils/consolidateNetworkRanges.js';
+import fetchConsolidatedNetworkRanges from './utils/fetchConsolidatedNetworkRanges.js';
 import monitorShuffleDNSScanStatus from './utils/monitorShuffleDNSScanStatus.js';
 import initiateShuffleDNSScan from './utils/initiateShuffleDNSScan.js';
 import initiateCeWLScan from './utils/initiateCeWLScan';
@@ -118,6 +120,8 @@ import AddWildcardTargetsModal from './modals/AddWildcardTargetsModal.js';
 import initiateInvestigateScan from './utils/initiateInvestigateScan';
 import monitorInvestigateScanStatus from './utils/monitorInvestigateScanStatus';
 import TrimRootDomainsModal from './modals/TrimRootDomainsModal.js';
+import TrimNetworkRangesModal from './modals/TrimNetworkRangesModal.js';
+import LiveWebServersResultsModal from './modals/LiveWebServersResultsModal.js';
 import fetchMetabigorCompanyScans from './utils/fetchMetabigorCompanyScans';
 
 // Add helper function
@@ -318,6 +322,9 @@ function App() {
   const [consolidatedCompanyDomains, setConsolidatedCompanyDomains] = useState([]);
   const [consolidatedCompanyDomainsCount, setConsolidatedCompanyDomainsCount] = useState(0);
   const [isConsolidatingCompanyDomains, setIsConsolidatingCompanyDomains] = useState(false);
+  const [consolidatedNetworkRanges, setConsolidatedNetworkRanges] = useState([]);
+  const [consolidatedNetworkRangesCount, setConsolidatedNetworkRangesCount] = useState(0);
+  const [isConsolidatingNetworkRanges, setIsConsolidatingNetworkRanges] = useState(false);
   const [showUniqueSubdomainsModal, setShowUniqueSubdomainsModal] = useState(false);
   const [mostRecentCeWLScanStatus, setMostRecentCeWLScanStatus] = useState(null);
   const [mostRecentCeWLScan, setMostRecentCeWLScan] = useState(null);
@@ -423,7 +430,9 @@ function App() {
   const [hasShodanApiKey, setHasShodanApiKey] = useState(false);
   const [showAddWildcardTargetsModal, setShowAddWildcardTargetsModal] = useState(false);
   const [showTrimRootDomainsModal, setShowTrimRootDomainsModal] = useState(false);
+  const [showTrimNetworkRangesModal, setShowTrimNetworkRangesModal] = useState(false);
   const [rootDomainsByTool, setRootDomainsByTool] = useState({});
+  const [showLiveWebServersResultsModal, setShowLiveWebServersResultsModal] = useState(false);
 
   const handleCloseSubdomainsModal = () => setShowSubdomainsModal(false);
   const handleCloseCloudDomainsModal = () => setShowCloudDomainsModal(false);
@@ -523,6 +532,44 @@ function App() {
   const handleCloseTrimRootDomainsModal = () => setShowTrimRootDomainsModal(false);
   const handleOpenTrimRootDomainsModal = () => setShowTrimRootDomainsModal(true);
 
+  const handleCloseTrimNetworkRangesModal = () => setShowTrimNetworkRangesModal(false);
+  const handleOpenTrimNetworkRangesModal = () => setShowTrimNetworkRangesModal(true);
+
+  const handleCloseLiveWebServersResultsModal = () => setShowLiveWebServersResultsModal(false);
+  const handleOpenLiveWebServersResultsModal = () => setShowLiveWebServersResultsModal(true);
+
+  const handleTrimNetworkRanges = () => {
+    handleOpenTrimNetworkRangesModal();
+  };
+
+  const handleConsolidateNetworkRanges = async () => {
+    if (!activeTarget) return;
+    
+    setIsConsolidatingNetworkRanges(true);
+    try {
+      const result = await consolidateNetworkRanges(activeTarget);
+      if (result) {
+        await fetchConsolidatedNetworkRanges(activeTarget, setConsolidatedNetworkRanges, setConsolidatedNetworkRangesCount);
+      }
+    } catch (error) {
+      console.error('Error during network range consolidation:', error);
+    } finally {
+      setIsConsolidatingNetworkRanges(false);
+    }
+  };
+
+  const handleDiscoverLiveIPs = () => {
+    console.log('IP/Port Scan clicked - functionality to be implemented');
+  };
+
+  const handlePortScanning = () => {
+    console.log('Gather Metadata clicked - functionality to be implemented');
+  };
+
+  const handleLiveWebServersResults = () => {
+    handleOpenLiveWebServersResultsModal();
+  };
+
   const handleInvestigateRootDomains = () => {
     initiateInvestigateScan(
       activeTarget,
@@ -586,6 +633,7 @@ function App() {
       fetchHttpxScans(activeTarget, setHttpxScans, setMostRecentHttpxScan, setMostRecentHttpxScanStatus);
       fetchConsolidatedSubdomains(activeTarget, setConsolidatedSubdomains, setConsolidatedCount);
       fetchConsolidatedCompanyDomains(activeTarget, setConsolidatedCompanyDomains, setConsolidatedCompanyDomainsCount);
+      fetchConsolidatedNetworkRanges(activeTarget, setConsolidatedNetworkRanges, setConsolidatedNetworkRangesCount);
       fetchGoogleDorkingDomains();
       fetchReverseWhoisDomains();
     }
@@ -3545,6 +3593,74 @@ function App() {
                     </Col>
                   ))}
                 </Row>
+                
+                <h4 className="text-secondary mb-3 fs-5">Discover Live Web Servers (On-Prem)</h4>
+                <Row className="mb-4">
+                  <Col>
+                    <Card className="shadow-sm h-100 text-center" style={{ minHeight: '200px' }}>
+                      <Card.Body className="d-flex flex-column">
+                        <Card.Title className="text-danger fs-4 mb-3">Discover Live Web Servers (On-Prem)</Card.Title>
+                        <Card.Text className="text-white small fst-italic mb-4">
+                          Process discovered network ranges to identify live IP addresses and perform port scanning to discover active web servers within the organization's infrastructure.
+                        </Card.Text>
+                        <div className="text-danger mb-4">
+                          <div className="row">
+                            <div className="col">
+                              <h3 className="mb-0">{consolidatedNetworkRangesCount}</h3>
+                              <small className="text-white-50">Network Ranges</small>
+                            </div>
+                            <div className="col">
+                              <h3 className="mb-0">0</h3>
+                              <small className="text-white-50">Live Web Servers</small>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="d-flex justify-content-between mt-auto gap-2">
+                          <Button 
+                            variant="outline-danger" 
+                            className="flex-fill" 
+                            onClick={handleTrimNetworkRanges}
+                          >
+                            Trim Network Ranges
+                          </Button>
+                          <Button 
+                            variant="outline-danger" 
+                            className="flex-fill" 
+                            onClick={handleConsolidateNetworkRanges}
+                            disabled={isConsolidatingNetworkRanges}
+                          >
+                            <div className="btn-content">
+                              {isConsolidatingNetworkRanges ? (
+                                <div className="spinner"></div>
+                              ) : 'Consolidate'}
+                            </div>
+                          </Button>
+                          <Button 
+                            variant="outline-danger" 
+                            className="flex-fill"
+                            onClick={handleDiscoverLiveIPs}
+                          >
+                            IP/Port Scan
+                          </Button>
+                          <Button 
+                            variant="outline-danger" 
+                            className="flex-fill"
+                            onClick={handlePortScanning}
+                          >
+                            Gather Metadata
+                          </Button>
+                          <Button 
+                            variant="outline-danger" 
+                            className="flex-fill"
+                            onClick={handleLiveWebServersResults}
+                          >
+                            Results
+                          </Button>
+                        </div>
+                      </Card.Body>
+                    </Card>
+                  </Col>
+                </Row>
               </div>
             )}
             {activeTarget.type === 'Wildcard' && (
@@ -4604,6 +4720,18 @@ function App() {
         handleClose={handleCloseTrimRootDomainsModal}
         activeTarget={activeTarget}
         onDomainsDeleted={handleDomainsDeleted}
+      />
+      <TrimNetworkRangesModal
+        show={showTrimNetworkRangesModal}
+        handleClose={handleCloseTrimNetworkRangesModal}
+        activeTarget={activeTarget}
+        onDomainsDeleted={handleDomainsDeleted}
+      />
+      <LiveWebServersResultsModal
+        show={showLiveWebServersResultsModal}
+        onHide={handleCloseLiveWebServersResultsModal}
+        activeTarget={activeTarget}
+        consolidatedNetworkRanges={consolidatedNetworkRanges}
       />
     </Container>
   );

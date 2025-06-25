@@ -209,8 +209,8 @@ export const AmassIntelResultsModal = ({
                   </tr>
                 </thead>
                 <tbody>
-                  {networkRanges.map((network, index) => (
-                    <tr key={index}>
+                  {networkRanges.map((network) => (
+                    <tr key={network.id}>
                       <td className="font-monospace">{network.cidr_block}</td>
                       <td className="font-monospace">{network.asn || 'N/A'}</td>
                       <td>{network.organization || 'N/A'}</td>
