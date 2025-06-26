@@ -373,9 +373,21 @@ func createTables() {
 			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
 			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
 		);`,
+		`CREATE TABLE IF NOT EXISTS company_metadata_scans (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scan_id UUID NOT NULL UNIQUE,
+			scope_target_id UUID NOT NULL,
+			ip_port_scan_id UUID NOT NULL,
+			status VARCHAR(50) NOT NULL,
+			error_message TEXT,
+			execution_time TEXT,
+			created_at TIMESTAMP DEFAULT NOW(),
+			updated_at TIMESTAMP DEFAULT NOW(),
+			FOREIGN KEY (scope_target_id) REFERENCES scope_targets(id) ON DELETE CASCADE
+		);`,
 		`CREATE TABLE IF NOT EXISTS target_urls (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-			url TEXT NOT NULL UNIQUE,
+			url TEXT NOT NULL,
 			screenshot TEXT,
 			status_code INTEGER,
 			title TEXT,
@@ -407,7 +419,8 @@ func createTables() {
 			dns_srv_records TEXT[],
 			katana_results JSONB,
 			ffuf_results JSONB,
-			roi_score INTEGER DEFAULT 50
+			roi_score INTEGER DEFAULT 50,
+			UNIQUE(url, scope_target_id)
 		);`,
 		`CREATE INDEX IF NOT EXISTS target_urls_url_idx ON target_urls (url);`,
 		`CREATE INDEX IF NOT EXISTS target_urls_scope_target_id_idx ON target_urls (scope_target_id);`,

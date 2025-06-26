@@ -81,8 +81,8 @@ import initiateSubdomainizerScan from './utils/initiateSubdomainizerScan';
 import monitorSubdomainizerScanStatus from './utils/monitorSubdomainizerScanStatus';
 import initiateNucleiScreenshotScan from './utils/initiateNucleiScreenshotScan';
 import monitorNucleiScreenshotScanStatus from './utils/monitorNucleiScreenshotScanStatus';
-import initiateMetaDataScan from './utils/initiateMetaDataScan';
-import monitorMetaDataScanStatus from './utils/monitorMetaDataScanStatus';
+import initiateMetaDataScan, { initiateCompanyMetaDataScan } from './utils/initiateMetaDataScan';
+import monitorMetaDataScanStatus, { monitorCompanyMetaDataScanStatus } from './utils/monitorMetaDataScanStatus';
 import MetaDataModal from './modals/MetaDataModal.js';
 import fetchHttpxScans from './utils/fetchHttpxScans';
 import ROIReport from './components/ROIReport';
@@ -142,6 +142,52 @@ const getAmassIntelNetworkRangesCount = (networkRanges) => {
 // Add helper function to get network ranges count for Metabigor
 const getMetabigorNetworkRangesCount = (networkRanges) => {
   return Array.isArray(networkRanges) ? networkRanges.length : 0;
+};
+
+// Calculate estimated IP/Port scan time based on network ranges
+const calculateEstimatedScanTime = (networkRanges) => {
+  if (!Array.isArray(networkRanges) || networkRanges.length === 0) {
+    return "N/A";
+  }
+
+  let totalIPs = 0;
+  
+  networkRanges.forEach(range => {
+    const cidr = range.cidr_block;
+    if (!cidr) return;
+    
+    try {
+      // Parse CIDR notation (e.g., "192.168.1.0/24")
+      const [ip, prefixLength] = cidr.split('/');
+      const prefix = parseInt(prefixLength, 10);
+      
+      if (prefix >= 0 && prefix <= 32) {
+        // Calculate number of possible IPs in this CIDR block
+        const hostBits = 32 - prefix;
+        const possibleIPs = Math.pow(2, hostBits);
+        totalIPs += possibleIPs;
+      }
+    } catch (error) {
+      console.error('Error parsing CIDR:', cidr, error);
+    }
+  });
+
+  // Apply the algorithm: 1 second timeout per IP, assume 20% go through port scan
+  const estimatedSeconds = totalIPs * 1 * 0.2;
+  
+  // Format the time nicely
+  if (estimatedSeconds < 60) {
+    return `${Math.round(estimatedSeconds)}s`;
+  } else if (estimatedSeconds < 3600) {
+    const minutes = Math.round(estimatedSeconds / 60);
+    return `${minutes}m`;
+  } else if (estimatedSeconds < 86400) {
+    const hours = Math.round(estimatedSeconds / 3600);
+    return `${hours}h`;
+  } else {
+    const days = Math.round(estimatedSeconds / 86400);
+    return `${days}d`;
+  }
 };
 
 // Add this function before the App component
@@ -352,11 +398,6 @@ function App() {
   const [mostRecentNucleiScreenshotScanStatus, setMostRecentNucleiScreenshotScanStatus] = useState(null);
   const [mostRecentNucleiScreenshotScan, setMostRecentNucleiScreenshotScan] = useState(null);
   const [isNucleiScreenshotScanning, setIsNucleiScreenshotScanning] = useState(false);
-  const [MetaDataScans, setMetaDataScans] = useState([]);
-  const [mostRecentMetaDataScanStatus, setMostRecentMetaDataScanStatus] = useState(null);
-  const [mostRecentMetaDataScan, setMostRecentMetaDataScan] = useState(null);
-  const [isMetaDataScanning, setIsMetaDataScanning] = useState(false);
-  const [showMetaDataModal, setShowMetaDataModal] = useState(false);
   const [investigateScans, setInvestigateScans] = useState([]);
   const [mostRecentInvestigateScanStatus, setMostRecentInvestigateScanStatus] = useState(null);
   const [mostRecentInvestigateScan, setMostRecentInvestigateScan] = useState(null);
@@ -441,6 +482,16 @@ function App() {
   const [mostRecentIPPortScan, setMostRecentIPPortScan] = useState(null);
   const [mostRecentIPPortScanStatus, setMostRecentIPPortScanStatus] = useState(null);
   const [isIPPortScanning, setIsIPPortScanning] = useState(false);
+  const [MetaDataScans, setMetaDataScans] = useState([]);
+  const [mostRecentMetaDataScanStatus, setMostRecentMetaDataScanStatus] = useState(null);
+  const [mostRecentMetaDataScan, setMostRecentMetaDataScan] = useState(null);
+  const [isMetaDataScanning, setIsMetaDataScanning] = useState(false);
+  const [showMetaDataModal, setShowMetaDataModal] = useState(false);
+  const [companyMetaDataScans, setCompanyMetaDataScans] = useState([]);
+  const [mostRecentCompanyMetaDataScanStatus, setMostRecentCompanyMetaDataScanStatus] = useState(null);
+  const [mostRecentCompanyMetaDataScan, setMostRecentCompanyMetaDataScan] = useState(null);
+  const [isCompanyMetaDataScanning, setIsCompanyMetaDataScanning] = useState(false);
+  const [companyMetaDataResults, setCompanyMetaDataResults] = useState([]);
 
 
   const handleCloseSubdomainsModal = () => setShowSubdomainsModal(false);
@@ -605,8 +656,37 @@ function App() {
     }
   };
 
-  const handlePortScanning = () => {
-    console.log('Gather Metadata clicked - functionality to be implemented');
+  const handlePortScanning = async () => {
+    if (!activeTarget || !mostRecentIPPortScan || !mostRecentIPPortScan.scan_id) {
+      console.error('Cannot initiate Company metadata scan: missing activeTarget or IP/Port scan');
+      return;
+    }
+
+    console.log('Initiating Company metadata scan for IP/Port scan:', mostRecentIPPortScan.scan_id);
+    
+    try {
+      setIsCompanyMetaDataScanning(true);
+      
+      const result = await initiateCompanyMetaDataScan(
+        activeTarget,
+        mostRecentIPPortScan.scan_id,
+        monitorCompanyMetaDataScanStatus,
+        setIsCompanyMetaDataScanning,
+        setCompanyMetaDataScans,
+        setMostRecentCompanyMetaDataScanStatus,
+        setMostRecentCompanyMetaDataScan
+      );
+      
+      if (result && result.success) {
+        console.log('Company metadata scan initiated successfully');
+      } else {
+        console.error('Failed to initiate Company metadata scan');
+        setIsCompanyMetaDataScanning(false);
+      }
+    } catch (error) {
+      console.error('Error initiating Company metadata scan:', error);
+      setIsCompanyMetaDataScanning(false);
+    }
   };
 
   const handleLiveWebServersResults = () => {
@@ -3654,6 +3734,10 @@ function App() {
                               <small className="text-white-50">Network Ranges</small>
                             </div>
                             <div className="col">
+                              <h3 className="mb-0">{calculateEstimatedScanTime(consolidatedNetworkRanges)}</h3>
+                              <small className="text-white-50">Est. Scan Time</small>
+                            </div>
+                            <div className="col">
                               <h3 className="mb-0">{mostRecentIPPortScan?.live_web_servers_found || 0}</h3>
                               <small className="text-white-50">Live Web Servers</small>
                             </div>
@@ -3695,8 +3779,17 @@ function App() {
                             variant="outline-danger" 
                             className="flex-fill"
                             onClick={handlePortScanning}
+                            disabled={isCompanyMetaDataScanning || 
+                                     mostRecentCompanyMetaDataScanStatus === "pending" || 
+                                     mostRecentCompanyMetaDataScanStatus === "running" ||
+                                     !mostRecentIPPortScan?.live_web_servers_found ||
+                                     mostRecentIPPortScan?.live_web_servers_found === 0}
                           >
-                            Gather Metadata
+                            <div className="btn-content">
+                              {isCompanyMetaDataScanning || mostRecentCompanyMetaDataScanStatus === "pending" || mostRecentCompanyMetaDataScanStatus === "running" ? (
+                                <div className="spinner"></div>
+                              ) : 'Gather Metadata'}
+                            </div>
                           </Button>
                           <Button 
                             variant="outline-danger" 

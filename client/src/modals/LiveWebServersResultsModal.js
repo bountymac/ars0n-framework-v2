@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Modal, Button, Tab, Tabs, Table, Badge, Spinner, Alert } from 'react-bootstrap';
+import { Modal, Button, Tab, Tabs, Table, Badge, Spinner, Alert, Accordion } from 'react-bootstrap';
 import { MdCopyAll } from 'react-icons/md';
 
 const LiveWebServersResultsModal = ({ show, onHide, activeTarget, consolidatedNetworkRanges, mostRecentIPPortScan }) => {
@@ -9,12 +9,16 @@ const LiveWebServersResultsModal = ({ show, onHide, activeTarget, consolidatedNe
   const [liveWebServers, setLiveWebServers] = useState([]);
   const [discoveredIPs, setDiscoveredIPs] = useState([]);
   const [scanData, setScanData] = useState(null);
+  const [metadataResults, setMetadataResults] = useState([]);
+  const [metadataScans, setMetadataScans] = useState([]);
+  const [metadataLoading, setMetadataLoading] = useState(false);
 
   const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8443';
 
   useEffect(() => {
     if (show && mostRecentIPPortScan && mostRecentIPPortScan.scan_id) {
       fetchIPPortScanData();
+      fetchMetadataData();
     }
   }, [show, mostRecentIPPortScan]);
 
@@ -50,6 +54,33 @@ const LiveWebServersResultsModal = ({ show, onHide, activeTarget, consolidatedNe
       setError('Failed to load IP/Port scan data');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchMetadataData = async () => {
+    if (!mostRecentIPPortScan || !mostRecentIPPortScan.scan_id) return;
+    
+    setMetadataLoading(true);
+    console.log('LiveWebServersResultsModal: Fetching metadata for scanId:', mostRecentIPPortScan.scan_id);
+    
+    try {
+      // Fetch metadata scans
+      const scansResponse = await fetch(`${API_BASE_URL}/ip-port-scan/${mostRecentIPPortScan.scan_id}/metadata-scans`);
+      if (scansResponse.ok) {
+        const scans = await scansResponse.json();
+        setMetadataScans(scans || []);
+      }
+
+      // Fetch metadata results
+      const resultsResponse = await fetch(`${API_BASE_URL}/ip-port-scan/${mostRecentIPPortScan.scan_id}/metadata-results`);
+      if (resultsResponse.ok) {
+        const results = await resultsResponse.json();
+        setMetadataResults(results || []);
+      }
+    } catch (error) {
+      console.error('LiveWebServersResultsModal: Error fetching metadata data:', error);
+    } finally {
+      setMetadataLoading(false);
     }
   };
 
@@ -394,24 +425,469 @@ const LiveWebServersResultsModal = ({ show, onHide, activeTarget, consolidatedNe
               </p>
             </div>
 
-            <div className="text-center py-5">
-              <div className="text-white-50">
-                <h6>Metadata Collection</h6>
-                <p className="small">
-                  This functionality will be implemented in a future update. It will show:
-                </p>
-                <ul className="list-unstyled small">
-                  <li>• SSL/TLS certificate information</li>
-                  <li>• HTTP response headers and security headers</li>
-                  <li>• Technology stack detection details</li>
-                  <li>• DNS records and subdomain information</li>
-                  <li>• Content analysis and file discovery</li>
-                </ul>
-                <p className="small mt-3">
-                  Use the "Gather Metadata" button to begin collecting detailed information.
-                </p>
+            {metadataLoading ? (
+              <div className="text-center py-4">
+                <Spinner animation="border" variant="danger" />
+                <p className="mt-2">Loading metadata...</p>
               </div>
-            </div>
+            ) : (
+              <div>
+                {metadataResults.length === 0 ? (
+                  <div className="text-center py-5">
+                    <div className="text-white-50">
+                      <h6>No Metadata Results</h6>
+                      <p className="small">
+                        {metadataScans.length === 0 
+                          ? 'Click "Gather Metadata" to start collecting detailed information about your live web servers.'
+                          : 'Metadata scan completed but no results were found. This may indicate no live web servers were available for scanning.'
+                        }
+                      </p>
+                      {metadataScans.length === 0 && (
+                        <ul className="list-unstyled small mt-3">
+                          <li>• SSL/TLS certificate information</li>
+                          <li>• HTTP response headers and security headers</li>
+                          <li>• Technology stack detection details</li>
+                          <li>• DNS records and subdomain information</li>
+                          <li>• Content analysis and file discovery</li>
+                        </ul>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="mb-3">
+                      <span className="text-white-50">
+                        Total URLs with metadata: <strong className="text-danger">{metadataResults.length}</strong>
+                      </span>
+                    </div>
+
+                    {metadataResults.map((url, urlIndex) => {
+                      const sslIssues = [];
+                      if (url.has_deprecated_tls) sslIssues.push('Deprecated TLS');
+                      if (url.has_expired_ssl) sslIssues.push('Expired SSL');
+                      if (url.has_mismatched_ssl) sslIssues.push('Mismatched SSL');
+                      if (url.has_revoked_ssl) sslIssues.push('Revoked SSL');
+                      if (url.has_self_signed_ssl) sslIssues.push('Self-Signed SSL');
+                      if (url.has_untrusted_root_ssl) sslIssues.push('Untrusted Root');
+
+                      const getStatusCodeColor = (statusCode) => {
+                        if (!statusCode) return { bg: 'secondary', text: 'white' };
+                        if (statusCode >= 200 && statusCode < 300) return { bg: 'success', text: 'dark' };
+                        if (statusCode >= 300 && statusCode < 400) return { bg: 'info', text: 'dark' };
+                        if (statusCode === 401 || statusCode === 403) return { bg: 'danger', text: 'white' };
+                        if (statusCode >= 400 && statusCode < 500) return { bg: 'warning', text: 'dark' };
+                        if (statusCode >= 500) return { bg: 'danger', text: 'white' };
+                        return { bg: 'secondary', text: 'white' };
+                      };
+
+                      const getSafeValue = (value) => {
+                        if (!value) return '';
+                        if (typeof value === 'object' && 'String' in value) {
+                          return value.String || '';
+                        }
+                        return value;
+                      };
+
+                      // Process katana results
+                      let katanaUrls = [];
+                      if (url.katana_results) {
+                        if (Array.isArray(url.katana_results)) {
+                          katanaUrls = url.katana_results;
+                        } else if (typeof url.katana_results === 'string') {
+                          try {
+                            const parsed = JSON.parse(url.katana_results);
+                            katanaUrls = Array.isArray(parsed) ? parsed : [];
+                          } catch (error) {
+                            console.error('Error parsing katana results:', error);
+                          }
+                        }
+                      }
+
+                      // Process ffuf results
+                      let ffufEndpoints = [];
+                      if (url.ffuf_results) {
+                        if (typeof url.ffuf_results === 'object' && url.ffuf_results.endpoints) {
+                          ffufEndpoints = url.ffuf_results.endpoints;
+                        } else if (typeof url.ffuf_results === 'string') {
+                          try {
+                            const parsed = JSON.parse(url.ffuf_results);
+                            ffufEndpoints = parsed.endpoints || [];
+                          } catch (error) {
+                            console.error('Error parsing ffuf results:', error);
+                          }
+                        }
+                      }
+
+                      const findings = Array.isArray(url.findings_json) ? url.findings_json : [];
+
+                      return (
+                        <Accordion key={url.id || urlIndex} className="mb-3" data-bs-theme="dark">
+                          <Accordion.Item eventKey="0">
+                            <Accordion.Header>
+                              <div className="d-flex justify-content-between align-items-center w-100 me-3">
+                                <div className="d-flex align-items-center">
+                                  <Badge 
+                                    bg={getStatusCodeColor(url.status_code).bg}
+                                    className={`me-2 text-${getStatusCodeColor(url.status_code).text}`}
+                                    style={{ fontSize: '0.8em' }}
+                                  >
+                                    {url.status_code}
+                                  </Badge>
+                                  <span>{url.url}</span>
+                                </div>
+                                <div className="d-flex align-items-center gap-2">
+                                  <Badge 
+                                    bg="dark" 
+                                    className="text-white"
+                                    style={{ fontSize: '0.8em' }}
+                                  >
+                                    {katanaUrls.length} Crawled URLs
+                                  </Badge>
+                                  <Badge 
+                                    bg="dark" 
+                                    className="text-white"
+                                    style={{ fontSize: '0.8em' }}
+                                  >
+                                    {ffufEndpoints.length} Endpoints
+                                  </Badge>
+                                  {findings.length > 0 && (
+                                    <Badge 
+                                      bg="secondary" 
+                                      style={{ fontSize: '0.8em' }}
+                                    >
+                                      {findings.length} Technologies
+                                    </Badge>
+                                  )}
+                                  {sslIssues.length > 0 ? (
+                                    sslIssues.map((issue, index) => (
+                                      <Badge 
+                                        key={index} 
+                                        bg="danger" 
+                                        style={{ fontSize: '0.8em' }}
+                                      >
+                                        {issue}
+                                      </Badge>
+                                    ))
+                                  ) : (
+                                    <Badge 
+                                      bg="success" 
+                                      style={{ fontSize: '0.8em' }}
+                                    >
+                                      No SSL Issues
+                                    </Badge>
+                                  )}
+                                </div>
+                              </div>
+                            </Accordion.Header>
+                            <Accordion.Body>
+                              <div className="mb-4">
+                                <h6 className="text-danger mb-3">Server Information</h6>
+                                <div className="ms-3">
+                                  <p className="mb-1"><strong>Title:</strong> {getSafeValue(url.title) || 'N/A'}</p>
+                                  <p className="mb-1"><strong>Web Server:</strong> {getSafeValue(url.web_server) || 'N/A'}</p>
+                                  <p className="mb-1"><strong>Content Length:</strong> {url.content_length}</p>
+                                  {url.technologies && url.technologies.length > 0 && (
+                                    <p className="mb-1">
+                                      <strong>Technologies:</strong>{' '}
+                                      {url.technologies.map((tech, index) => (
+                                        <Badge 
+                                          key={index} 
+                                          bg="secondary" 
+                                          className="me-1"
+                                          style={{ fontSize: '0.8em' }}
+                                        >
+                                          {tech}
+                                        </Badge>
+                                      ))}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+
+                              {(() => {
+                                const dnsRecordTypes = [
+                                  { 
+                                    title: 'A Records', 
+                                    records: url.dns_a_records || [],
+                                    description: 'Maps hostnames to IPv4 addresses',
+                                    badge: 'bg-primary'
+                                  },
+                                  { 
+                                    title: 'AAAA Records', 
+                                    records: url.dns_aaaa_records || [],
+                                    description: 'Maps hostnames to IPv6 addresses',
+                                    badge: 'bg-info'
+                                  },
+                                  { 
+                                    title: 'CNAME Records', 
+                                    records: url.dns_cname_records || [],
+                                    description: 'Canonical name records - Maps one domain name (alias) to another (canonical name)',
+                                    badge: 'bg-success'
+                                  },
+                                  { 
+                                    title: 'MX Records', 
+                                    records: url.dns_mx_records || [],
+                                    description: 'Mail exchange records - Specifies mail servers responsible for receiving email',
+                                    badge: 'bg-warning'
+                                  },
+                                  { 
+                                    title: 'TXT Records', 
+                                    records: url.dns_txt_records || [],
+                                    description: 'Text records - Holds human/machine-readable text data, often used for domain verification',
+                                    badge: 'bg-secondary'
+                                  },
+                                  { 
+                                    title: 'NS Records', 
+                                    records: url.dns_ns_records || [],
+                                    description: 'Nameserver records - Delegates a DNS zone to authoritative nameservers',
+                                    badge: 'bg-danger'
+                                  },
+                                  { 
+                                    title: 'PTR Records', 
+                                    records: url.dns_ptr_records || [],
+                                    description: 'Pointer records - Maps IP addresses to hostnames (reverse DNS)',
+                                    badge: 'bg-dark'
+                                  },
+                                  { 
+                                    title: 'SRV Records', 
+                                    records: url.dns_srv_records || [],
+                                    description: 'Service records - Specifies location of servers for specific services',
+                                    badge: 'bg-info'
+                                  }
+                                ];
+
+                                const hasAnyDNSRecords = dnsRecordTypes.some(
+                                  recordType => recordType.records && recordType.records.length > 0
+                                );
+
+                                return hasAnyDNSRecords ? (
+                                  <div className="mb-4">
+                                    <h6 className="text-danger mb-3">DNS Records</h6>
+                                    <div className="ms-3">
+                                      {dnsRecordTypes.map((recordType, index) => {
+                                        if (!recordType.records || recordType.records.length === 0) return null;
+                                        return (
+                                          <div key={index} className="mb-3">
+                                            <p className="mb-2">
+                                              <Badge bg={recordType.badge.split('-')[1]} className="me-2">
+                                                {recordType.title}
+                                              </Badge>
+                                              <small className="text-muted">{recordType.description}</small>
+                                            </p>
+                                            <div className="bg-dark p-2 rounded">
+                                              {recordType.records.map((record, recordIndex) => (
+                                                <div key={recordIndex} className="mb-1 font-monospace small">
+                                                  {record}
+                                                </div>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                ) : null;
+                              })()}
+
+                              {findings.length > 0 && (
+                                <div className="mb-4">
+                                  <h6 className="text-danger mb-3">Technology Stack</h6>
+                                  <div className="ms-3">
+                                    {findings.map((finding, index) => (
+                                      <div key={index} className="mb-2 text-white">
+                                        {finding.info?.name || finding.template} -- {finding['matcher-name']?.toUpperCase()}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {(() => {
+                                let headers = {};
+                                try {
+                                  if (url.http_response_headers) {
+                                    if (typeof url.http_response_headers === 'string') {
+                                      headers = JSON.parse(url.http_response_headers);
+                                    } else {
+                                      headers = url.http_response_headers;
+                                    }
+                                  }
+                                } catch (error) {
+                                  console.error('Error parsing response headers:', error);
+                                }
+
+                                if (Object.keys(headers).length > 0) {
+                                  return (
+                                    <div className="mb-4">
+                                      <h6 className="text-danger mb-3">Response Headers</h6>
+                                      <div className="ms-3">
+                                        <div className="bg-dark p-3 rounded">
+                                          {Object.entries(headers).map(([key, value], index) => (
+                                            <div key={index} className="mb-2 font-monospace small">
+                                              <span className="text-info">{key}:</span>{' '}
+                                              <span className="text-white">{Array.isArray(value) ? value.join(', ') : value}</span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                }
+                                return null;
+                              })()}
+
+                              <div className="mb-4">
+                                <h6 className="text-danger mb-3">Crawled URLs</h6>
+                                <div className="ms-3">
+                                  <Accordion data-bs-theme="dark">
+                                    <Accordion.Item eventKey="0">
+                                      <Accordion.Header>
+                                        <div className="d-flex align-items-center justify-content-between w-100">
+                                          <div>
+                                            <span className="text-white">
+                                              Katana Results
+                                            </span>
+                                            <br/>
+                                            <small className="text-muted">URLs discovered through crawling</small>
+                                          </div>
+                                          <Badge 
+                                            bg={katanaUrls.length > 0 ? "info" : "secondary"}
+                                            className="ms-2"
+                                            style={{ fontSize: '0.8em' }}
+                                          >
+                                            {katanaUrls.length} URLs
+                                          </Badge>
+                                        </div>
+                                      </Accordion.Header>
+                                      <Accordion.Body>
+                                        {katanaUrls.length > 0 ? (
+                                          <div 
+                                            className="bg-dark p-3 rounded font-monospace" 
+                                            style={{ 
+                                              maxHeight: '300px', 
+                                              overflowY: 'auto',
+                                              fontSize: '0.85em'
+                                            }}
+                                          >
+                                            {katanaUrls.map((crawledUrl, index) => (
+                                              <div key={index} className="mb-2 d-flex align-items-center">
+                                                <span className="me-2">•</span>
+                                                <span style={{ wordBreak: 'break-all' }}>
+                                                  <a 
+                                                    href={crawledUrl} 
+                                                    target="_blank" 
+                                                    rel="noopener noreferrer" 
+                                                    className="text-info text-decoration-none"
+                                                  >
+                                                    {crawledUrl}
+                                                  </a>
+                                                </span>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        ) : (
+                                          <div className="text-muted text-center py-3">
+                                            No URLs were discovered during crawling
+                                          </div>
+                                        )}
+                                      </Accordion.Body>
+                                    </Accordion.Item>
+                                  </Accordion>
+                                </div>
+                              </div>
+
+                              <div className="mt-4">
+                                <h6 className="text-danger mb-3">Discovered Endpoints</h6>
+                                <div className="ms-3">
+                                  <Accordion data-bs-theme="dark">
+                                    <Accordion.Item eventKey="0">
+                                      <Accordion.Header>
+                                        <div className="d-flex align-items-center justify-content-between w-100">
+                                          <div>
+                                            <span className="text-white">
+                                              Ffuf Results
+                                            </span>
+                                            <br/>
+                                            <small className="text-muted">Endpoints discovered through fuzzing</small>
+                                          </div>
+                                          <Badge 
+                                            bg={ffufEndpoints.length > 0 ? "dark" : "secondary"}
+                                            className="ms-2 text-white"
+                                            style={{ fontSize: '0.8em' }}
+                                          >
+                                            {ffufEndpoints.length} Endpoints
+                                          </Badge>
+                                        </div>
+                                      </Accordion.Header>
+                                      <Accordion.Body>
+                                        {ffufEndpoints.length > 0 ? (
+                                          <div 
+                                            className="bg-dark p-3 rounded font-monospace" 
+                                            style={{ 
+                                              maxHeight: '300px', 
+                                              overflowY: 'auto',
+                                              fontSize: '0.85em'
+                                            }}
+                                          >
+                                            {ffufEndpoints.map((endpoint, index) => (
+                                              <div key={index} className="mb-2 d-flex align-items-center">
+                                                <Badge 
+                                                  bg={getStatusCodeColor(endpoint.status).bg}
+                                                  className={`me-2 text-${getStatusCodeColor(endpoint.status).text}`}
+                                                  style={{ fontSize: '0.8em', minWidth: '3em' }}
+                                                >
+                                                  {endpoint.status}
+                                                </Badge>
+                                                <span style={{ wordBreak: 'break-all' }}>
+                                                  <a 
+                                                    href={`${url.url}/${endpoint.path}`} 
+                                                    target="_blank" 
+                                                    rel="noopener noreferrer" 
+                                                    className="text-info text-decoration-none"
+                                                  >
+                                                    /{endpoint.path}
+                                                  </a>
+                                                  <span className="ms-2 text-muted">
+                                                    <small>
+                                                      ({endpoint.size} bytes, {endpoint.words} words, {endpoint.lines} lines)
+                                                    </small>
+                                                  </span>
+                                                </span>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        ) : (
+                                          <div className="text-muted text-center py-3">
+                                            No endpoints were discovered during fuzzing
+                                          </div>
+                                        )}
+                                      </Accordion.Body>
+                                    </Accordion.Item>
+                                  </Accordion>
+                                </div>
+                              </div>
+
+                              {sslIssues.length > 0 && (
+                                <div className="mt-4">
+                                  <h6 className="text-danger mb-3">SSL/TLS Issues</h6>
+                                  <div className="ms-3">
+                                    {sslIssues.map((issue, index) => (
+                                      <Badge key={index} bg="danger" className="me-1 mb-1">
+                                        {issue}
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </Accordion.Body>
+                          </Accordion.Item>
+                        </Accordion>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </Tab>
         </Tabs>
       </Modal.Body>

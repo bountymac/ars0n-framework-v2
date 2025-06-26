@@ -57,4 +57,71 @@ const monitorMetaDataScanStatus = async (
   }
 };
 
+const monitorCompanyMetaDataScanStatus = async (
+  activeTarget,
+  ipPortScanId,
+  setCompanyMetaDataScans,
+  setMostRecentCompanyMetaDataScan,
+  setIsCompanyMetaDataScanning,
+  setMostRecentCompanyMetaDataScanStatus
+) => {
+  if (!activeTarget || !ipPortScanId) return;
+
+  try {
+    const response = await fetch(
+      `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/ip-port-scan/${ipPortScanId}/metadata-scans`
+    );
+
+    if (!response.ok) {
+      throw new Error('Failed to get Company metadata scans');
+    }
+
+    const scans = await response.json();
+    setCompanyMetaDataScans(scans);
+
+    if (scans && scans.length > 0) {
+      const mostRecentScan = scans[0];
+      setMostRecentCompanyMetaDataScan(mostRecentScan);
+      setMostRecentCompanyMetaDataScanStatus(mostRecentScan.status);
+
+      if (mostRecentScan.status === 'pending' || mostRecentScan.status === 'running') {
+        setTimeout(() => {
+          monitorCompanyMetaDataScanStatus(
+            activeTarget,
+            ipPortScanId,
+            setCompanyMetaDataScans,
+            setMostRecentCompanyMetaDataScan,
+            setIsCompanyMetaDataScanning,
+            setMostRecentCompanyMetaDataScanStatus
+          );
+        }, 5000);
+      } else {
+        setIsCompanyMetaDataScanning(false);
+        // Fetch updated metadata results when scan completes
+        try {
+          const metadataResponse = await fetch(
+            `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/ip-port-scan/${ipPortScanId}/metadata-results`
+          );
+          if (!metadataResponse.ok) {
+            throw new Error('Failed to fetch metadata results');
+          }
+          const data = await metadataResponse.json();
+          window.dispatchEvent(new CustomEvent('companyMetadataScanComplete', { 
+            detail: { 
+              ipPortScanId: ipPortScanId,
+              metadata: data 
+            } 
+          }));
+        } catch (error) {
+          console.error('Error fetching metadata results:', error);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error monitoring Company metadata scan status:', error);
+    setIsCompanyMetaDataScanning(false);
+  }
+};
+
+export { monitorCompanyMetaDataScanStatus };
 export default monitorMetaDataScanStatus; 

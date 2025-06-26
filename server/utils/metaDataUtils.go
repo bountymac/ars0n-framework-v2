@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -94,6 +95,21 @@ func SanitizeResponse(input []byte) string {
 	}, str)
 
 	return str
+}
+
+func extractTitle(htmlContent string) string {
+	// Simple regex to extract title from HTML
+	titleRegex := regexp.MustCompile(`<title[^>]*>([^<]*)</title>`)
+	matches := titleRegex.FindStringSubmatch(htmlContent)
+	if len(matches) > 1 {
+		title := strings.TrimSpace(matches[1])
+		// Truncate title if too long
+		if len(title) > 255 {
+			title = title[:255]
+		}
+		return title
+	}
+	return ""
 }
 
 func RunMetaDataScan(w http.ResponseWriter, r *http.Request) {
@@ -609,16 +625,25 @@ func ExecuteAndParseNucleiTechScan(urls []string, scopeTargetID string) error {
 		}
 		log.Printf("[DEBUG] Marshaled headers JSON (length: %d): %s", len(headersJSON), string(headersJSON))
 
-		// Store response data in database
+		// Store response data in database using UPSERT
 		_, err = dbPool.Exec(context.Background(),
-			`UPDATE target_urls 
-			 SET http_response = $1,
-			     http_response_headers = $2::jsonb
-			 WHERE url = $3 AND scope_target_id = $4`,
-			sanitizedBody,
-			string(headersJSON),
+			`INSERT INTO target_urls (url, scope_target_id, status_code, title, content_length, http_response, http_response_headers, created_at)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, NOW())
+			 ON CONFLICT (url, scope_target_id)
+			 DO UPDATE SET 
+			     status_code = EXCLUDED.status_code,
+			     title = EXCLUDED.title,
+			     content_length = EXCLUDED.content_length,
+			     http_response = EXCLUDED.http_response,
+			     http_response_headers = EXCLUDED.http_response_headers,
+			     updated_at = NOW()`,
 			urlStr,
-			scopeTargetID)
+			scopeTargetID,
+			resp.StatusCode,
+			extractTitle(sanitizedBody),
+			len(body),
+			sanitizedBody,
+			string(headersJSON))
 		if err != nil {
 			log.Printf("[ERROR] Failed to store response data for URL %s: %v", urlStr, err)
 			continue
@@ -733,19 +758,24 @@ func ExecuteAndParseNucleiTechScan(urls []string, scopeTargetID string) error {
 			continue
 		}
 
-		// Update database with findings and DNS records
+		// Update database with findings and DNS records using UPSERT
 		_, err = dbPool.Exec(context.Background(),
-			`UPDATE target_urls 
-			 SET findings_json = $1::jsonb,
-			     dns_a_records = $2,
-			     dns_aaaa_records = $3,
-			     dns_cname_records = $4,
-			     dns_mx_records = $5,
-			     dns_txt_records = $6,
-			     dns_ns_records = $7,
-			     dns_ptr_records = $8,
-			     dns_srv_records = $9
-			 WHERE url = $10 AND scope_target_id = $11`,
+			`INSERT INTO target_urls (url, scope_target_id, findings_json, dns_a_records, dns_aaaa_records, dns_cname_records, dns_mx_records, dns_txt_records, dns_ns_records, dns_ptr_records, dns_srv_records, created_at)
+			 VALUES ($1, $2, $3::jsonb, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+			 ON CONFLICT (url, scope_target_id)
+			 DO UPDATE SET 
+			     findings_json = EXCLUDED.findings_json,
+			     dns_a_records = EXCLUDED.dns_a_records,
+			     dns_aaaa_records = EXCLUDED.dns_aaaa_records,
+			     dns_cname_records = EXCLUDED.dns_cname_records,
+			     dns_mx_records = EXCLUDED.dns_mx_records,
+			     dns_txt_records = EXCLUDED.dns_txt_records,
+			     dns_ns_records = EXCLUDED.dns_ns_records,
+			     dns_ptr_records = EXCLUDED.dns_ptr_records,
+			     dns_srv_records = EXCLUDED.dns_srv_records,
+			     updated_at = NOW()`,
+			urlStr,
+			scopeTargetID,
 			findingsJSON,
 			dnsResults.ARecords,
 			dnsResults.AAAARecords,
@@ -754,9 +784,7 @@ func ExecuteAndParseNucleiTechScan(urls []string, scopeTargetID string) error {
 			dnsResults.TXTRecords,
 			dnsResults.NSRecords,
 			dnsResults.PTRRecords,
-			dnsResults.SRVRecords,
-			urlStr,
-			scopeTargetID)
+			dnsResults.SRVRecords)
 		if err != nil {
 			log.Printf("[ERROR] Failed to update findings and DNS records for URL %s: %v", urlStr, err)
 			continue
@@ -1199,4 +1227,479 @@ func ExecuteFfufScan(url string, scopeTargetID string) error {
 		url, time.Since(startTime), len(endpoints))
 
 	return nil
+}
+
+func RunCompanyMetaDataScan(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		ScopeTargetID string `json:"scope_target_id" binding:"required"`
+		IPPortScanID  string `json:"ip_port_scan_id" binding:"required"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || payload.ScopeTargetID == "" || payload.IPPortScanID == "" {
+		http.Error(w, "Invalid request body. `scope_target_id` and `ip_port_scan_id` are required.", http.StatusBadRequest)
+		return
+	}
+
+	scanID := uuid.New().String()
+
+	// Create scan record in company_metadata_scans table
+	_, err := dbPool.Exec(context.Background(),
+		`INSERT INTO company_metadata_scans (scan_id, scope_target_id, ip_port_scan_id, status, created_at) 
+		 VALUES ($1, $2, $3, $4, NOW())`,
+		scanID, payload.ScopeTargetID, payload.IPPortScanID, "pending")
+	if err != nil {
+		log.Printf("[ERROR] Failed to create Company metadata scan record: %v", err)
+		http.Error(w, "Failed to create scan record.", http.StatusInternalServerError)
+		return
+	}
+
+	go ExecuteAndParseCompanyMetaDataScan(scanID, payload.ScopeTargetID, payload.IPPortScanID)
+
+	w.WriteHeader(http.StatusAccepted)
+	json.NewEncoder(w).Encode(map[string]string{"scan_id": scanID})
+}
+
+func ExecuteAndParseCompanyMetaDataScan(scanID, scopeTargetID, ipPortScanID string) {
+	log.Printf("[INFO] Starting Company metadata scan for IP/Port scan ID %s (scan ID: %s)", ipPortScanID, scanID)
+	startTime := time.Now()
+
+	// Update scan status to running
+	_, err := dbPool.Exec(context.Background(),
+		`UPDATE company_metadata_scans SET status = 'running', updated_at = NOW() WHERE scan_id = $1`,
+		scanID)
+	if err != nil {
+		log.Printf("[ERROR] Failed to update scan status to running: %v", err)
+		return
+	}
+
+	// Get live web servers from IP/Port scan
+	var liveWebServers []string
+	rows, err := dbPool.Query(context.Background(), `
+		SELECT url 
+		FROM live_web_servers 
+		WHERE scan_id = $1 
+		ORDER BY url`, ipPortScanID)
+	if err != nil {
+		log.Printf("[ERROR] Failed to get live web servers: %v", err)
+		UpdateCompanyMetaDataScanStatus(scanID, "error", fmt.Sprintf("Failed to get live web servers: %v", err), time.Since(startTime).String())
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var url string
+		if err := rows.Scan(&url); err != nil {
+			log.Printf("[WARN] Failed to scan web server URL: %v", err)
+			continue
+		}
+		liveWebServers = append(liveWebServers, url)
+	}
+
+	if len(liveWebServers) == 0 {
+		log.Printf("[ERROR] No live web servers found for IP/Port scan ID: %s", ipPortScanID)
+		UpdateCompanyMetaDataScanStatus(scanID, "error", "No live web servers found", time.Since(startTime).String())
+		return
+	}
+
+	log.Printf("[INFO] Found %d live web servers to scan for metadata", len(liveWebServers))
+
+	// Run Katana scan first
+	log.Printf("[INFO] Starting Katana scan for Company metadata - Total URLs to scan: %d", len(liveWebServers))
+	katanaResults := make(map[string][]string)
+	completedKatana := 0
+	for _, url := range liveWebServers {
+		completedKatana++
+		log.Printf("[INFO] Running Katana scan for URL: %s (%d/%d)", url, completedKatana, len(liveWebServers))
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+
+		katanaCmd := exec.CommandContext(ctx,
+			"docker", "exec", "ars0n-framework-v2-katana-1",
+			"katana",
+			"-u", url,
+			"-jc",
+			"-d", "2",
+			"-j",
+			"-v",
+			"-timeout", "30",
+			"-c", "15",
+			"p", "15",
+		)
+
+		katanaCmd.WaitDelay = 30 * time.Second
+
+		var stdout, stderr bytes.Buffer
+		katanaCmd.Stdout = &stdout
+		katanaCmd.Stderr = &stderr
+
+		log.Printf("[DEBUG] Executing Katana command: %s", katanaCmd.String())
+		if err := katanaCmd.Run(); err != nil {
+			if ctx.Err() == context.DeadlineExceeded {
+				log.Printf("[WARN] Katana scan timed out for URL %s (%d/%d)", url, completedKatana, len(liveWebServers))
+				continue
+			}
+			log.Printf("[WARN] Katana scan failed for URL %s (%d/%d): %v\nStderr: %s", url, completedKatana, len(liveWebServers), err, stderr.String())
+			continue
+		}
+		log.Printf("[INFO] Completed Katana scan for URL: %s (%d/%d)", url, completedKatana, len(liveWebServers))
+
+		var crawledURLs []string
+		seenURLs := make(map[string]bool)
+
+		for _, line := range strings.Split(stdout.String(), "\n") {
+			if line == "" {
+				continue
+			}
+
+			var result struct {
+				Timestamp string `json:"timestamp"`
+				Request   struct {
+					Method   string `json:"method"`
+					Endpoint string `json:"endpoint"`
+					Tag      string `json:"tag"`
+					Source   string `json:"source"`
+					Raw      string `json:"raw"`
+				} `json:"request"`
+				Response struct {
+					StatusCode    int                    `json:"status_code"`
+					Headers       map[string]interface{} `json:"headers"`
+					Body          string                 `json:"body"`
+					ContentLength int                    `json:"content_length"`
+				} `json:"response"`
+			}
+
+			if err := json.Unmarshal([]byte(line), &result); err != nil {
+				log.Printf("[WARN] Failed to parse Katana output line: %v", err)
+				continue
+			}
+
+			// Add unique URLs from various sources
+			addUniqueURL := func(urlStr string) {
+				if urlStr != "" && !seenURLs[urlStr] {
+					seenURLs[urlStr] = true
+					crawledURLs = append(crawledURLs, urlStr)
+				}
+			}
+
+			// Process endpoint URL
+			addUniqueURL(result.Request.Endpoint)
+
+			// Process source URL
+			addUniqueURL(result.Request.Source)
+
+			// Look for URLs in response headers
+			for _, headerVals := range result.Response.Headers {
+				switch v := headerVals.(type) {
+				case string:
+					if strings.Contains(v, "http://") || strings.Contains(v, "https://") {
+						addUniqueURL(v)
+					}
+				case []interface{}:
+					for _, val := range v {
+						if str, ok := val.(string); ok {
+							if strings.Contains(str, "http://") || strings.Contains(str, "https://") {
+								addUniqueURL(str)
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// Remove any invalid URLs and normalize the rest
+		var validURLs []string
+		for _, urlStr := range crawledURLs {
+			if strings.HasPrefix(urlStr, "http://") || strings.HasPrefix(urlStr, "https://") {
+				validURLs = append(validURLs, NormalizeURL(urlStr))
+			}
+		}
+		crawledURLs = validURLs
+
+		log.Printf("[INFO] Katana found %d unique URLs for %s", len(crawledURLs), url)
+		if len(crawledURLs) > 0 {
+			log.Printf("[DEBUG] First 5 URLs found by Katana for %s:", url)
+			for i, crawledURL := range crawledURLs {
+				if i >= 5 {
+					break
+				}
+				log.Printf("[DEBUG]   - %s", crawledURL)
+			}
+			if len(crawledURLs) > 5 {
+				log.Printf("[DEBUG]   ... and %d more URLs", len(crawledURLs)-5)
+			}
+		}
+		katanaResults[url] = crawledURLs
+	}
+
+	// Run Ffuf scans for each URL
+	log.Printf("[INFO] Starting Ffuf scans for Company metadata - Total URLs to scan: %d", len(liveWebServers))
+	completedFfuf := 0
+	for _, url := range liveWebServers {
+		completedFfuf++
+		log.Printf("[INFO] Running Ffuf scan for URL: %s (%d/%d)", url, completedFfuf, len(liveWebServers))
+		if err := ExecuteFfufScan(url, scopeTargetID); err != nil {
+			log.Printf("[WARN] Ffuf scan failed for URL %s (%d/%d): %v", url, completedFfuf, len(liveWebServers), err)
+			continue
+		}
+		log.Printf("[INFO] Completed Ffuf scan for URL: %s (%d/%d)", url, completedFfuf, len(liveWebServers))
+	}
+
+	// Execute Nuclei tech scan using the same logic as regular metadata scan
+	err = ExecuteAndParseNucleiTechScan(liveWebServers, scopeTargetID)
+	if err != nil {
+		log.Printf("[ERROR] Failed to execute Nuclei tech scan: %v", err)
+		UpdateCompanyMetaDataScanStatus(scanID, "error", fmt.Sprintf("Failed to execute Nuclei tech scan: %v", err), time.Since(startTime).String())
+		return
+	}
+
+	// Store Katana results in the database
+	log.Printf("[INFO] Storing Katana results for %d URLs", len(katanaResults))
+	for url, crawledURLs := range katanaResults {
+		if len(crawledURLs) > 0 {
+			// Convert crawled URLs to JSON
+			katanaJSON, err := json.Marshal(crawledURLs)
+			if err != nil {
+				log.Printf("[ERROR] Failed to marshal Katana results for URL %s: %v", url, err)
+				continue
+			}
+
+			// Update the target_urls table with Katana results
+			_, err = dbPool.Exec(context.Background(),
+				`UPDATE target_urls 
+				 SET katana_results = $1::jsonb, updated_at = NOW()
+				 WHERE url = $2 AND scope_target_id = $3`,
+				string(katanaJSON), url, scopeTargetID)
+			if err != nil {
+				log.Printf("[ERROR] Failed to store Katana results for URL %s: %v", url, err)
+				continue
+			}
+			log.Printf("[INFO] Successfully stored %d Katana results for URL %s", len(crawledURLs), url)
+		}
+	}
+
+	UpdateCompanyMetaDataScanStatus(scanID, "success", "Company metadata scan completed successfully", time.Since(startTime).String())
+	log.Printf("[INFO] Company metadata scan completed successfully for scan ID: %s", scanID)
+}
+
+func UpdateCompanyMetaDataScanStatus(scanID, status, errorMsg, execTime string) {
+	_, err := dbPool.Exec(context.Background(),
+		`UPDATE company_metadata_scans 
+		 SET status = $1, error_message = $2, execution_time = $3, updated_at = NOW() 
+		 WHERE scan_id = $4`,
+		status, errorMsg, execTime, scanID)
+	if err != nil {
+		log.Printf("[ERROR] Failed to update Company metadata scan status: %v", err)
+	}
+}
+
+func GetCompanyMetaDataScansForIPPortScan(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	ipPortScanID := vars["scan_id"]
+	if ipPortScanID == "" {
+		http.Error(w, "IP/Port scan ID is required", http.StatusBadRequest)
+		return
+	}
+
+	rows, err := dbPool.Query(context.Background(), `
+		SELECT scan_id, scope_target_id, ip_port_scan_id, status, error_message, execution_time, created_at, updated_at
+		FROM company_metadata_scans 
+		WHERE ip_port_scan_id = $1 
+		ORDER BY created_at DESC`, ipPortScanID)
+	if err != nil {
+		log.Printf("[ERROR] Failed to get Company metadata scans: %v", err)
+		http.Error(w, "Failed to get Company metadata scans", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var scans []map[string]interface{}
+	for rows.Next() {
+		var scan struct {
+			ScanID        string         `json:"scan_id"`
+			ScopeTargetID string         `json:"scope_target_id"`
+			IPPortScanID  string         `json:"ip_port_scan_id"`
+			Status        string         `json:"status"`
+			ErrorMessage  sql.NullString `json:"error_message"`
+			ExecutionTime sql.NullString `json:"execution_time"`
+			CreatedAt     time.Time      `json:"created_at"`
+			UpdatedAt     time.Time      `json:"updated_at"`
+		}
+
+		err := rows.Scan(&scan.ScanID, &scan.ScopeTargetID, &scan.IPPortScanID, &scan.Status,
+			&scan.ErrorMessage, &scan.ExecutionTime, &scan.CreatedAt, &scan.UpdatedAt)
+		if err != nil {
+			log.Printf("[ERROR] Failed to scan Company metadata scan row: %v", err)
+			continue
+		}
+
+		scanMap := map[string]interface{}{
+			"scan_id":         scan.ScanID,
+			"scope_target_id": scan.ScopeTargetID,
+			"ip_port_scan_id": scan.IPPortScanID,
+			"status":          scan.Status,
+			"error_message":   nullStringToString(scan.ErrorMessage),
+			"execution_time":  nullStringToString(scan.ExecutionTime),
+			"created_at":      scan.CreatedAt.Format(time.RFC3339),
+			"updated_at":      scan.UpdatedAt.Format(time.RFC3339),
+		}
+		scans = append(scans, scanMap)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(scans)
+}
+
+func GetCompanyMetaDataResults(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	ipPortScanID := vars["scan_id"]
+	if ipPortScanID == "" {
+		http.Error(w, "IP/Port scan ID is required", http.StatusBadRequest)
+		return
+	}
+
+	// Get the scope target ID from the IP/Port scan
+	var scopeTargetID string
+	err := dbPool.QueryRow(context.Background(),
+		`SELECT scope_target_id FROM ip_port_scans WHERE scan_id = $1`, ipPortScanID).Scan(&scopeTargetID)
+	if err != nil {
+		log.Printf("[ERROR] Failed to get scope target ID: %v", err)
+		http.Error(w, "Failed to get scope target ID", http.StatusInternalServerError)
+		return
+	}
+
+	// Get all target URLs for this scope target that were created during/after the Company metadata scan
+	// This will include the metadata results from the live web servers
+	query := `
+		SELECT 
+			id, 
+			url, 
+			scope_target_id,
+			status_code,
+			title,
+			web_server,
+			technologies,
+			content_length, 
+			findings_json, 
+			katana_results, 
+			ffuf_results,
+			http_response,
+			http_response_headers,
+			has_deprecated_tls,
+			has_expired_ssl,
+			has_mismatched_ssl,
+			has_revoked_ssl,
+			has_self_signed_ssl,
+			has_untrusted_root_ssl,
+			dns_a_records,
+			dns_aaaa_records,
+			dns_cname_records,
+			dns_mx_records,
+			dns_txt_records,
+			dns_ns_records,
+			dns_ptr_records,
+			dns_srv_records,
+			roi_score,
+			created_at,
+			screenshot
+		FROM target_urls 
+		WHERE scope_target_id = $1 
+		AND url IN (
+			SELECT url FROM live_web_servers WHERE scan_id = $2
+		)
+		ORDER BY roi_score DESC, created_at DESC`
+
+	rows, err := dbPool.Query(context.Background(), query, scopeTargetID, ipPortScanID)
+	if err != nil {
+		log.Printf("[ERROR] Failed to get Company metadata results: %v", err)
+		http.Error(w, "Failed to get Company metadata results", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var targetURLs []map[string]interface{}
+	for rows.Next() {
+		var (
+			id                  string
+			url                 string
+			scopeTargetID       string
+			statusCode          int
+			title               sql.NullString
+			webServer           sql.NullString
+			technologies        []string
+			contentLength       int
+			findingsJSON        sql.NullString
+			katanaResults       sql.NullString
+			ffufResults         sql.NullString
+			httpResponse        sql.NullString
+			httpResponseHeaders sql.NullString
+			hasDeprecatedTLS    bool
+			hasExpiredSSL       bool
+			hasMismatchedSSL    bool
+			hasRevokedSSL       bool
+			hasSelfSignedSSL    bool
+			hasUntrustedRootSSL bool
+			dnsARecords         []string
+			dnsAAAARecords      []string
+			dnsCNAMERecords     []string
+			dnsMXRecords        []string
+			dnsTXTRecords       []string
+			dnsNSRecords        []string
+			dnsPTRRecords       []string
+			dnsSRVRecords       []string
+			roiScore            float64
+			createdAt           time.Time
+			screenshot          sql.NullString
+		)
+
+		err := rows.Scan(
+			&id, &url, &scopeTargetID, &statusCode, &title, &webServer, &technologies,
+			&contentLength, &findingsJSON, &katanaResults, &ffufResults,
+			&httpResponse, &httpResponseHeaders, &hasDeprecatedTLS, &hasExpiredSSL,
+			&hasMismatchedSSL, &hasRevokedSSL, &hasSelfSignedSSL, &hasUntrustedRootSSL,
+			&dnsARecords, &dnsAAAARecords, &dnsCNAMERecords, &dnsMXRecords,
+			&dnsTXTRecords, &dnsNSRecords, &dnsPTRRecords, &dnsSRVRecords,
+			&roiScore, &createdAt, &screenshot,
+		)
+		if err != nil {
+			log.Printf("[ERROR] Failed to scan Company metadata result row: %v", err)
+			continue
+		}
+
+		targetURL := map[string]interface{}{
+			"id":                     id,
+			"url":                    url,
+			"scope_target_id":        scopeTargetID,
+			"status_code":            statusCode,
+			"title":                  nullStringToString(title),
+			"web_server":             nullStringToString(webServer),
+			"technologies":           technologies,
+			"content_length":         contentLength,
+			"findings_json":          nullStringToString(findingsJSON),
+			"katana_results":         nullStringToString(katanaResults),
+			"ffuf_results":           nullStringToString(ffufResults),
+			"http_response":          nullStringToString(httpResponse),
+			"http_response_headers":  nullStringToString(httpResponseHeaders),
+			"has_deprecated_tls":     hasDeprecatedTLS,
+			"has_expired_ssl":        hasExpiredSSL,
+			"has_mismatched_ssl":     hasMismatchedSSL,
+			"has_revoked_ssl":        hasRevokedSSL,
+			"has_self_signed_ssl":    hasSelfSignedSSL,
+			"has_untrusted_root_ssl": hasUntrustedRootSSL,
+			"dns_a_records":          dnsARecords,
+			"dns_aaaa_records":       dnsAAAARecords,
+			"dns_cname_records":      dnsCNAMERecords,
+			"dns_mx_records":         dnsMXRecords,
+			"dns_txt_records":        dnsTXTRecords,
+			"dns_ns_records":         dnsNSRecords,
+			"dns_ptr_records":        dnsPTRRecords,
+			"dns_srv_records":        dnsSRVRecords,
+			"roi_score":              roiScore,
+			"created_at":             createdAt.Format(time.RFC3339),
+			"screenshot":             nullStringToString(screenshot),
+		}
+
+		targetURLs = append(targetURLs, targetURL)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(targetURLs)
 }
