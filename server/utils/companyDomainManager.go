@@ -677,3 +677,129 @@ func clearJSONScanResults(scopeTargetID, tableName string) (int64, error) {
 	}
 	return count, nil
 }
+
+// Live Web Server domain functions
+func GetLiveWebServerDomainsForTool(scopeTargetID string) ([]string, error) {
+	// Get all IP port scans for this scope target
+	rows, err := dbPool.Query(context.Background(),
+		`SELECT DISTINCT lws.hostname, lws.url 
+		 FROM live_web_servers lws
+		 JOIN ip_port_scans ips ON lws.scan_id = ips.scan_id
+		 WHERE ips.scope_target_id = $1 AND ips.status = 'success' 
+		 AND (lws.hostname IS NOT NULL AND lws.hostname != '')
+		 ORDER BY lws.hostname`,
+		scopeTargetID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	domainSet := make(map[string]bool)
+	var domains []string
+
+	for rows.Next() {
+		var hostname, url string
+		if err := rows.Scan(&hostname, &url); err == nil {
+			// Add hostname if it's a valid domain (not an IP)
+			if hostname != "" && !isIPv4Address(hostname) {
+				if !domainSet[hostname] {
+					domainSet[hostname] = true
+					domains = append(domains, hostname)
+				}
+			}
+
+			// Extract domain from URL
+			if url != "" {
+				if domain := extractDomainFromURL(url); domain != "" && !isIPv4Address(domain) {
+					if !domainSet[domain] {
+						domainSet[domain] = true
+						domains = append(domains, domain)
+					}
+				}
+			}
+		}
+	}
+	return domains, nil
+}
+
+func DeleteLiveWebServerDomainFromTool(scopeTargetID, domainToDelete string) (bool, error) {
+	log.Printf("[DOMAIN-MANAGER] [DEBUG] DeleteLiveWebServerDomainFromTool called: domainToDelete='%s'", domainToDelete)
+
+	// Begin a transaction to prevent race conditions
+	tx, err := dbPool.Begin(context.Background())
+	if err != nil {
+		log.Printf("[DOMAIN-MANAGER] [ERROR] Failed to begin transaction for Live Web Server deletion: %v", err)
+		return false, err
+	}
+	defer tx.Rollback(context.Background())
+
+	// Delete live web servers that have this domain as hostname or in URL
+	result, err := tx.Exec(context.Background(),
+		`DELETE FROM live_web_servers 
+		 WHERE scan_id IN (
+			 SELECT scan_id FROM ip_port_scans WHERE scope_target_id = $1
+		 ) AND (
+			 hostname = $2 OR 
+			 url LIKE '%' || $2 || '%'
+		 )`,
+		scopeTargetID, domainToDelete)
+
+	if err != nil {
+		log.Printf("[DOMAIN-MANAGER] [ERROR] Failed to delete Live Web Server domain: %v", err)
+		return false, err
+	}
+
+	rowsAffected := result.RowsAffected()
+
+	if rowsAffected == 0 {
+		log.Printf("[DOMAIN-MANAGER] [WARNING] Live Web Server domain '%s' not found", domainToDelete)
+		return false, nil
+	}
+
+	// Commit the transaction
+	if err := tx.Commit(context.Background()); err != nil {
+		log.Printf("[DOMAIN-MANAGER] [ERROR] Failed to commit Live Web Server transaction: %v", err)
+		return false, err
+	}
+
+	log.Printf("[DOMAIN-MANAGER] [INFO] Successfully deleted Live Web Server domain '%s' (%d records)", domainToDelete, rowsAffected)
+	return true, nil
+}
+
+func DeleteAllLiveWebServerDomainsFromTool(scopeTargetID string) (int64, error) {
+	result, err := dbPool.Exec(context.Background(),
+		`DELETE FROM live_web_servers 
+		 WHERE scan_id IN (
+			 SELECT scan_id FROM ip_port_scans WHERE scope_target_id = $1
+		 )`,
+		scopeTargetID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+// Helper functions for live web server domain extraction
+func isIPv4Address(s string) bool {
+	return strings.Contains(s, ".") &&
+		len(strings.Split(s, ".")) == 4 &&
+		!strings.Contains(s, " ")
+}
+
+func extractDomainFromURL(urlStr string) string {
+	if !strings.HasPrefix(urlStr, "http://") && !strings.HasPrefix(urlStr, "https://") {
+		urlStr = "http://" + urlStr
+	}
+
+	// Simple domain extraction from URL
+	parts := strings.Split(urlStr, "/")
+	if len(parts) >= 3 {
+		hostPart := parts[2]
+		// Remove port if present
+		if colonIndex := strings.Index(hostPart, ":"); colonIndex != -1 {
+			hostPart = hostPart[:colonIndex]
+		}
+		return hostPart
+	}
+	return ""
+}

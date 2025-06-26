@@ -3234,6 +3234,185 @@ function App() {
             {activeTarget.type === 'Company' && (
               <div className="mb-4">
                 <h3 className="text-danger mb-3">Company</h3>
+                <h4 className="text-secondary mb-3 fs-5">ASN (On-Prem) Network Ranges</h4>
+                <Row className="mb-4">
+                  {[
+                    {
+                      name: 'Amass Intel',
+                      link: 'https://github.com/OWASP/Amass',
+                      description: 'Intelligence gathering and ASN enumeration for comprehensive network range discovery.',
+                      isActive: true,
+                      status: mostRecentAmassIntelScanStatus,
+                      isScanning: isAmassIntelScanning,
+                      onScan: startAmassIntelScan,
+                      onResults: handleOpenAmassIntelResultsModal,
+                      onHistory: handleOpenAmassIntelHistoryModal,
+                      resultCount: (() => {
+                        // If no scan exists, show 0 immediately
+                        if (!mostRecentAmassIntelScan) return 0;
+                        // If scan exists but state not yet populated, show 0 while fetching
+                        return amassIntelNetworkRanges.length;
+                      })(),
+                      resultLabel: 'Network Ranges'
+                    },
+                    {
+                      name: 'Metabigor',
+                      link: 'https://github.com/j3ssie/metabigor',
+                      description: 'OSINT tool for network intelligence gathering including ASN and IP range discovery.',
+                      isActive: true,
+                      status: mostRecentMetabigorCompanyScanStatus,
+                      isScanning: isMetabigorCompanyScanning,
+                      onScan: startMetabigorCompanyScan,
+                      onResults: handleOpenMetabigorCompanyResultsModal,
+                      onHistory: handleOpenMetabigorCompanyHistoryModal,
+                      resultCount: (() => {
+                        // If no scan exists, show 0 immediately  
+                        if (!mostRecentMetabigorCompanyScan) return 0;
+                        // If scan exists but state not yet populated, show 0 while fetching
+                        return metabigorNetworkRanges.length;
+                      })(),
+                      resultLabel: 'Network Ranges'
+                    }
+                  ].map((tool, index) => (
+                    <Col md={6} key={index}>
+                      <Card className="shadow-sm h-100 text-center" style={{ minHeight: '250px' }}>
+                        <Card.Body className="d-flex flex-column">
+                          <Card.Title className="text-danger mb-3">
+                            <a href={tool.link} className="text-danger text-decoration-none">
+                              {tool.name}
+                            </a>
+                          </Card.Title>
+                          <Card.Text className="text-white small fst-italic">
+                            {tool.description}
+                          </Card.Text>
+                          <div className="mt-auto">
+                            <Card.Text className="text-white small mb-3">
+                              {tool.resultLabel}: {tool.resultCount || "0"}
+                            </Card.Text>
+                            <div className="d-flex justify-content-between gap-2">
+                              <Button 
+                                variant="outline-danger" 
+                                className="flex-fill" 
+                                onClick={tool.onHistory}
+                              >
+                                History
+                              </Button>
+                              <Button
+                                variant="outline-danger"
+                                className="flex-fill"
+                                onClick={tool.onScan}
+                                disabled={!tool.isActive || tool.disabled || tool.isScanning}
+                                title={tool.disabledMessage}
+                              >
+                                <div className="btn-content">
+                                  {tool.isScanning ? (
+                                    <Spinner animation="border" size="sm" />
+                                  ) : (
+                                    'Scan'
+                                  )}
+                                </div>
+                              </Button>
+                              <Button 
+                                variant="outline-danger" 
+                                className="flex-fill" 
+                                onClick={tool.onResults}
+                              >
+                                Results
+                              </Button>
+                            </div>
+                          </div>
+                        </Card.Body>
+                      </Card>
+                    </Col>
+                  ))}
+                </Row>
+                
+                <h4 className="text-secondary mb-3 fs-5">Discover Live Web Servers (On-Prem)</h4>
+                <Row className="mb-4">
+                  <Col>
+                    <Card className="shadow-sm h-100 text-center" style={{ minHeight: '200px' }}>
+                      <Card.Body className="d-flex flex-column">
+                        <Card.Title className="text-danger fs-4 mb-3">Discover Live Web Servers (On-Prem)</Card.Title>
+                        <Card.Text className="text-white small fst-italic mb-4">
+                          Process discovered network ranges to identify live IP addresses and perform port scanning to discover active web servers within the organization's infrastructure.
+                        </Card.Text>
+                        <div className="text-danger mb-4">
+                          <div className="row">
+                            <div className="col">
+                              <h3 className="mb-0">{consolidatedNetworkRangesCount}</h3>
+                              <small className="text-white-50">Network Ranges</small>
+                            </div>
+                            <div className="col">
+                              <h3 className="mb-0">{calculateEstimatedScanTime(consolidatedNetworkRanges)}</h3>
+                              <small className="text-white-50">Est. Scan Time</small>
+                            </div>
+                            <div className="col">
+                              <h3 className="mb-0">{mostRecentIPPortScan?.live_web_servers_found || 0}</h3>
+                              <small className="text-white-50">Live Web Servers</small>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="d-flex justify-content-between mt-auto gap-2">
+                          <Button 
+                            variant="outline-danger" 
+                            className="flex-fill" 
+                            onClick={handleTrimNetworkRanges}
+                          >
+                            Trim Network Ranges
+                          </Button>
+                          <Button 
+                            variant="outline-danger" 
+                            className="flex-fill" 
+                            onClick={handleConsolidateNetworkRanges}
+                            disabled={isConsolidatingNetworkRanges}
+                          >
+                            <div className="btn-content">
+                              {isConsolidatingNetworkRanges ? (
+                                <div className="spinner"></div>
+                              ) : 'Consolidate'}
+                            </div>
+                          </Button>
+                          <Button 
+                            variant="outline-danger" 
+                            className="flex-fill"
+                            onClick={handleDiscoverLiveIPs}
+                            disabled={isIPPortScanning}
+                          >
+                            <div className="btn-content">
+                              {isIPPortScanning ? (
+                                <div className="spinner"></div>
+                              ) : 'IP/Port Scan'}
+                            </div>
+                          </Button>
+                          <Button 
+                            variant="outline-danger" 
+                            className="flex-fill"
+                            onClick={handlePortScanning}
+                            disabled={isCompanyMetaDataScanning || 
+                                     mostRecentCompanyMetaDataScanStatus === "pending" || 
+                                     mostRecentCompanyMetaDataScanStatus === "running" ||
+                                     !mostRecentIPPortScan?.live_web_servers_found ||
+                                     mostRecentIPPortScan?.live_web_servers_found === 0}
+                          >
+                            <div className="btn-content">
+                              {isCompanyMetaDataScanning || mostRecentCompanyMetaDataScanStatus === "pending" || mostRecentCompanyMetaDataScanStatus === "running" ? (
+                                <div className="spinner"></div>
+                              ) : 'Gather Metadata'}
+                            </div>
+                          </Button>
+                          <Button 
+                            variant="outline-danger" 
+                            className="flex-fill"
+                            onClick={handleLiveWebServersResults}
+                            disabled={!mostRecentIPPortScan || !mostRecentIPPortScan.scan_id}
+                          >
+                            Results
+                          </Button>
+                        </div>
+                      </Card.Body>
+                    </Card>
+                  </Col>
+                </Row>
                 <h4 className="text-secondary mb-3 fs-5">Root Domain Discovery (No API Key)</h4>
                 <Row className="row-cols-3 g-3 mb-4">
                   {[
@@ -3618,186 +3797,6 @@ function App() {
                             disabled={consolidatedCompanyDomainsCount === 0}
                           >
                             Add Wildcard Target
-                          </Button>
-                        </div>
-                      </Card.Body>
-                    </Card>
-                  </Col>
-                </Row>
-                
-                <h4 className="text-secondary mb-3 fs-5">ASN (On-Prem) Network Ranges</h4>
-                <Row className="mb-4">
-                  {[
-                    {
-                      name: 'Amass Intel',
-                      link: 'https://github.com/OWASP/Amass',
-                      description: 'Intelligence gathering and ASN enumeration for comprehensive network range discovery.',
-                      isActive: true,
-                      status: mostRecentAmassIntelScanStatus,
-                      isScanning: isAmassIntelScanning,
-                      onScan: startAmassIntelScan,
-                      onResults: handleOpenAmassIntelResultsModal,
-                      onHistory: handleOpenAmassIntelHistoryModal,
-                      resultCount: (() => {
-                        // If no scan exists, show 0 immediately
-                        if (!mostRecentAmassIntelScan) return 0;
-                        // If scan exists but state not yet populated, show 0 while fetching
-                        return amassIntelNetworkRanges.length;
-                      })(),
-                      resultLabel: 'Network Ranges'
-                    },
-                    {
-                      name: 'Metabigor',
-                      link: 'https://github.com/j3ssie/metabigor',
-                      description: 'OSINT tool for network intelligence gathering including ASN and IP range discovery.',
-                      isActive: true,
-                      status: mostRecentMetabigorCompanyScanStatus,
-                      isScanning: isMetabigorCompanyScanning,
-                      onScan: startMetabigorCompanyScan,
-                      onResults: handleOpenMetabigorCompanyResultsModal,
-                      onHistory: handleOpenMetabigorCompanyHistoryModal,
-                      resultCount: (() => {
-                        // If no scan exists, show 0 immediately  
-                        if (!mostRecentMetabigorCompanyScan) return 0;
-                        // If scan exists but state not yet populated, show 0 while fetching
-                        return metabigorNetworkRanges.length;
-                      })(),
-                      resultLabel: 'Network Ranges'
-                    }
-                  ].map((tool, index) => (
-                    <Col md={6} key={index}>
-                      <Card className="shadow-sm h-100 text-center" style={{ minHeight: '250px' }}>
-                        <Card.Body className="d-flex flex-column">
-                          <Card.Title className="text-danger mb-3">
-                            <a href={tool.link} className="text-danger text-decoration-none">
-                              {tool.name}
-                            </a>
-                          </Card.Title>
-                          <Card.Text className="text-white small fst-italic">
-                            {tool.description}
-                          </Card.Text>
-                          <div className="mt-auto">
-                            <Card.Text className="text-white small mb-3">
-                              {tool.resultLabel}: {tool.resultCount || "0"}
-                            </Card.Text>
-                            <div className="d-flex justify-content-between gap-2">
-                              <Button 
-                                variant="outline-danger" 
-                                className="flex-fill" 
-                                onClick={tool.onHistory}
-                              >
-                                History
-                              </Button>
-                              <Button
-                                variant="outline-danger"
-                                className="flex-fill"
-                                onClick={tool.onScan}
-                                disabled={!tool.isActive || tool.disabled || tool.isScanning}
-                                title={tool.disabledMessage}
-                              >
-                                <div className="btn-content">
-                                  {tool.isScanning ? (
-                                    <Spinner animation="border" size="sm" />
-                                  ) : (
-                                    'Scan'
-                                  )}
-                                </div>
-                              </Button>
-                              <Button 
-                                variant="outline-danger" 
-                                className="flex-fill" 
-                                onClick={tool.onResults}
-                              >
-                                Results
-                              </Button>
-                            </div>
-                          </div>
-                        </Card.Body>
-                      </Card>
-                    </Col>
-                  ))}
-                </Row>
-                
-                <h4 className="text-secondary mb-3 fs-5">Discover Live Web Servers (On-Prem)</h4>
-                <Row className="mb-4">
-                  <Col>
-                    <Card className="shadow-sm h-100 text-center" style={{ minHeight: '200px' }}>
-                      <Card.Body className="d-flex flex-column">
-                        <Card.Title className="text-danger fs-4 mb-3">Discover Live Web Servers (On-Prem)</Card.Title>
-                        <Card.Text className="text-white small fst-italic mb-4">
-                          Process discovered network ranges to identify live IP addresses and perform port scanning to discover active web servers within the organization's infrastructure.
-                        </Card.Text>
-                        <div className="text-danger mb-4">
-                          <div className="row">
-                            <div className="col">
-                              <h3 className="mb-0">{consolidatedNetworkRangesCount}</h3>
-                              <small className="text-white-50">Network Ranges</small>
-                            </div>
-                            <div className="col">
-                              <h3 className="mb-0">{calculateEstimatedScanTime(consolidatedNetworkRanges)}</h3>
-                              <small className="text-white-50">Est. Scan Time</small>
-                            </div>
-                            <div className="col">
-                              <h3 className="mb-0">{mostRecentIPPortScan?.live_web_servers_found || 0}</h3>
-                              <small className="text-white-50">Live Web Servers</small>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="d-flex justify-content-between mt-auto gap-2">
-                          <Button 
-                            variant="outline-danger" 
-                            className="flex-fill" 
-                            onClick={handleTrimNetworkRanges}
-                          >
-                            Trim Network Ranges
-                          </Button>
-                          <Button 
-                            variant="outline-danger" 
-                            className="flex-fill" 
-                            onClick={handleConsolidateNetworkRanges}
-                            disabled={isConsolidatingNetworkRanges}
-                          >
-                            <div className="btn-content">
-                              {isConsolidatingNetworkRanges ? (
-                                <div className="spinner"></div>
-                              ) : 'Consolidate'}
-                            </div>
-                          </Button>
-                          <Button 
-                            variant="outline-danger" 
-                            className="flex-fill"
-                            onClick={handleDiscoverLiveIPs}
-                            disabled={isIPPortScanning}
-                          >
-                            <div className="btn-content">
-                              {isIPPortScanning ? (
-                                <div className="spinner"></div>
-                              ) : 'IP/Port Scan'}
-                            </div>
-                          </Button>
-                          <Button 
-                            variant="outline-danger" 
-                            className="flex-fill"
-                            onClick={handlePortScanning}
-                            disabled={isCompanyMetaDataScanning || 
-                                     mostRecentCompanyMetaDataScanStatus === "pending" || 
-                                     mostRecentCompanyMetaDataScanStatus === "running" ||
-                                     !mostRecentIPPortScan?.live_web_servers_found ||
-                                     mostRecentIPPortScan?.live_web_servers_found === 0}
-                          >
-                            <div className="btn-content">
-                              {isCompanyMetaDataScanning || mostRecentCompanyMetaDataScanStatus === "pending" || mostRecentCompanyMetaDataScanStatus === "running" ? (
-                                <div className="spinner"></div>
-                              ) : 'Gather Metadata'}
-                            </div>
-                          </Button>
-                          <Button 
-                            variant="outline-danger" 
-                            className="flex-fill"
-                            onClick={handleLiveWebServersResults}
-                            disabled={!mostRecentIPPortScan || !mostRecentIPPortScan.scan_id}
-                          >
-                            Results
                           </Button>
                         </div>
                       </Card.Body>

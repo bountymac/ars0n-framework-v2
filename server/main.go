@@ -1492,6 +1492,8 @@ func getCompanyDomainsByTool(w http.ResponseWriter, r *http.Request) {
 		domains, err = utils.GetGitHubReconDomainsForTool(scopeTargetID)
 	case "shodan_company":
 		domains, err = utils.GetShodanCompanyDomainsForTool(scopeTargetID)
+	case "live_web_servers":
+		domains, err = utils.GetLiveWebServerDomainsForTool(scopeTargetID)
 	default:
 		http.Error(w, "Invalid tool specified", http.StatusBadRequest)
 		return
@@ -1548,6 +1550,8 @@ func deleteCompanyDomainFromTool(w http.ResponseWriter, r *http.Request) {
 		success, err = utils.DeleteGitHubReconDomainFromTool(scopeTargetID, domain)
 	case "shodan_company":
 		success, err = utils.DeleteShodanCompanyDomainFromTool(scopeTargetID, domain)
+	case "live_web_servers":
+		success, err = utils.DeleteLiveWebServerDomainFromTool(scopeTargetID, domain)
 	default:
 		log.Printf("[DOMAIN-API] [ERROR] Invalid tool specified: %s", tool)
 		http.Error(w, "Invalid tool specified", http.StatusBadRequest)
@@ -1611,6 +1615,8 @@ func deleteAllCompanyDomainsFromTool(w http.ResponseWriter, r *http.Request) {
 		count, err = utils.DeleteAllGitHubReconDomainsFromTool(scopeTargetID)
 	case "shodan_company":
 		count, err = utils.DeleteAllShodanCompanyDomainsFromTool(scopeTargetID)
+	case "live_web_servers":
+		count, err = utils.DeleteAllLiveWebServerDomainsFromTool(scopeTargetID)
 	default:
 		log.Printf("[DOMAIN-API] [ERROR] Invalid tool specified: %s", tool)
 		http.Error(w, "Invalid tool specified", http.StatusBadRequest)

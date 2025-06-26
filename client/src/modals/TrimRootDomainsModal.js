@@ -27,7 +27,8 @@ const TrimRootDomainsModal = ({
     { key: 'securitytrails_company', name: 'SecurityTrails' },
     { key: 'github_recon', name: 'GitHub Recon' },
     { key: 'shodan_company', name: 'Shodan' },
-    { key: 'censys_company', name: 'Censys' }
+    { key: 'censys_company', name: 'Censys' },
+    { key: 'live_web_servers', name: 'Live Web Servers (ASN)' }
   ];
 
   useEffect(() => {
