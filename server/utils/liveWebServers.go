@@ -1313,26 +1313,19 @@ func ConsolidateCompanyDomains(scopeTargetID string) ([]string, error) {
 	// 8. Get domains from Live Web Servers (from ASN network ranges)
 	log.Printf("[INFO] Fetching Live Web Server domains from ASN scans...")
 	liveRows, err := tx.Query(context.Background(),
-		`SELECT DISTINCT lws.hostname, lws.url 
+		`SELECT DISTINCT lws.url 
 		 FROM live_web_servers lws
 		 JOIN ip_port_scans ips ON lws.scan_id = ips.scan_id
 		 WHERE ips.scope_target_id = $1 AND ips.status = 'success' 
-		 AND (lws.hostname IS NOT NULL AND lws.hostname != '')`,
+		 AND (lws.url IS NOT NULL AND lws.url != '')`,
 		scopeTargetID)
 	if err != nil {
 		log.Printf("[ERROR] Failed to get Live Web Server domains: %v", err)
 	} else {
 		defer liveRows.Close()
 		for liveRows.Next() {
-			var hostname, url string
-			if err := liveRows.Scan(&hostname, &url); err == nil {
-				// Add hostname if it's a valid domain (not an IP)
-				if hostname != "" && !isIPv4AddressInConsolidation(hostname) {
-					if _, exists := domainMap[hostname]; !exists {
-						domainMap[hostname] = "live_web_servers"
-					}
-				}
-
+			var url string
+			if err := liveRows.Scan(&url); err == nil {
 				// Extract domain from URL
 				if url != "" {
 					if domain := extractDomainFromURLInConsolidation(url); domain != "" && !isIPv4AddressInConsolidation(domain) {

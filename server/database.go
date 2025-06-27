@@ -622,6 +622,14 @@ func createTables() {
 		`DO $$ BEGIN BEGIN ALTER TABLE nuclei_screenshots ADD COLUMN IF NOT EXISTS auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL; EXCEPTION WHEN duplicate_column THEN RAISE NOTICE 'Column already exists.'; END; END $$;`,
 		`DO $$ BEGIN BEGIN ALTER TABLE metadata_scans ADD COLUMN IF NOT EXISTS auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL; EXCEPTION WHEN duplicate_column THEN RAISE NOTICE 'Column already exists.'; END; END $$;`,
 
+		`CREATE TABLE IF NOT EXISTS amass_enum_configs (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scope_target_id UUID NOT NULL UNIQUE REFERENCES scope_targets(id) ON DELETE CASCADE,
+			selected_domains JSONB NOT NULL DEFAULT '[]',
+			created_at TIMESTAMP DEFAULT NOW(),
+			updated_at TIMESTAMP DEFAULT NOW()
+		);`,
+
 		// IP/Port scan tables
 		`CREATE TABLE IF NOT EXISTS ip_port_scans (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

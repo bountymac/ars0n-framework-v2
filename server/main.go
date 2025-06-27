@@ -194,6 +194,10 @@ func main() {
 	r.HandleFunc("/api/company-domains/{scope_target_id}/{tool}/all", deleteAllCompanyDomainsFromTool).Methods("DELETE", "OPTIONS")
 	r.HandleFunc("/api/company-domains/{scope_target_id}/{tool}/{domain}", deleteCompanyDomainFromTool).Methods("DELETE", "OPTIONS")
 
+	// Amass Enum configuration routes
+	r.HandleFunc("/amass-enum-config/{scope_target_id}", getAmassEnumConfig).Methods("GET", "OPTIONS")
+	r.HandleFunc("/amass-enum-config/{scope_target_id}", saveAmassEnumConfig).Methods("POST", "OPTIONS")
+
 	log.Println("API server started on :8443")
 	http.ListenAndServe(":8443", r)
 }
@@ -1637,5 +1641,116 @@ func deleteAllCompanyDomainsFromTool(w http.ResponseWriter, r *http.Request) {
 		"success": true,
 		"message": fmt.Sprintf("Deleted %d domains successfully", count),
 		"count":   count,
+	})
+}
+
+// getAmassEnumConfig retrieves the Amass Enum configuration for a scope target
+func getAmassEnumConfig(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	scopeTargetID := vars["scope_target_id"]
+
+	if scopeTargetID == "" {
+		http.Error(w, "Scope target ID is required", http.StatusBadRequest)
+		return
+	}
+
+	// Query the configuration from the database
+	query := `
+		SELECT selected_domains
+		FROM amass_enum_configs 
+		WHERE scope_target_id = $1
+		ORDER BY updated_at DESC 
+		LIMIT 1
+	`
+
+	var selectedDomainsJSON []byte
+	err := dbPool.QueryRow(context.Background(), query, scopeTargetID).Scan(&selectedDomainsJSON)
+
+	if err != nil {
+		if err.Error() == "no rows in result set" {
+			// No configuration found, return empty response
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"domains": []string{},
+			})
+			return
+		}
+		log.Printf("Error fetching Amass Enum config: %v", err)
+		http.Error(w, "Failed to fetch configuration", http.StatusInternalServerError)
+		return
+	}
+
+	// Parse the JSONB array of selected domains
+	var selectedDomains []string
+	if err := json.Unmarshal(selectedDomainsJSON, &selectedDomains); err != nil {
+		log.Printf("Error parsing selected domains JSON: %v", err)
+		http.Error(w, "Failed to parse configuration", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"domains": selectedDomains,
+	})
+}
+
+// saveAmassEnumConfig saves the Amass Enum configuration for a scope target
+func saveAmassEnumConfig(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	scopeTargetID := vars["scope_target_id"]
+
+	if scopeTargetID == "" {
+		http.Error(w, "Scope target ID is required", http.StatusBadRequest)
+		return
+	}
+
+	// Parse the request body
+	var request struct {
+		Domains []string `json:"domains"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		log.Printf("Error decoding request body: %v", err)
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Convert selected domains to JSON
+	selectedDomainsJSON, err := json.Marshal(request.Domains)
+	if err != nil {
+		log.Printf("Error marshaling selected domains: %v", err)
+		http.Error(w, "Failed to process domains", http.StatusInternalServerError)
+		return
+	}
+
+	// Insert or update the configuration
+	query := `
+		INSERT INTO amass_enum_configs (scope_target_id, selected_domains, created_at, updated_at)
+		VALUES ($1, $2, NOW(), NOW())
+		ON CONFLICT (scope_target_id)
+		DO UPDATE SET 
+			selected_domains = EXCLUDED.selected_domains,
+			updated_at = NOW()
+		RETURNING id
+	`
+
+	var configID string
+	err = dbPool.QueryRow(context.Background(), query, scopeTargetID, string(selectedDomainsJSON)).Scan(&configID)
+	if err != nil {
+		log.Printf("Error saving Amass Enum config: %v", err)
+		http.Error(w, "Failed to save configuration", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("Saved Amass Enum config for scope target %s with %d domains", scopeTargetID, len(request.Domains))
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":   true,
+		"config_id": configID,
+		"message":   fmt.Sprintf("Configuration saved with %d domains", len(request.Domains)),
 	})
 }

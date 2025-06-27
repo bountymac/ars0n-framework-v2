@@ -122,6 +122,7 @@ import monitorInvestigateScanStatus from './utils/monitorInvestigateScanStatus';
 import TrimRootDomainsModal from './modals/TrimRootDomainsModal.js';
 import TrimNetworkRangesModal from './modals/TrimNetworkRangesModal.js';
 import LiveWebServersResultsModal from './modals/LiveWebServersResultsModal.js';
+import AmassEnumConfigModal from './modals/AmassEnumConfigModal.js';
 import fetchMetabigorCompanyScans from './utils/fetchMetabigorCompanyScans';
 
 import monitorIPPortScanStatus from './utils/monitorIPPortScanStatus';
@@ -371,6 +372,7 @@ function App() {
   const [consolidatedCount, setConsolidatedCount] = useState(0);
   const [consolidatedCompanyDomains, setConsolidatedCompanyDomains] = useState([]);
   const [consolidatedCompanyDomainsCount, setConsolidatedCompanyDomainsCount] = useState(0);
+  const [amassEnumSelectedDomainsCount, setAmassEnumSelectedDomainsCount] = useState(0);
   const [isConsolidatingCompanyDomains, setIsConsolidatingCompanyDomains] = useState(false);
   const [consolidatedNetworkRanges, setConsolidatedNetworkRanges] = useState([]);
   const [consolidatedNetworkRangesCount, setConsolidatedNetworkRangesCount] = useState(0);
@@ -478,6 +480,7 @@ function App() {
   const [showTrimNetworkRangesModal, setShowTrimNetworkRangesModal] = useState(false);
   const [rootDomainsByTool, setRootDomainsByTool] = useState({});
   const [showLiveWebServersResultsModal, setShowLiveWebServersResultsModal] = useState(false);
+  const [showAmassEnumConfigModal, setShowAmassEnumConfigModal] = useState(false);
   const [ipPortScans, setIPPortScans] = useState([]);
   const [mostRecentIPPortScan, setMostRecentIPPortScan] = useState(null);
   const [mostRecentIPPortScanStatus, setMostRecentIPPortScanStatus] = useState(null);
@@ -597,6 +600,39 @@ function App() {
 
   const handleCloseLiveWebServersResultsModal = () => setShowLiveWebServersResultsModal(false);
   const handleOpenLiveWebServersResultsModal = () => setShowLiveWebServersResultsModal(true);
+
+  const handleCloseAmassEnumConfigModal = () => setShowAmassEnumConfigModal(false);
+  const handleOpenAmassEnumConfigModal = () => setShowAmassEnumConfigModal(true);
+
+  const handleAmassEnumConfigSave = (config) => {
+    if (config && config.domains) {
+      setAmassEnumSelectedDomainsCount(config.domains.length);
+    }
+  };
+
+  const loadAmassEnumConfig = async () => {
+    if (!activeTarget?.id) return;
+
+    try {
+      const response = await fetch(
+        `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/amass-enum-config/${activeTarget.id}`
+      );
+      
+      if (response.ok) {
+        const config = await response.json();
+        if (config.domains && Array.isArray(config.domains)) {
+          setAmassEnumSelectedDomainsCount(config.domains.length);
+        } else {
+          setAmassEnumSelectedDomainsCount(0);
+        }
+      } else {
+        setAmassEnumSelectedDomainsCount(0);
+      }
+    } catch (error) {
+      console.error('Error loading Amass Enum config:', error);
+      setAmassEnumSelectedDomainsCount(0);
+    }
+  };
 
   const handleTrimNetworkRanges = () => {
     handleOpenTrimNetworkRangesModal();
@@ -748,6 +784,13 @@ function App() {
     }
   }, [activeTarget, amassScans, isScanning]);
 
+  // Load Amass Enum config when component mounts and activeTarget becomes available
+  useEffect(() => {
+    if (activeTarget) {
+      loadAmassEnumConfig();
+    }
+  }, [activeTarget?.id]); // Run when activeTarget.id changes (including initial load)
+
   useEffect(() => {
     if (activeTarget) {
       fetchAmassScans(activeTarget, setAmassScans, setMostRecentAmassScan, setMostRecentAmassScanStatus, setDnsRecords, setSubdomains, setCloudDomains);
@@ -757,6 +800,7 @@ function App() {
       fetchConsolidatedSubdomains(activeTarget, setConsolidatedSubdomains, setConsolidatedCount);
       fetchConsolidatedCompanyDomains(activeTarget, setConsolidatedCompanyDomains, setConsolidatedCompanyDomainsCount);
       fetchConsolidatedNetworkRanges(activeTarget, setConsolidatedNetworkRanges, setConsolidatedNetworkRangesCount);
+      loadAmassEnumConfig();
       fetchGoogleDorkingDomains();
       fetchReverseWhoisDomains();
       fetchIPPortScans(activeTarget, setIPPortScans, setMostRecentIPPortScan, setMostRecentIPPortScanStatus);
@@ -1357,6 +1401,7 @@ function App() {
     setMostRecentMetabigorCompanyScanStatus(null);
     setAmassIntelNetworkRanges([]);
     setMetabigorNetworkRanges([]);
+    setAmassEnumSelectedDomainsCount(0);
     setHttpxScans([]);
     setMostRecentHttpxScan(null);
     setMostRecentHttpxScanStatus(null);
@@ -3805,7 +3850,7 @@ function App() {
                 </Row>
                 
                 <h4 className="text-secondary mb-3 fs-5">Cloud Asset Enumeration (DNS)</h4>
-                <Row className="row-cols-2 g-3 mb-4">
+                <Row className="row-cols-3 g-3 mb-4">
                   <Col>
                     <Card className="shadow-sm h-100 text-center" style={{ minHeight: '300px' }}>
                       <Card.Body className="d-flex flex-column">
@@ -3818,14 +3863,85 @@ function App() {
                           Advanced DNS enumeration and cloud asset discovery using multiple techniques including DNS brute-forcing, reverse DNS, and certificate transparency.
                         </Card.Text>
                         <div className="text-danger mb-4">
-                          <h3 className="mb-0">0</h3>
-                          <small className="text-white-50">Cloud Assets Found</small>
+                          <div className="row">
+                            <div className="col">
+                              <h3 className="mb-0">{amassEnumSelectedDomainsCount}</h3>
+                              <small className="text-white-50">Root Domains<br/>to be Scanned</small>
+                            </div>
+                            <div className="col">
+                              <h3 className="mb-0">0</h3>
+                              <small className="text-white-50">Cloud Assets<br/>Discovered</small>
+                            </div>
+                          </div>
                         </div>
                         <div className="d-flex justify-content-between mt-auto gap-2">
-                          <Button variant="outline-danger" className="flex-fill">Configure</Button>
+                          <Button variant="outline-danger" className="flex-fill" onClick={handleOpenAmassEnumConfigModal}>Config</Button>
                           <Button variant="outline-danger" className="flex-fill">History</Button>
                           <Button variant="outline-danger" className="flex-fill">Scan</Button>
                           <Button variant="outline-danger" className="flex-fill">Results</Button>
+                        </div>
+                      </Card.Body>
+                    </Card>
+                  </Col>
+                  <Col>
+                    <Card className="shadow-sm h-100 text-center" style={{ minHeight: '300px' }}>
+                      <Card.Body className="d-flex flex-column">
+                        <Card.Title className="text-danger fs-4 mb-3">
+                          <a href="https://github.com/OWASP/Amass" className="text-danger text-decoration-none">
+                            Amass Intel
+                          </a>
+                        </Card.Title>
+                        <Card.Text className="text-white small fst-italic mb-4">
+                          Intelligence gathering tool that searches CIDR blocks to discover cloud assets and infrastructure owned by target organizations.
+                        </Card.Text>
+                        <div className="text-danger mb-4">
+                          <div className="row">
+                            <div className="col">
+                              <h3 className="mb-0">0</h3>
+                              <small className="text-white-50">Network Ranges<br/>to be Scanned</small>
+                            </div>
+                            <div className="col">
+                              <h3 className="mb-0">{amassIntelNetworkRanges.length || 0}</h3>
+                              <small className="text-white-50">Cloud Assets<br/>Discovered</small>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="d-flex justify-content-between mt-auto gap-2">
+                          <Button 
+                            variant="outline-danger" 
+                            className="flex-fill" 
+                            onClick={handleOpenAmassEnumConfigModal}
+                          >
+                            Config
+                          </Button>
+                          <Button 
+                            variant="outline-danger" 
+                            className="flex-fill" 
+                            onClick={handleOpenAmassIntelHistoryModal}
+                          >
+                            History
+                          </Button>
+                          <Button
+                            variant="outline-danger"
+                            className="flex-fill"
+                            onClick={startAmassIntelScan}
+                            disabled={isAmassIntelScanning || mostRecentAmassIntelScanStatus === "pending" || mostRecentAmassIntelScanStatus === "running"}
+                          >
+                            <div className="btn-content">
+                              {isAmassIntelScanning || mostRecentAmassIntelScanStatus === "pending" || mostRecentAmassIntelScanStatus === "running" ? (
+                                <Spinner animation="border" size="sm" />
+                              ) : (
+                                'Scan'
+                              )}
+                            </div>
+                          </Button>
+                          <Button 
+                            variant="outline-danger" 
+                            className="flex-fill" 
+                            onClick={handleOpenAmassIntelResultsModal}
+                          >
+                            Results
+                          </Button>
                         </div>
                       </Card.Body>
                     </Card>
@@ -3842,11 +3958,19 @@ function App() {
                           Fast and multi-purpose DNS toolkit for running multiple DNS queries and cloud provider detection through DNS resolution patterns.
                         </Card.Text>
                         <div className="text-danger mb-4">
-                          <h3 className="mb-0">0</h3>
-                          <small className="text-white-50">DNS Records Found</small>
+                          <div className="row">
+                            <div className="col">
+                              <h3 className="mb-0">0</h3>
+                              <small className="text-white-50">IP Addresses<br/>to be Scanned</small>
+                            </div>
+                            <div className="col">
+                              <h3 className="mb-0">0</h3>
+                              <small className="text-white-50">Cloud Assets<br/>Discovered</small>
+                            </div>
+                          </div>
                         </div>
                         <div className="d-flex justify-content-between mt-auto gap-2">
-                          <Button variant="outline-danger" className="flex-fill">Configure</Button>
+                          <Button variant="outline-danger" className="flex-fill">Config</Button>
                           <Button variant="outline-danger" className="flex-fill">History</Button>
                           <Button variant="outline-danger" className="flex-fill">Scan</Button>
                           <Button variant="outline-danger" className="flex-fill">Results</Button>
@@ -5064,6 +5188,13 @@ function App() {
         activeTarget={activeTarget}
         consolidatedNetworkRanges={consolidatedNetworkRanges}
         mostRecentIPPortScan={mostRecentIPPortScan}
+      />
+      <AmassEnumConfigModal
+        show={showAmassEnumConfigModal}
+        handleClose={handleCloseAmassEnumConfigModal}
+        activeTarget={activeTarget}
+        consolidatedCompanyDomains={consolidatedCompanyDomains}
+        onSaveConfig={handleAmassEnumConfigSave}
       />
 
     </Container>
