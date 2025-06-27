@@ -123,6 +123,8 @@ import TrimRootDomainsModal from './modals/TrimRootDomainsModal.js';
 import TrimNetworkRangesModal from './modals/TrimNetworkRangesModal.js';
 import LiveWebServersResultsModal from './modals/LiveWebServersResultsModal.js';
 import AmassEnumConfigModal from './modals/AmassEnumConfigModal.js';
+import AmassIntelConfigModal from './modals/AmassIntelConfigModal.js';
+import DNSxConfigModal from './modals/DNSxConfigModal.js';
 import fetchMetabigorCompanyScans from './utils/fetchMetabigorCompanyScans';
 
 import monitorIPPortScanStatus from './utils/monitorIPPortScanStatus';
@@ -372,7 +374,6 @@ function App() {
   const [consolidatedCount, setConsolidatedCount] = useState(0);
   const [consolidatedCompanyDomains, setConsolidatedCompanyDomains] = useState([]);
   const [consolidatedCompanyDomainsCount, setConsolidatedCompanyDomainsCount] = useState(0);
-  const [amassEnumSelectedDomainsCount, setAmassEnumSelectedDomainsCount] = useState(0);
   const [isConsolidatingCompanyDomains, setIsConsolidatingCompanyDomains] = useState(false);
   const [consolidatedNetworkRanges, setConsolidatedNetworkRanges] = useState([]);
   const [consolidatedNetworkRangesCount, setConsolidatedNetworkRangesCount] = useState(0);
@@ -481,6 +482,11 @@ function App() {
   const [rootDomainsByTool, setRootDomainsByTool] = useState({});
   const [showLiveWebServersResultsModal, setShowLiveWebServersResultsModal] = useState(false);
   const [showAmassEnumConfigModal, setShowAmassEnumConfigModal] = useState(false);
+  const [amassEnumSelectedDomainsCount, setAmassEnumSelectedDomainsCount] = useState(0);
+  const [showAmassIntelConfigModal, setShowAmassIntelConfigModal] = useState(false);
+  const [amassIntelSelectedNetworkRangesCount, setAmassIntelSelectedNetworkRangesCount] = useState(0);
+  const [showDNSxConfigModal, setShowDNSxConfigModal] = useState(false);
+  const [dnsxSelectedWildcardTargetsCount, setDnsxSelectedWildcardTargetsCount] = useState(0);
   const [ipPortScans, setIPPortScans] = useState([]);
   const [mostRecentIPPortScan, setMostRecentIPPortScan] = useState(null);
   const [mostRecentIPPortScanStatus, setMostRecentIPPortScanStatus] = useState(null);
@@ -634,9 +640,39 @@ function App() {
     }
   };
 
-  const handleTrimNetworkRanges = () => {
-    handleOpenTrimNetworkRangesModal();
+  const handleCloseAmassIntelConfigModal = () => setShowAmassIntelConfigModal(false);
+  const handleOpenAmassIntelConfigModal = () => setShowAmassIntelConfigModal(true);
+
+  const handleAmassIntelConfigSave = (config) => {
+    if (config && config.network_ranges) {
+      setAmassIntelSelectedNetworkRangesCount(config.network_ranges.length);
+    }
   };
+
+  const loadAmassIntelConfig = async () => {
+    if (!activeTarget?.id) return;
+
+    try {
+      const response = await fetch(
+        `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/amass-intel-config/${activeTarget.id}`
+      );
+      
+      if (response.ok) {
+        const config = await response.json();
+        if (config.network_ranges && Array.isArray(config.network_ranges)) {
+          setAmassIntelSelectedNetworkRangesCount(config.network_ranges.length);
+        } else {
+          setAmassIntelSelectedNetworkRangesCount(0);
+        }
+      } else {
+        setAmassIntelSelectedNetworkRangesCount(0);
+      }
+    } catch (error) {
+      console.error('Error loading Amass Intel config:', error);
+      setAmassIntelSelectedNetworkRangesCount(0);
+    }
+  };
+
 
   const handleConsolidateNetworkRanges = async () => {
     if (!activeTarget) return;
@@ -791,6 +827,20 @@ function App() {
     }
   }, [activeTarget?.id]); // Run when activeTarget.id changes (including initial load)
 
+  // Load Amass Intel config when component mounts and activeTarget becomes available
+  useEffect(() => {
+    if (activeTarget) {
+      loadAmassIntelConfig();
+    }
+  }, [activeTarget?.id]); // Run when activeTarget.id changes (including initial load)
+
+  // Load DNSx config when component mounts and activeTarget becomes available
+  useEffect(() => {
+    if (activeTarget) {
+      loadDNSxConfig();
+    }
+  }, [activeTarget?.id]); // Run when activeTarget.id changes (including initial load)
+
   useEffect(() => {
     if (activeTarget) {
       fetchAmassScans(activeTarget, setAmassScans, setMostRecentAmassScan, setMostRecentAmassScanStatus, setDnsRecords, setSubdomains, setCloudDomains);
@@ -801,6 +851,8 @@ function App() {
       fetchConsolidatedCompanyDomains(activeTarget, setConsolidatedCompanyDomains, setConsolidatedCompanyDomainsCount);
       fetchConsolidatedNetworkRanges(activeTarget, setConsolidatedNetworkRanges, setConsolidatedNetworkRangesCount);
       loadAmassEnumConfig();
+      loadAmassIntelConfig();
+      loadDNSxConfig();
       fetchGoogleDorkingDomains();
       fetchReverseWhoisDomains();
       fetchIPPortScans(activeTarget, setIPPortScans, setMostRecentIPPortScan, setMostRecentIPPortScanStatus);
@@ -2985,6 +3037,43 @@ function App() {
     }
   };
 
+  const handleCloseDNSxConfigModal = () => setShowDNSxConfigModal(false);
+  const handleOpenDNSxConfigModal = () => setShowDNSxConfigModal(true);
+
+  const handleDNSxConfigSave = (config) => {
+    if (config && config.wildcard_targets) {
+      setDnsxSelectedWildcardTargetsCount(config.wildcard_targets.length);
+    }
+  };
+
+  const loadDNSxConfig = async () => {
+    if (!activeTarget?.id) return;
+
+    try {
+      const response = await fetch(
+        `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/dnsx-config/${activeTarget.id}`
+      );
+      
+      if (response.ok) {
+        const config = await response.json();
+        if (config.wildcard_targets && Array.isArray(config.wildcard_targets)) {
+          setDnsxSelectedWildcardTargetsCount(config.wildcard_targets.length);
+        } else {
+          setDnsxSelectedWildcardTargetsCount(0);
+        }
+      } else {
+        setDnsxSelectedWildcardTargetsCount(0);
+      }
+    } catch (error) {
+      console.error('Error loading DNSx config:', error);
+      setDnsxSelectedWildcardTargetsCount(0);
+    }
+  };
+
+  const handleTrimNetworkRanges = () => {
+    handleOpenTrimNetworkRangesModal();
+  };
+
   return (
     <Container data-bs-theme="dark" className="App" style={{ padding: '20px' }}>
       <style>
@@ -3897,7 +3986,7 @@ function App() {
                         <div className="text-danger mb-4">
                           <div className="row">
                             <div className="col">
-                              <h3 className="mb-0">0</h3>
+                              <h3 className="mb-0">{amassIntelSelectedNetworkRangesCount}</h3>
                               <small className="text-white-50">Network Ranges<br/>to be Scanned</small>
                             </div>
                             <div className="col">
@@ -3910,7 +3999,7 @@ function App() {
                           <Button 
                             variant="outline-danger" 
                             className="flex-fill" 
-                            onClick={handleOpenAmassEnumConfigModal}
+                            onClick={handleOpenAmassIntelConfigModal}
                           >
                             Config
                           </Button>
@@ -3960,8 +4049,8 @@ function App() {
                         <div className="text-danger mb-4">
                           <div className="row">
                             <div className="col">
-                              <h3 className="mb-0">0</h3>
-                              <small className="text-white-50">IP Addresses<br/>to be Scanned</small>
+                              <h3 className="mb-0">{dnsxSelectedWildcardTargetsCount}</h3>
+                              <small className="text-white-50">Wildcard Targets<br/>to be Scanned</small>
                             </div>
                             <div className="col">
                               <h3 className="mb-0">0</h3>
@@ -3970,7 +4059,7 @@ function App() {
                           </div>
                         </div>
                         <div className="d-flex justify-content-between mt-auto gap-2">
-                          <Button variant="outline-danger" className="flex-fill">Config</Button>
+                          <Button variant="outline-danger" className="flex-fill" onClick={handleOpenDNSxConfigModal}>Config</Button>
                           <Button variant="outline-danger" className="flex-fill">History</Button>
                           <Button variant="outline-danger" className="flex-fill">Scan</Button>
                           <Button variant="outline-danger" className="flex-fill">Results</Button>
@@ -5195,6 +5284,21 @@ function App() {
         activeTarget={activeTarget}
         consolidatedCompanyDomains={consolidatedCompanyDomains}
         onSaveConfig={handleAmassEnumConfigSave}
+      />
+      <AmassIntelConfigModal
+        show={showAmassIntelConfigModal}
+        handleClose={handleCloseAmassIntelConfigModal}
+        activeTarget={activeTarget}
+        consolidatedNetworkRanges={consolidatedNetworkRanges}
+        onSaveConfig={handleAmassIntelConfigSave}
+      />
+      <DNSxConfigModal
+        show={showDNSxConfigModal}
+        handleClose={handleCloseDNSxConfigModal}
+        activeTarget={activeTarget}
+        scopeTargets={scopeTargets}
+        consolidatedCompanyDomains={consolidatedCompanyDomains}
+        onSaveConfig={handleDNSxConfigSave}
       />
 
     </Container>

@@ -591,6 +591,21 @@ func createTables() {
 			UNIQUE(scope_target_id, domain)
 		);`,
 
+		`CREATE TABLE IF NOT EXISTS consolidated_network_ranges (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scope_target_id UUID NOT NULL,
+			cidr_block TEXT NOT NULL,
+			asn TEXT,
+			organization TEXT,
+			description TEXT,
+			country TEXT,
+			source TEXT NOT NULL,
+			scan_type TEXT NOT NULL,
+			created_at TIMESTAMP DEFAULT NOW(),
+			FOREIGN KEY (scope_target_id) REFERENCES scope_targets(id) ON DELETE CASCADE,
+			UNIQUE(scope_target_id, cidr_block, source)
+		);`,
+
 		`CREATE TABLE IF NOT EXISTS investigate_scans (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			scan_id UUID NOT NULL UNIQUE,
@@ -626,6 +641,22 @@ func createTables() {
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			scope_target_id UUID NOT NULL UNIQUE REFERENCES scope_targets(id) ON DELETE CASCADE,
 			selected_domains JSONB NOT NULL DEFAULT '[]',
+			created_at TIMESTAMP DEFAULT NOW(),
+			updated_at TIMESTAMP DEFAULT NOW()
+		);`,
+
+		`CREATE TABLE IF NOT EXISTS amass_intel_configs (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scope_target_id UUID NOT NULL UNIQUE REFERENCES scope_targets(id) ON DELETE CASCADE,
+			selected_network_ranges JSONB NOT NULL DEFAULT '[]',
+			created_at TIMESTAMP DEFAULT NOW(),
+			updated_at TIMESTAMP DEFAULT NOW()
+		);`,
+
+		`CREATE TABLE IF NOT EXISTS dnsx_configs (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scope_target_id UUID NOT NULL UNIQUE REFERENCES scope_targets(id) ON DELETE CASCADE,
+			wildcard_targets JSONB NOT NULL DEFAULT '[]',
 			created_at TIMESTAMP DEFAULT NOW(),
 			updated_at TIMESTAMP DEFAULT NOW()
 		);`,

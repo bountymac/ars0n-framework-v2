@@ -198,6 +198,17 @@ func main() {
 	r.HandleFunc("/amass-enum-config/{scope_target_id}", getAmassEnumConfig).Methods("GET", "OPTIONS")
 	r.HandleFunc("/amass-enum-config/{scope_target_id}", saveAmassEnumConfig).Methods("POST", "OPTIONS")
 
+	// Amass Intel configuration routes
+	r.HandleFunc("/amass-intel-config/{scope_target_id}", getAmassIntelConfig).Methods("GET", "OPTIONS")
+	r.HandleFunc("/amass-intel-config/{scope_target_id}", saveAmassIntelConfig).Methods("POST", "OPTIONS")
+
+	// DNSx configuration routes
+	r.HandleFunc("/dnsx-config/{scope_target_id}", getDNSxConfig).Methods("GET", "OPTIONS")
+	r.HandleFunc("/dnsx-config/{scope_target_id}", saveDNSxConfig).Methods("POST", "OPTIONS")
+
+	// Live web servers count route
+	r.HandleFunc("/scope-target/{scope_target_id}/live-web-servers-count", getLiveWebServersCount).Methods("GET", "OPTIONS")
+
 	log.Println("API server started on :8443")
 	http.ListenAndServe(":8443", r)
 }
@@ -1752,5 +1763,289 @@ func saveAmassEnumConfig(w http.ResponseWriter, r *http.Request) {
 		"success":   true,
 		"config_id": configID,
 		"message":   fmt.Sprintf("Configuration saved with %d domains", len(request.Domains)),
+	})
+}
+
+// getAmassIntelConfig retrieves the Amass Intel configuration for a scope target
+func getAmassIntelConfig(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	scopeTargetID := vars["scope_target_id"]
+
+	if scopeTargetID == "" {
+		http.Error(w, "Scope target ID is required", http.StatusBadRequest)
+		return
+	}
+
+	// Query the configuration from the database
+	query := `
+		SELECT selected_network_ranges
+		FROM amass_intel_configs 
+		WHERE scope_target_id = $1
+		ORDER BY updated_at DESC 
+		LIMIT 1
+	`
+
+	var selectedNetworkRangesJSON []byte
+	err := dbPool.QueryRow(context.Background(), query, scopeTargetID).Scan(&selectedNetworkRangesJSON)
+
+	if err != nil {
+		if err.Error() == "no rows in result set" {
+			// No configuration found, return empty response
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"network_ranges": []string{},
+			})
+			return
+		}
+		log.Printf("Error fetching Amass Intel config: %v", err)
+		http.Error(w, "Failed to fetch configuration", http.StatusInternalServerError)
+		return
+	}
+
+	// Parse the JSONB array of selected network ranges
+	var selectedNetworkRanges []string
+	if err := json.Unmarshal(selectedNetworkRangesJSON, &selectedNetworkRanges); err != nil {
+		log.Printf("Error parsing selected network ranges JSON: %v", err)
+		http.Error(w, "Failed to parse configuration", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"network_ranges": selectedNetworkRanges,
+	})
+}
+
+// saveAmassIntelConfig saves the Amass Intel configuration for a scope target
+func saveAmassIntelConfig(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	scopeTargetID := vars["scope_target_id"]
+
+	if scopeTargetID == "" {
+		http.Error(w, "Scope target ID is required", http.StatusBadRequest)
+		return
+	}
+
+	// Parse the request body
+	var request struct {
+		NetworkRanges []string `json:"network_ranges"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		log.Printf("Error decoding request body: %v", err)
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Convert selected network ranges to JSON
+	selectedNetworkRangesJSON, err := json.Marshal(request.NetworkRanges)
+	if err != nil {
+		log.Printf("Error marshaling selected network ranges: %v", err)
+		http.Error(w, "Failed to process network ranges", http.StatusInternalServerError)
+		return
+	}
+
+	// Insert or update the configuration
+	query := `
+		INSERT INTO amass_intel_configs (scope_target_id, selected_network_ranges, created_at, updated_at)
+		VALUES ($1, $2, NOW(), NOW())
+		ON CONFLICT (scope_target_id)
+		DO UPDATE SET 
+			selected_network_ranges = EXCLUDED.selected_network_ranges,
+			updated_at = NOW()
+		RETURNING id
+	`
+
+	var configID string
+	err = dbPool.QueryRow(context.Background(), query, scopeTargetID, string(selectedNetworkRangesJSON)).Scan(&configID)
+	if err != nil {
+		log.Printf("Error saving Amass Intel config: %v", err)
+		http.Error(w, "Failed to save configuration", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("Saved Amass Intel config for scope target %s with %d network ranges", scopeTargetID, len(request.NetworkRanges))
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":   true,
+		"config_id": configID,
+		"message":   fmt.Sprintf("Configuration saved with %d network ranges", len(request.NetworkRanges)),
+	})
+}
+
+// getDNSxConfig retrieves the DNSx configuration for a scope target
+func getDNSxConfig(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	scopeTargetID := vars["scope_target_id"]
+
+	if scopeTargetID == "" {
+		http.Error(w, "Scope target ID is required", http.StatusBadRequest)
+		return
+	}
+
+	// Query the configuration from the database
+	query := `
+		SELECT wildcard_targets
+		FROM dnsx_configs 
+		WHERE scope_target_id = $1
+		ORDER BY updated_at DESC 
+		LIMIT 1
+	`
+
+	var wildcardTargetsJSON []byte
+	err := dbPool.QueryRow(context.Background(), query, scopeTargetID).Scan(&wildcardTargetsJSON)
+
+	if err != nil {
+		if err.Error() == "no rows in result set" {
+			// No configuration found, return empty response
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"wildcard_targets": []string{},
+			})
+			return
+		}
+		log.Printf("Error fetching DNSx config: %v", err)
+		http.Error(w, "Failed to fetch configuration", http.StatusInternalServerError)
+		return
+	}
+
+	// Parse the JSONB array of selected wildcard targets
+	var wildcardTargets []string
+	if err := json.Unmarshal(wildcardTargetsJSON, &wildcardTargets); err != nil {
+		log.Printf("Error parsing wildcard targets JSON: %v", err)
+		http.Error(w, "Failed to parse configuration", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"wildcard_targets": wildcardTargets,
+	})
+}
+
+// saveDNSxConfig saves the DNSx configuration for a scope target
+func saveDNSxConfig(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	scopeTargetID := vars["scope_target_id"]
+
+	if scopeTargetID == "" {
+		http.Error(w, "Scope target ID is required", http.StatusBadRequest)
+		return
+	}
+
+	// Parse the request body
+	var request struct {
+		WildcardTargets []string `json:"wildcard_targets"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		log.Printf("Error decoding request body: %v", err)
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Convert selected wildcard targets to JSON
+	wildcardTargetsJSON, err := json.Marshal(request.WildcardTargets)
+	if err != nil {
+		log.Printf("Error marshaling wildcard targets: %v", err)
+		http.Error(w, "Failed to process wildcard targets", http.StatusInternalServerError)
+		return
+	}
+
+	// Insert or update the configuration
+	query := `
+		INSERT INTO dnsx_configs (scope_target_id, wildcard_targets, created_at, updated_at)
+		VALUES ($1, $2, NOW(), NOW())
+		ON CONFLICT (scope_target_id)
+		DO UPDATE SET 
+			wildcard_targets = EXCLUDED.wildcard_targets,
+			updated_at = NOW()
+		RETURNING id
+	`
+
+	var configID string
+	err = dbPool.QueryRow(context.Background(), query, scopeTargetID, string(wildcardTargetsJSON)).Scan(&configID)
+	if err != nil {
+		log.Printf("Error saving DNSx config: %v", err)
+		http.Error(w, "Failed to save configuration", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("Saved DNSx config for scope target %s with %d wildcard targets", scopeTargetID, len(request.WildcardTargets))
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":   true,
+		"config_id": configID,
+		"message":   fmt.Sprintf("Configuration saved with %d wildcard targets", len(request.WildcardTargets)),
+	})
+}
+
+// getLiveWebServersCount returns the count of live web servers for a scope target
+func getLiveWebServersCount(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	scopeTargetID := vars["scope_target_id"]
+
+	if scopeTargetID == "" {
+		http.Error(w, "Scope target ID is required", http.StatusBadRequest)
+		return
+	}
+
+	var count int
+
+	// First try to count from IP/Port scans (for Company targets)
+	ipPortQuery := `
+		SELECT COUNT(DISTINCT lws.id)
+		FROM live_web_servers lws
+		JOIN ip_port_scans ips ON lws.scan_id = ips.scan_id
+		WHERE ips.scope_target_id = $1 AND ips.status = 'success'
+	`
+
+	err := dbPool.QueryRow(context.Background(), ipPortQuery, scopeTargetID).Scan(&count)
+	if err != nil {
+		log.Printf("Error fetching live web servers count from IP/Port scans for scope target %s: %v", scopeTargetID, err)
+		count = 0
+	}
+
+	// If no results from IP/Port scans, try HTTPx scans (for Wildcard targets)
+	if count == 0 {
+		httpxQuery := `
+			SELECT COALESCE(
+				ARRAY_LENGTH(
+					ARRAY_REMOVE(
+						STRING_TO_ARRAY(TRIM(result), E'\n'), 
+						''
+					), 
+					1
+				), 
+				0
+			) as count
+			FROM httpx_scans 
+			WHERE scope_target_id = $1 
+			AND status = 'success' 
+			AND result IS NOT NULL 
+			AND TRIM(result) != ''
+			ORDER BY created_at DESC 
+			LIMIT 1
+		`
+
+		err = dbPool.QueryRow(context.Background(), httpxQuery, scopeTargetID).Scan(&count)
+		if err != nil {
+			log.Printf("Error fetching live web servers count from HTTPx scans for scope target %s: %v", scopeTargetID, err)
+			count = 0
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"count": count,
 	})
 }

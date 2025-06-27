@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
-import { Modal, Table, Button, Badge, Spinner, Alert, Row, Col, Form, InputGroup } from 'react-bootstrap';
+import { useState, useRef, useCallback, useEffect } from 'react';
+import { Modal, Table, Button, Spinner, Alert, Row, Col, Form, InputGroup } from 'react-bootstrap';
+import { FaCheck, FaTimes } from 'react-icons/fa';
 
 const AmassEnumConfigModal = ({ 
   show, 
@@ -10,16 +11,17 @@ const AmassEnumConfigModal = ({
 }) => {
   const [selectedDomains, setSelectedDomains] = useState(new Set());
   const [filters, setFilters] = useState({
-    domain: '',
-    status: ''
+    domain: ''
   });
-  const [sortColumn, setSortColumn] = useState('');
-  const [sortDirection, setSortDirection] = useState('asc');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [estimatedTime, setEstimatedTime] = useState(0);
   const [localDomains, setLocalDomains] = useState([]);
   const [loadingDomains, setLoadingDomains] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStartIndex, setDragStartIndex] = useState(null);
+  const [dragMode, setDragMode] = useState('select');
+  const tableRef = useRef(null);
 
   // Use consolidated domains from props, or fallback to locally fetched ones
   const domainsToUse = consolidatedCompanyDomains.length > 0 ? consolidatedCompanyDomains : localDomains;
@@ -132,20 +134,76 @@ const AmassEnumConfigModal = ({
 
   const clearFilters = () => {
     setFilters({
-      domain: '',
-      status: ''
+      domain: ''
     });
   };
 
-  const toggleDomainSelection = (domain) => {
-    const newSelectedDomains = new Set(selectedDomains);
-    if (newSelectedDomains.has(domain)) {
-      newSelectedDomains.delete(domain);
+  const handleDomainSelect = (domain, index) => {
+    const newSelected = new Set(selectedDomains);
+    if (newSelected.has(domain)) {
+      newSelected.delete(domain);
     } else {
-      newSelectedDomains.add(domain);
+      newSelected.add(domain);
     }
-    setSelectedDomains(newSelectedDomains);
+    setSelectedDomains(newSelected);
   };
+
+  const handleMouseDown = (domain, index, event) => {
+    if (event.button !== 0) return;
+    
+    setIsDragging(true);
+    setDragStartIndex(index);
+    
+    const newSelected = new Set(selectedDomains);
+    const wasSelected = newSelected.has(domain);
+    
+    if (wasSelected) {
+      newSelected.delete(domain);
+      setDragMode('deselect');
+    } else {
+      newSelected.add(domain);
+      setDragMode('select');
+    }
+    
+    setSelectedDomains(newSelected);
+    event.preventDefault();
+  };
+
+  const handleMouseEnter = useCallback((domain, index) => {
+    if (!isDragging || dragStartIndex === null) return;
+    
+    const filteredDomains = getFilteredAndSortedDomains();
+    const startIndex = Math.min(dragStartIndex, index);
+    const endIndex = Math.max(dragStartIndex, index);
+    
+    const newSelected = new Set(selectedDomains);
+    for (let i = startIndex; i <= endIndex; i++) {
+      if (i < filteredDomains.length) {
+        const domainAtIndex = typeof filteredDomains[i] === 'string' ? filteredDomains[i] : filteredDomains[i].domain;
+        if (dragMode === 'select') {
+          newSelected.add(domainAtIndex);
+        } else {
+          newSelected.delete(domainAtIndex);
+        }
+      }
+    }
+    setSelectedDomains(newSelected);
+  }, [isDragging, dragStartIndex, selectedDomains, dragMode]);
+
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false);
+    setDragStartIndex(null);
+    setDragMode('select');
+  }, []);
+
+  useEffect(() => {
+    if (isDragging) {
+      document.addEventListener('mouseup', handleMouseUp);
+      return () => {
+        document.removeEventListener('mouseup', handleMouseUp);
+      };
+    }
+  }, [isDragging, handleMouseUp]);
 
   const selectAllFiltered = () => {
     const filteredDomains = getFilteredAndSortedDomains();
@@ -160,6 +218,16 @@ const AmassEnumConfigModal = ({
     setSelectedDomains(newSelectedDomains);
   };
 
+  const handleSelectAll = () => {
+    const filteredDomains = getFilteredAndSortedDomains();
+    const allDomains = filteredDomains.map(item => typeof item === 'string' ? item : item.domain);
+    setSelectedDomains(new Set(allDomains));
+  };
+
+  const handleDeselectAll = () => {
+    setSelectedDomains(new Set());
+  };
+
   const getFilteredAndSortedDomains = () => {
     let filteredDomains = domainsToUse.filter(item => {
       const domain = typeof item === 'string' ? item : item.domain;
@@ -169,62 +237,17 @@ const AmassEnumConfigModal = ({
         return false;
       }
       
-      if (filters.status) {
-        const isSelected = selectedDomains.has(domain);
-        if (filters.status === 'selected' && !isSelected) return false;
-        if (filters.status === 'unselected' && isSelected) return false;
-      }
-      
       return true;
     });
 
-    if (!sortColumn) return filteredDomains;
-
-    return filteredDomains.sort((a, b) => {
-      const domainA = typeof a === 'string' ? a : a.domain;
-      const domainB = typeof b === 'string' ? b : b.domain;
-
-      let valueA, valueB;
-
-      switch (sortColumn) {
-        case 'domain':
-          valueA = domainA || '';
-          valueB = domainB || '';
-          break;
-        case 'status':
-          valueA = selectedDomains.has(domainA) ? 1 : 0;
-          valueB = selectedDomains.has(domainB) ? 1 : 0;
-          break;
-        default:
-          return 0;
-      }
-
-      if (valueA < valueB) return sortDirection === 'asc' ? -1 : 1;
-      if (valueA > valueB) return sortDirection === 'asc' ? 1 : -1;
-      return 0;
-    });
-  };
-
-  const handleSort = (column) => {
-    if (sortColumn === column) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortColumn(column);
-      setSortDirection('asc');
-    }
-  };
-
-  const renderSortIcon = (column) => {
-    if (sortColumn !== column) {
-      return <i className="bi bi-arrow-down-up text-muted ms-1"></i>;
-    }
-    return sortDirection === 'asc' ? 
-      <i className="bi bi-arrow-up text-primary ms-1" /> : 
-      <i className="bi bi-arrow-down text-primary ms-1" />;
+    return filteredDomains;
   };
 
   const handleCloseModal = () => {
     setError('');
+    setIsDragging(false);
+    setDragStartIndex(null);
+    setDragMode('select');
     handleClose();
   };
 
@@ -287,21 +310,17 @@ const AmassEnumConfigModal = ({
             )}
           </div>
         ) : (
-          <div>
-            <div className="mb-3">
-              <h6 className="text-white">
+          <>
+            <div className="d-flex justify-content-between align-items-center mb-3">
+              <h6 className="mb-0 text-white">
                 Select domains for Amass Enum cloud asset discovery 
-                ({selectedDomains.size} of {domainsToUse.length} selected)
+                <span className="text-light ms-2">({selectedDomains.size}/{domainsToUse.length})</span>
               </h6>
-              <p className="text-white-50 small">
-                Amass Enum will perform comprehensive DNS enumeration and cloud asset discovery 
-                on the selected domains using active techniques, brute-forcing, and multiple data sources.
-              </p>
             </div>
 
             <Row className="mb-3">
-              <Col md={4}>
-                <Form.Group>
+              <Col className="d-flex align-items-end gap-2">
+                <Form.Group className="flex-grow-1">
                   <Form.Label className="text-white-50 small">Filter by Domain</Form.Label>
                   <InputGroup>
                     <InputGroup.Text>
@@ -316,33 +335,54 @@ const AmassEnumConfigModal = ({
                     />
                   </InputGroup>
                 </Form.Group>
-              </Col>
-              <Col md={3}>
-                <Form.Group>
-                  <Form.Label className="text-white-50 small">Selection Status</Form.Label>
-                  <Form.Select
-                    value={filters.status}
-                    onChange={(e) => handleFilterChange('status', e.target.value)}
-                    data-bs-theme="dark"
-                  >
-                    <option value="">All Domains</option>
-                    <option value="selected">Selected Only</option>
-                    <option value="unselected">Unselected Only</option>
-                  </Form.Select>
-                </Form.Group>
-              </Col>
-              <Col md={5} className="d-flex align-items-end gap-2">
-                <Button variant="outline-success" size="sm" onClick={selectAllFiltered}>
-                  Select All Filtered
-                </Button>
-                <Button variant="outline-warning" size="sm" onClick={deselectAllFiltered}>
-                  Deselect All Filtered
-                </Button>
                 <Button variant="outline-secondary" size="sm" onClick={clearFilters}>
-                  Clear Filters
+                  Clear Filter
                 </Button>
               </Col>
             </Row>
+
+            <div className="d-flex mb-3" style={{ gap: '8px' }}>
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={handleDeselectAll}
+                disabled={selectedDomains.size === 0}
+                style={{ flex: 1 }}
+              >
+                <FaTimes className="me-1" />
+                De-Select All
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={handleSelectAll}
+                disabled={filteredDomains.length === 0}
+                style={{ flex: 1 }}
+              >
+                <FaCheck className="me-1" />
+                Select All Filtered
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={selectAllFiltered}
+                disabled={filteredDomains.length === 0}
+                style={{ flex: 1 }}
+              >
+                <FaCheck className="me-1" />
+                Select All Visible
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={deselectAllFiltered}
+                disabled={selectedDomains.size === 0}
+                style={{ flex: 1 }}
+              >
+                <FaTimes className="me-1" />
+                Deselect All Visible
+              </Button>
+            </div>
 
             <div className="mb-3">
               <small className="text-white-50">
@@ -350,11 +390,31 @@ const AmassEnumConfigModal = ({
               </small>
             </div>
 
-            <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-              <Table striped bordered hover variant="dark" className="mb-0">
-                <thead className="sticky-top">
+            <div 
+              style={{ 
+                maxHeight: '400px', 
+                overflowY: 'auto',
+                border: '1px solid var(--bs-border-color)',
+                borderRadius: '0.375rem'
+              }}
+              ref={tableRef}
+            >
+              <style>
+                {`
+                  .form-check-input:checked {
+                    background-color: #dc3545 !important;
+                    border-color: #dc3545 !important;
+                  }
+                  .form-check-input:focus {
+                    border-color: #dc3545 !important;
+                    box-shadow: 0 0 0 0.25rem rgba(220, 53, 69, 0.25) !important;
+                  }
+                `}
+              </style>
+              <Table hover variant="dark" size="sm" className="mb-0">
+                <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
                   <tr>
-                    <th style={{ width: '50px' }}>
+                    <th width="40" style={{ backgroundColor: 'var(--bs-dark)' }}>
                       <Form.Check
                         type="checkbox"
                         checked={filteredDomains.length > 0 && filteredDomains.every(item => {
@@ -363,27 +423,14 @@ const AmassEnumConfigModal = ({
                         })}
                         onChange={(e) => {
                           if (e.target.checked) {
-                            selectAllFiltered();
+                            handleSelectAll();
                           } else {
-                            deselectAllFiltered();
+                            handleDeselectAll();
                           }
                         }}
                       />
                     </th>
-                    <th 
-                      style={{ cursor: 'pointer' }}
-                      onClick={() => handleSort('domain')}
-                    >
-                      Domain
-                      {renderSortIcon('domain')}
-                    </th>
-                    <th 
-                      style={{ cursor: 'pointer', width: '150px' }}
-                      onClick={() => handleSort('status')}
-                    >
-                      Status
-                      {renderSortIcon('status')}
-                    </th>
+                    <th style={{ backgroundColor: 'var(--bs-dark)' }}>Domain</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -392,31 +439,34 @@ const AmassEnumConfigModal = ({
                     const isSelected = selectedDomains.has(domain);
                     
                     return (
-                      <tr key={index}>
+                      <tr 
+                        key={index}
+                        style={{
+                          backgroundColor: isSelected 
+                            ? 'rgba(220, 53, 69, 0.25)' 
+                            : 'transparent',
+                          cursor: 'pointer',
+                          userSelect: 'none',
+                          transition: 'background-color 0.15s ease-in-out'
+                        }}
+                        onMouseDown={(e) => handleMouseDown(domain, index, e)}
+                        onMouseEnter={() => handleMouseEnter(domain, index)}
+                      >
                         <td>
                           <Form.Check
                             type="checkbox"
                             checked={isSelected}
-                            onChange={() => toggleDomainSelection(domain)}
+                            onChange={() => handleDomainSelect(domain, index)}
+                            onClick={(e) => e.stopPropagation()}
                           />
                         </td>
-                        <td>
-                          <code className={isSelected ? 'text-success' : 'text-white'}>
-                            {domain}
-                          </code>
-                        </td>
-                        <td>
-                          {isSelected ? (
-                            <Badge bg="success">
-                              <i className="bi bi-check-circle me-1" />
-                              Selected
-                            </Badge>
-                          ) : (
-                            <Badge bg="secondary">
-                              <i className="bi bi-circle me-1" />
-                              Not Selected
-                            </Badge>
-                          )}
+                        <td 
+                          style={{ 
+                            fontFamily: 'monospace',
+                            fontSize: '0.875rem'
+                          }}
+                        >
+                          {domain}
                         </td>
                       </tr>
                     );
@@ -434,7 +484,7 @@ const AmassEnumConfigModal = ({
                 </Button>
               </div>
             )}
-          </div>
+          </>
         )}
       </Modal.Body>
       <Modal.Footer>
