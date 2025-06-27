@@ -3803,6 +3803,195 @@ function App() {
                     </Card>
                   </Col>
                 </Row>
+                
+                <h4 className="text-secondary mb-3 fs-5">Cloud Asset Enumeration (DNS)</h4>
+                <Row className="row-cols-2 g-3 mb-4">
+                  <Col>
+                    <Card className="shadow-sm h-100 text-center" style={{ minHeight: '300px' }}>
+                      <Card.Body className="d-flex flex-column">
+                        <Card.Title className="text-danger fs-4 mb-3">
+                          <a href="https://github.com/OWASP/Amass" className="text-danger text-decoration-none">
+                            Amass Enum
+                          </a>
+                        </Card.Title>
+                        <Card.Text className="text-white small fst-italic mb-4">
+                          Advanced DNS enumeration and cloud asset discovery using multiple techniques including DNS brute-forcing, reverse DNS, and certificate transparency.
+                        </Card.Text>
+                        <div className="text-danger mb-4">
+                          <h3 className="mb-0">0</h3>
+                          <small className="text-white-50">Cloud Assets Found</small>
+                        </div>
+                        <div className="d-flex justify-content-between mt-auto gap-2">
+                          <Button variant="outline-danger" className="flex-fill">Configure</Button>
+                          <Button variant="outline-danger" className="flex-fill">History</Button>
+                          <Button variant="outline-danger" className="flex-fill">Scan</Button>
+                          <Button variant="outline-danger" className="flex-fill">Results</Button>
+                        </div>
+                      </Card.Body>
+                    </Card>
+                  </Col>
+                  <Col>
+                    <Card className="shadow-sm h-100 text-center" style={{ minHeight: '300px' }}>
+                      <Card.Body className="d-flex flex-column">
+                        <Card.Title className="text-danger fs-4 mb-3">
+                          <a href="https://github.com/projectdiscovery/dnsx" className="text-danger text-decoration-none">
+                            DNSx
+                          </a>
+                        </Card.Title>
+                        <Card.Text className="text-white small fst-italic mb-4">
+                          Fast and multi-purpose DNS toolkit for running multiple DNS queries and cloud provider detection through DNS resolution patterns.
+                        </Card.Text>
+                        <div className="text-danger mb-4">
+                          <h3 className="mb-0">0</h3>
+                          <small className="text-white-50">DNS Records Found</small>
+                        </div>
+                        <div className="d-flex justify-content-between mt-auto gap-2">
+                          <Button variant="outline-danger" className="flex-fill">Configure</Button>
+                          <Button variant="outline-danger" className="flex-fill">History</Button>
+                          <Button variant="outline-danger" className="flex-fill">Scan</Button>
+                          <Button variant="outline-danger" className="flex-fill">Results</Button>
+                        </div>
+                      </Card.Body>
+                    </Card>
+                  </Col>
+                </Row>
+
+                <h4 className="text-secondary mb-3 fs-5">Cloud Asset Enumeration (Brute-Force)</h4>
+                <Row className="row-cols-4 g-3 mb-4">
+                  <Col>
+                    <Card className="shadow-sm h-100 text-center" style={{ minHeight: '250px' }}>
+                      <Card.Body className="d-flex flex-column">
+                        <Card.Title className="text-danger fs-4 mb-3">
+                          <a href="https://github.com/initstring/cloud_enum" className="text-danger text-decoration-none">
+                            Cloud Enum
+                          </a>
+                        </Card.Title>
+                        <Card.Text className="text-white small fst-italic mb-4">
+                          Multi-cloud OSINT tool for enumerating public resources in AWS, Azure, and Google Cloud.
+                        </Card.Text>
+                        <div className="text-danger mb-4">
+                          <h3 className="mb-0">0</h3>
+                          <small className="text-white-50">Resources Found</small>
+                        </div>
+                        <div className="d-flex justify-content-between mt-auto gap-2">
+                          <Button variant="outline-danger" className="flex-fill">Scan</Button>
+                          <Button variant="outline-danger" className="flex-fill">Results</Button>
+                        </div>
+                      </Card.Body>
+                    </Card>
+                  </Col>
+                  <Col>
+                    <Card className="shadow-sm h-100 text-center" style={{ minHeight: '250px' }}>
+                      <Card.Body className="d-flex flex-column">
+                        <Card.Title className="text-danger fs-4 mb-3">
+                          <a href="https://github.com/nccgroup/ScoutSuite" className="text-danger text-decoration-none">
+                            AWS Specific
+                          </a>
+                        </Card.Title>
+                        <Card.Text className="text-white small fst-italic mb-4">
+                          Specialized AWS asset enumeration including S3 buckets, EC2 instances, and other AWS-specific resources.
+                        </Card.Text>
+                        <div className="text-danger mb-4">
+                          <h3 className="mb-0">0</h3>
+                          <small className="text-white-50">AWS Resources</small>
+                        </div>
+                        <div className="d-flex justify-content-between mt-auto gap-2">
+                          <Button variant="outline-danger" className="flex-fill">Scan</Button>
+                          <Button variant="outline-danger" className="flex-fill">Results</Button>
+                        </div>
+                      </Card.Body>
+                    </Card>
+                  </Col>
+                  <Col>
+                    <Card className="shadow-sm h-100 text-center" style={{ minHeight: '250px' }}>
+                      <Card.Body className="d-flex flex-column">
+                        <Card.Title className="text-danger fs-4 mb-3">
+                          <a href="https://cloud.google.com/sdk/gcloud" className="text-danger text-decoration-none">
+                            GCP Specific
+                          </a>
+                        </Card.Title>
+                        <Card.Text className="text-white small fst-italic mb-4">
+                          Google Cloud Platform specific enumeration for Cloud Storage, Compute Engine, and other GCP services.
+                        </Card.Text>
+                        <div className="text-danger mb-4">
+                          <h3 className="mb-0">0</h3>
+                          <small className="text-white-50">GCP Resources</small>
+                        </div>
+                        <div className="d-flex justify-content-between mt-auto gap-2">
+                          <Button variant="outline-danger" className="flex-fill">Scan</Button>
+                          <Button variant="outline-danger" className="flex-fill">Results</Button>
+                        </div>
+                      </Card.Body>
+                    </Card>
+                  </Col>
+                  <Col>
+                    <Card className="shadow-sm h-100 text-center" style={{ minHeight: '250px' }}>
+                      <Card.Body className="d-flex flex-column">
+                        <Card.Title className="text-danger fs-4 mb-3">
+                          <a href="https://docs.microsoft.com/en-us/cli/azure/" className="text-danger text-decoration-none">
+                            Azure Specific
+                          </a>
+                        </Card.Title>
+                        <Card.Text className="text-white small fst-italic mb-4">
+                          Microsoft Azure specific enumeration for Blob storage, Virtual Machines, and other Azure services.
+                        </Card.Text>
+                        <div className="text-danger mb-4">
+                          <h3 className="mb-0">0</h3>
+                          <small className="text-white-50">Azure Resources</small>
+                        </div>
+                        <div className="d-flex justify-content-between mt-auto gap-2">
+                          <Button variant="outline-danger" className="flex-fill">Scan</Button>
+                          <Button variant="outline-danger" className="flex-fill">Results</Button>
+                        </div>
+                      </Card.Body>
+                    </Card>
+                  </Col>
+                </Row>
+
+                <h4 className="text-secondary mb-3 fs-5">Company Attack Surface</h4>
+                <Row className="mb-4">
+                  <Col>
+                    <Card className="shadow-sm h-100 text-center" style={{ minHeight: '200px' }}>
+                      <Card.Body className="d-flex flex-column">
+                        <Card.Title className="text-danger fs-4 mb-3">Company Attack Surface</Card.Title>
+                        <Card.Text className="text-white small fst-italic mb-4">
+                          Comprehensive attack surface management and analysis for your company's digital footprint across all discovered assets, domains, and cloud resources.
+                        </Card.Text>
+                        <div className="d-flex justify-content-between mt-auto gap-2">
+                          <Button variant="outline-danger" className="flex-fill">Explore</Button>
+                          <Button variant="outline-danger" className="flex-fill">Manage</Button>
+                          <Button variant="outline-danger" className="flex-fill">Visualize</Button>
+                          <Button variant="outline-danger" className="flex-fill">Analyze</Button>
+                          <Button variant="outline-danger" className="flex-fill">Report</Button>
+                        </div>
+                      </Card.Body>
+                    </Card>
+                  </Col>
+                </Row>
+
+                <h4 className="text-secondary mb-3 fs-5">Nuclei Scanning</h4>
+                <Row className="mb-4">
+                  <Col>
+                    <Card className="shadow-sm h-100 text-center" style={{ minHeight: '200px' }}>
+                      <Card.Body className="d-flex flex-column">
+                        <Card.Title className="text-danger fs-4 mb-3">
+                          <a href="https://github.com/projectdiscovery/nuclei" className="text-danger text-decoration-none">
+                            Nuclei Scanning
+                          </a>
+                        </Card.Title>
+                        <Card.Text className="text-white small fst-italic mb-4">
+                          Comprehensive vulnerability scanning across your entire company attack surface using Nuclei templates to identify security issues and potential bug bounty targets.
+                        </Card.Text>
+                        <div className="d-flex justify-content-between mt-auto gap-2">
+                          <Button variant="outline-danger" className="flex-fill">History</Button>
+                          <Button variant="outline-danger" className="flex-fill">Configure</Button>
+                          <Button variant="outline-danger" className="flex-fill">Scan</Button>
+                          <Button variant="outline-danger" className="flex-fill">Results</Button>
+                        </div>
+                      </Card.Body>
+                    </Card>
+                  </Col>
+                </Row>
               </div>
             )}
             {activeTarget.type === 'Wildcard' && (
