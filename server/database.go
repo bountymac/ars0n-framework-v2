@@ -637,6 +637,48 @@ func createTables() {
 		`DO $$ BEGIN BEGIN ALTER TABLE nuclei_screenshots ADD COLUMN IF NOT EXISTS auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL; EXCEPTION WHEN duplicate_column THEN RAISE NOTICE 'Column already exists.'; END; END $$;`,
 		`DO $$ BEGIN BEGIN ALTER TABLE metadata_scans ADD COLUMN IF NOT EXISTS auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL; EXCEPTION WHEN duplicate_column THEN RAISE NOTICE 'Column already exists.'; END; END $$;`,
 
+		`CREATE TABLE IF NOT EXISTS amass_enum_company_scans (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scan_id UUID NOT NULL UNIQUE,
+			scope_target_id UUID NOT NULL REFERENCES scope_targets(id) ON DELETE CASCADE,
+			domains JSONB NOT NULL DEFAULT '[]',
+			status VARCHAR(50) NOT NULL,
+			result TEXT,
+			error TEXT,
+			stdout TEXT,
+			stderr TEXT,
+			command TEXT,
+			execution_time TEXT,
+			created_at TIMESTAMP DEFAULT NOW()
+		);`,
+
+		`CREATE TABLE IF NOT EXISTS amass_enum_cloud_domains (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scan_id UUID NOT NULL,
+			domain TEXT NOT NULL,
+			type TEXT NOT NULL CHECK (type IN ('aws', 'gcp', 'azure', 'unknown')),
+			created_at TIMESTAMP DEFAULT NOW(),
+			FOREIGN KEY (scan_id) REFERENCES amass_enum_company_scans(scan_id) ON DELETE CASCADE
+		);`,
+
+		`CREATE TABLE IF NOT EXISTS amass_enum_dns_records (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scan_id UUID NOT NULL,
+			record TEXT NOT NULL,
+			record_type TEXT NOT NULL,
+			created_at TIMESTAMP DEFAULT NOW(),
+			FOREIGN KEY (scan_id) REFERENCES amass_enum_company_scans(scan_id) ON DELETE CASCADE
+		);`,
+
+		`CREATE TABLE IF NOT EXISTS amass_enum_raw_results (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scan_id UUID NOT NULL,
+			domain TEXT NOT NULL,
+			raw_output TEXT NOT NULL,
+			created_at TIMESTAMP DEFAULT NOW(),
+			FOREIGN KEY (scan_id) REFERENCES amass_enum_company_scans(scan_id) ON DELETE CASCADE
+		);`,
+
 		`CREATE TABLE IF NOT EXISTS amass_enum_configs (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			scope_target_id UUID NOT NULL UNIQUE REFERENCES scope_targets(id) ON DELETE CASCADE,
@@ -706,6 +748,43 @@ func createTables() {
 		`CREATE INDEX IF NOT EXISTS idx_discovered_live_ips_scan_id ON discovered_live_ips(scan_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_live_web_servers_scan_id ON live_web_servers(scan_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_live_web_servers_ip_port ON live_web_servers(ip_address, port);`,
+
+		// Domain-centric results tables for cumulative attack surface building
+		`CREATE TABLE IF NOT EXISTS amass_enum_company_domain_results (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scope_target_id UUID NOT NULL REFERENCES scope_targets(id) ON DELETE CASCADE,
+			domain TEXT NOT NULL,
+			last_scanned_at TIMESTAMP DEFAULT NOW(),
+			last_scan_id UUID,
+			raw_output TEXT,
+			created_at TIMESTAMP DEFAULT NOW(),
+			updated_at TIMESTAMP DEFAULT NOW(),
+			UNIQUE(scope_target_id, domain)
+		);`,
+
+		`CREATE TABLE IF NOT EXISTS amass_enum_company_cloud_domains (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scope_target_id UUID NOT NULL REFERENCES scope_targets(id) ON DELETE CASCADE,
+			root_domain TEXT NOT NULL,
+			cloud_domain TEXT NOT NULL,
+			type TEXT NOT NULL CHECK (type IN ('aws', 'gcp', 'azure', 'unknown')),
+			last_scanned_at TIMESTAMP DEFAULT NOW(),
+			created_at TIMESTAMP DEFAULT NOW(),
+			FOREIGN KEY (scope_target_id, root_domain) REFERENCES amass_enum_company_domain_results(scope_target_id, domain) ON DELETE CASCADE,
+			UNIQUE(scope_target_id, root_domain, cloud_domain)
+		);`,
+
+		`CREATE TABLE IF NOT EXISTS amass_enum_company_dns_records (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scope_target_id UUID NOT NULL REFERENCES scope_targets(id) ON DELETE CASCADE,
+			root_domain TEXT NOT NULL,
+			record TEXT NOT NULL,
+			record_type TEXT NOT NULL,
+			last_scanned_at TIMESTAMP DEFAULT NOW(),
+			created_at TIMESTAMP DEFAULT NOW(),
+			FOREIGN KEY (scope_target_id, root_domain) REFERENCES amass_enum_company_domain_results(scope_target_id, domain) ON DELETE CASCADE,
+			UNIQUE(scope_target_id, root_domain, record, record_type)
+		);`,
 	}
 
 	for _, query := range queries {

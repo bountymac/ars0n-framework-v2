@@ -131,6 +131,10 @@ import monitorIPPortScanStatus from './utils/monitorIPPortScanStatus';
 import initiateIPPortScan from './utils/initiateIPPortScan';
 import fetchIPPortScans from './utils/fetchIPPortScans';
 
+import { AmassEnumCompanyResultsModal } from './modals/AmassEnumCompanyResultsModal.js';
+import { AmassEnumCompanyHistoryModal } from './modals/AmassEnumCompanyHistoryModal.js';
+import { initiateAmassEnumCompanyScan } from './utils/initiateAmassEnumCompanyScan.js';
+
 // Add helper function
 const getHttpxResultsCount = (scan) => {
   if (!scan?.result?.String) return 0;
@@ -160,12 +164,10 @@ const calculateEstimatedScanTime = (networkRanges) => {
     if (!cidr) return;
     
     try {
-      // Parse CIDR notation (e.g., "192.168.1.0/24")
       const [ip, prefixLength] = cidr.split('/');
       const prefix = parseInt(prefixLength, 10);
       
       if (prefix >= 0 && prefix <= 32) {
-        // Calculate number of possible IPs in this CIDR block
         const hostBits = 32 - prefix;
         const possibleIPs = Math.pow(2, hostBits);
         totalIPs += possibleIPs;
@@ -175,10 +177,8 @@ const calculateEstimatedScanTime = (networkRanges) => {
     }
   });
 
-  // Apply the algorithm: 1 second timeout per IP, assume 20% go through port scan
   const estimatedSeconds = totalIPs * 1 * 0.2;
   
-  // Format the time nicely
   if (estimatedSeconds < 60) {
     return `${Math.round(estimatedSeconds)}s`;
   } else if (estimatedSeconds < 3600) {
@@ -191,6 +191,11 @@ const calculateEstimatedScanTime = (networkRanges) => {
     const days = Math.round(estimatedSeconds / 86400);
     return `${days}d`;
   }
+};
+
+const getAmassEnumScannedDomainsPercentage = (scannedCount, totalDomains) => {
+  if (totalDomains === 0) return 0;
+  return Math.round((scannedCount / totalDomains) * 100);
 };
 
 // Add this function before the App component
@@ -483,6 +488,14 @@ function App() {
   const [showLiveWebServersResultsModal, setShowLiveWebServersResultsModal] = useState(false);
   const [showAmassEnumConfigModal, setShowAmassEnumConfigModal] = useState(false);
   const [amassEnumSelectedDomainsCount, setAmassEnumSelectedDomainsCount] = useState(0);
+  const [amassEnumScannedDomainsCount, setAmassEnumScannedDomainsCount] = useState(0);
+  const [showAmassEnumCompanyResultsModal, setShowAmassEnumCompanyResultsModal] = useState(false);
+  const [showAmassEnumCompanyHistoryModal, setShowAmassEnumCompanyHistoryModal] = useState(false);
+  const [amassEnumCompanyScans, setAmassEnumCompanyScans] = useState([]);
+  const [mostRecentAmassEnumCompanyScan, setMostRecentAmassEnumCompanyScan] = useState(null);
+  const [mostRecentAmassEnumCompanyScanStatus, setMostRecentAmassEnumCompanyScanStatus] = useState(null);
+  const [isAmassEnumCompanyScanning, setIsAmassEnumCompanyScanning] = useState(false);
+  const [amassEnumCompanyCloudDomains, setAmassEnumCompanyCloudDomains] = useState([]);
   const [showAmassIntelConfigModal, setShowAmassIntelConfigModal] = useState(false);
   const [amassIntelSelectedNetworkRangesCount, setAmassIntelSelectedNetworkRangesCount] = useState(0);
   const [showDNSxConfigModal, setShowDNSxConfigModal] = useState(false);
@@ -610,6 +623,12 @@ function App() {
   const handleCloseAmassEnumConfigModal = () => setShowAmassEnumConfigModal(false);
   const handleOpenAmassEnumConfigModal = () => setShowAmassEnumConfigModal(true);
 
+  const handleCloseAmassEnumCompanyResultsModal = () => setShowAmassEnumCompanyResultsModal(false);
+  const handleOpenAmassEnumCompanyResultsModal = () => setShowAmassEnumCompanyResultsModal(true);
+  
+  const handleCloseAmassEnumCompanyHistoryModal = () => setShowAmassEnumCompanyHistoryModal(false);
+  const handleOpenAmassEnumCompanyHistoryModal = () => setShowAmassEnumCompanyHistoryModal(true);
+
   const handleAmassEnumConfigSave = (config) => {
     if (config && config.domains) {
       setAmassEnumSelectedDomainsCount(config.domains.length);
@@ -639,6 +658,37 @@ function App() {
       setAmassEnumSelectedDomainsCount(0);
     }
   };
+
+  // Update scanned domains count and cloud domains when scan status changes
+  useEffect(() => {
+    const updateScanResults = async () => {
+      if (activeTarget && mostRecentAmassEnumCompanyScan && mostRecentAmassEnumCompanyScan.scan_id) {
+        try {
+          // Fetch raw results count
+          const rawResultsResponse = await fetch(
+            `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/amass-enum-company/${mostRecentAmassEnumCompanyScan.scan_id}/raw-results`
+          );
+          if (rawResultsResponse.ok) {
+            const rawResults = await rawResultsResponse.json();
+            setAmassEnumScannedDomainsCount(rawResults ? rawResults.length : 0);
+          }
+
+          // Fetch cloud domains count
+          const cloudDomainsResponse = await fetch(
+            `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/amass-enum-company/${mostRecentAmassEnumCompanyScan.scan_id}/cloud-domains`
+          );
+          if (cloudDomainsResponse.ok) {
+            const cloudDomains = await cloudDomainsResponse.json();
+            setAmassEnumCompanyCloudDomains(cloudDomains || []);
+          }
+        } catch (error) {
+          console.error('Error updating scan results:', error);
+        }
+      }
+    };
+    
+    updateScanResults();
+  }, [activeTarget, mostRecentAmassEnumCompanyScan, mostRecentAmassEnumCompanyScanStatus]);
 
   const handleCloseAmassIntelConfigModal = () => setShowAmassIntelConfigModal(false);
   const handleOpenAmassIntelConfigModal = () => setShowAmassIntelConfigModal(true);
@@ -2918,6 +2968,69 @@ function App() {
     }
   }, [activeTarget]);
 
+  useEffect(() => {
+    if (activeTarget) {
+      const fetchAmassEnumCompanyScans = async () => {
+        try {
+          const response = await fetch(
+            `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${activeTarget.id}/scans/amass-enum-company`
+          );
+          if (!response.ok) {
+            throw new Error('Failed to fetch Amass Enum Company scans');
+          }
+          const scans = await response.json();
+          if (Array.isArray(scans)) {
+            setAmassEnumCompanyScans(scans);
+            if (scans.length > 0) {
+              const mostRecentScan = scans.reduce((latest, scan) => {
+                const scanDate = new Date(scan.created_at);
+                return scanDate > new Date(latest.created_at) ? scan : latest;
+              }, scans[0]);
+              setMostRecentAmassEnumCompanyScan(mostRecentScan);
+              setMostRecentAmassEnumCompanyScanStatus(mostRecentScan.status);
+              
+              // Fetch raw results to get actual scanned domains count
+              if (mostRecentScan.scan_id) {
+                const rawResultsResponse = await fetch(
+                  `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/amass-enum-company/${mostRecentScan.scan_id}/raw-results`
+                );
+                if (rawResultsResponse.ok) {
+                  const rawResults = await rawResultsResponse.json();
+                  setAmassEnumScannedDomainsCount(rawResults ? rawResults.length : 0);
+                } else {
+                  setAmassEnumScannedDomainsCount(0);
+                }
+
+                // Fetch cloud domains for the main card display
+                const cloudDomainsResponse = await fetch(
+                  `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/amass-enum-company/${mostRecentScan.scan_id}/cloud-domains`
+                );
+                if (cloudDomainsResponse.ok) {
+                  const cloudDomains = await cloudDomainsResponse.json();
+                  setAmassEnumCompanyCloudDomains(cloudDomains || []);
+                } else {
+                  setAmassEnumCompanyCloudDomains([]);
+                }
+              }
+            } else {
+              setAmassEnumScannedDomainsCount(0);
+              setAmassEnumCompanyCloudDomains([]);
+            }
+          }
+        } catch (error) {
+          console.error('[AMASS-ENUM-COMPANY] Error fetching scans:', error);
+          setAmassEnumScannedDomainsCount(0);
+          setAmassEnumCompanyCloudDomains([]);
+        }
+      };
+      fetchAmassEnumCompanyScans();
+    } else {
+      // Reset states when no active target
+      setAmassEnumScannedDomainsCount(0);
+      setAmassEnumCompanyCloudDomains([]);
+    }
+  }, [activeTarget]);
+
   const startCensysCompanyScan = () => {
     initiateCensysCompanyScan(
       activeTarget,
@@ -3072,6 +3185,55 @@ function App() {
 
   const handleTrimNetworkRanges = () => {
     handleOpenTrimNetworkRangesModal();
+  };
+
+  const startAmassEnumCompanyScan = async () => {
+    if (!activeTarget) {
+      console.error('No active target selected');
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/amass-enum-config/${activeTarget.id}`
+      );
+      
+      if (!response.ok) {
+        console.error('No Amass Enum configuration found');
+        setToastTitle('Configuration Required');
+        setToastMessage('Please configure domains in the Amass Enum configuration before starting the scan.');
+        setShowToast(true);
+        setTimeout(() => setShowToast(false), 5000);
+        return;
+      }
+
+      const config = await response.json();
+      
+      if (!config.domains || config.domains.length === 0) {
+        console.error('No domains configured for Amass Enum scan');
+        setToastTitle('Configuration Required');
+        setToastMessage('Please select domains in the Amass Enum configuration before starting the scan.');
+        setShowToast(true);
+        setTimeout(() => setShowToast(false), 5000);
+        return;
+      }
+
+      await initiateAmassEnumCompanyScan(
+        activeTarget,
+        config.domains,
+        setIsAmassEnumCompanyScanning,
+        setAmassEnumCompanyScans,
+        setMostRecentAmassEnumCompanyScan,
+        setMostRecentAmassEnumCompanyScanStatus,
+        setAmassEnumCompanyCloudDomains
+      );
+    } catch (error) {
+      console.error('Error starting Amass Enum Company scan:', error);
+      setToastTitle('Error');
+      setToastMessage('Failed to start Amass Enum scan. Please try again.');
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 5000);
+    }
   };
 
   return (
@@ -3280,6 +3442,19 @@ function App() {
         showCTLCompanyHistoryModal={showCTLCompanyHistoryModal}
         handleCloseCTLCompanyHistoryModal={handleCloseCTLCompanyHistoryModal}
         ctlCompanyScans={ctlCompanyScans}
+      />
+
+      <AmassEnumCompanyResultsModal
+        show={showAmassEnumCompanyResultsModal}
+        handleClose={handleCloseAmassEnumCompanyResultsModal}
+        activeTarget={activeTarget}
+        mostRecentAmassEnumCompanyScan={mostRecentAmassEnumCompanyScan}
+      />
+
+      <AmassEnumCompanyHistoryModal
+        show={showAmassEnumCompanyHistoryModal}
+        handleClose={handleCloseAmassEnumCompanyHistoryModal}
+        scans={amassEnumCompanyScans}
       />
 
       <SubfinderResultsModal
@@ -3954,20 +4129,39 @@ function App() {
                         <div className="text-danger mb-4">
                           <div className="row">
                             <div className="col">
-                              <h3 className="mb-0">{amassEnumSelectedDomainsCount}</h3>
-                              <small className="text-white-50">Root Domains<br/>to be Scanned</small>
+                              <h3 className="mb-0">{getAmassEnumScannedDomainsPercentage(amassEnumScannedDomainsCount, consolidatedCompanyDomainsCount)}%</h3>
+                              <small className="text-white-50">Root Domains<br/>Scanned</small>
                             </div>
                             <div className="col">
-                              <h3 className="mb-0">0</h3>
+                              <h3 className="mb-0">{amassEnumCompanyCloudDomains.length || 0}</h3>
                               <small className="text-white-50">Cloud Assets<br/>Discovered</small>
                             </div>
                           </div>
                         </div>
                         <div className="d-flex justify-content-between mt-auto gap-2">
                           <Button variant="outline-danger" className="flex-fill" onClick={handleOpenAmassEnumConfigModal}>Config</Button>
-                          <Button variant="outline-danger" className="flex-fill">History</Button>
-                          <Button variant="outline-danger" className="flex-fill">Scan</Button>
-                          <Button variant="outline-danger" className="flex-fill">Results</Button>
+                          <Button variant="outline-danger" className="flex-fill" onClick={handleOpenAmassEnumCompanyHistoryModal}>History</Button>
+                          <Button 
+                            variant="outline-danger" 
+                            className="flex-fill"
+                            onClick={startAmassEnumCompanyScan}
+                            disabled={isAmassEnumCompanyScanning || mostRecentAmassEnumCompanyScanStatus === "pending" || mostRecentAmassEnumCompanyScanStatus === "running"}
+                          >
+                            <div className="btn-content">
+                              {isAmassEnumCompanyScanning || mostRecentAmassEnumCompanyScanStatus === "pending" || mostRecentAmassEnumCompanyScanStatus === "running" ? (
+                                <Spinner animation="border" size="sm" />
+                              ) : (
+                                'Scan'
+                              )}
+                            </div>
+                          </Button>
+                          <Button 
+                            variant="outline-danger" 
+                            className="flex-fill" 
+                            onClick={handleOpenAmassEnumCompanyResultsModal}
+                          >
+                            Results
+                          </Button>
                         </div>
                       </Card.Body>
                     </Card>

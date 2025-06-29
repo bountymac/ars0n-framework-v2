@@ -198,6 +198,13 @@ func main() {
 	r.HandleFunc("/amass-enum-config/{scope_target_id}", getAmassEnumConfig).Methods("GET", "OPTIONS")
 	r.HandleFunc("/amass-enum-config/{scope_target_id}", saveAmassEnumConfig).Methods("POST", "OPTIONS")
 
+	// Amass Enum Company scan routes
+	r.HandleFunc("/amass-enum-company/run/{scope_target_id}", utils.RunAmassEnumCompanyScan).Methods("POST", "OPTIONS")
+	r.HandleFunc("/amass-enum-company/status/{scan_id}", utils.GetAmassEnumCompanyScanStatus).Methods("GET", "OPTIONS")
+	r.HandleFunc("/scopetarget/{id}/scans/amass-enum-company", utils.GetAmassEnumCompanyScansForScopeTarget).Methods("GET", "OPTIONS")
+	r.HandleFunc("/amass-enum-company/{scan_id}/cloud-domains", utils.GetAmassEnumCloudDomains).Methods("GET", "OPTIONS")
+	r.HandleFunc("/amass-enum-company/{scan_id}/raw-results", utils.GetAmassEnumRawResults).Methods("GET", "OPTIONS")
+
 	// Amass Intel configuration routes
 	r.HandleFunc("/amass-intel-config/{scope_target_id}", getAmassIntelConfig).Methods("GET", "OPTIONS")
 	r.HandleFunc("/amass-intel-config/{scope_target_id}", saveAmassIntelConfig).Methods("POST", "OPTIONS")
