@@ -51,6 +51,27 @@ function AutoScanConfigModal({ show, handleClose, config, onSave, loading: exter
         metadata: true
       }
     },
+    quickNoReport: {
+      name: "Quick Scan No Report",
+      editable: false,
+      config: {
+        amass: false, 
+        sublist3r: true, 
+        assetfinder: true, 
+        gau: true, 
+        ctl: true, 
+        subfinder: true, 
+        consolidate_httpx_round1: true, 
+        shuffledns: false, 
+        cewl: false, 
+        consolidate_httpx_round2: false, 
+        gospider: false, 
+        subdomainizer: false, 
+        consolidate_httpx_round3: false, 
+        nuclei_screenshot: false, 
+        metadata: false
+      }
+    },
     balanced: {
       name: "Balanced Scan",
       editable: false,
@@ -146,7 +167,6 @@ function AutoScanConfigModal({ show, handleClose, config, onSave, loading: exter
   }
 
   const handleCheckboxChange = (toolId) => {
-    if (selectedProfile !== 'custom') return;
     setLocalConfig((prev) => ({ ...prev, [toolId]: !prev[toolId] }));
   };
 
@@ -233,11 +253,6 @@ function AutoScanConfigModal({ show, handleClose, config, onSave, loading: exter
                 <option key={key} value={key}>{scanProfiles[key].name}</option>
               ))}
             </Form.Select>
-            {selectedProfile !== 'custom' && (
-              <small className="text-muted d-block mt-2">
-                Tool selections are preset for this scan profile and cannot be modified
-              </small>
-            )}
           </Form.Group>
           
           <hr className="text-secondary" />
@@ -254,7 +269,6 @@ function AutoScanConfigModal({ show, handleClose, config, onSave, loading: exter
                     label={tool.name}
                     checked={!!localConfig[tool.id]}
                     onChange={() => handleCheckboxChange(tool.id)}
-                    disabled={selectedProfile !== 'custom'}
                     className="mb-2 text-danger custom-checkbox"
                   />
                 ))}
@@ -271,7 +285,6 @@ function AutoScanConfigModal({ show, handleClose, config, onSave, loading: exter
                     label={tool.name}
                     checked={!!localConfig[tool.id]}
                     onChange={() => handleCheckboxChange(tool.id)}
-                    disabled={selectedProfile !== 'custom'}
                     className="mb-2 text-danger custom-checkbox"
                   />
                 ))}

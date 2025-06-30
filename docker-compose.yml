@@ -209,6 +209,16 @@ services:
     networks:
       - ars0n-network
 
+  dnsx:
+    container_name: ars0n-framework-v2-dnsx-1
+    build: ./docker/dnsx
+    depends_on:
+      - api
+    entrypoint: ["sleep", "infinity"]
+    restart: "no"
+    networks:
+      - ars0n-network
+
   ffuf:
     container_name: ars0n-framework-v2-ffuf-1
     build: ./docker/ffuf

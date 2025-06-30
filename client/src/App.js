@@ -17,19 +17,19 @@ import Ars0nFrameworkHeader from './components/ars0nFrameworkHeader.js';
 import ManageScopeTargets from './components/manageScopeTargets.js';
 import fetchAmassScans from './utils/fetchAmassScans.js';
 import {
-  Container,
-  Fade,
-  Card,
-  Row,
-  Col,
-  Button,
-  ListGroup,
-  Accordion,
-  Modal,
-  Table,
-  Toast,
-  ToastContainer,
-  Spinner,
+    Container,
+    Fade,
+    Card,
+    Row,
+    Col,
+    Button,
+    ListGroup,
+    Accordion,
+    Modal,
+    Table,
+    Toast,
+    ToastContainer,
+    Spinner,
 } from 'react-bootstrap';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'bootstrap-icons/font/bootstrap-icons.css';
@@ -37,14 +37,14 @@ import initiateAmassScan from './utils/initiateAmassScan';
 import monitorScanStatus from './utils/monitorScanStatus';
 import validateInput from './utils/validateInput.js';
 import {
-  getTypeIcon,
-  getLastScanDate,
-  getLatestScanStatus,
-  getLatestScanTime,
-  getLatestScanId,
-  getExecutionTime,
-  getResultLength,
-  copyToClipboard,
+    getTypeIcon,
+    getLastScanDate,
+    getLatestScanStatus,
+    getLatestScanTime,
+    getLatestScanId,
+    getExecutionTime,
+    getResultLength,
+    copyToClipboard,
 } from './utils/miscUtils.js';
 import { MdCopyAll, MdCheckCircle } from 'react-icons/md';
 import initiateHttpxScan from './utils/initiateHttpxScan';
@@ -88,9 +88,9 @@ import fetchHttpxScans from './utils/fetchHttpxScans';
 import ROIReport from './components/ROIReport';
 import HelpMeLearn from './components/HelpMeLearn';
 import {
-  AUTO_SCAN_STEPS,
-  resumeAutoScan as resumeAutoScanUtil,
-  startAutoScan as startAutoScanUtil
+    AUTO_SCAN_STEPS,
+    resumeAutoScan as resumeAutoScanUtil,
+    startAutoScan as startAutoScanUtil
 } from './utils/wildcardAutoScan';
 import getAutoScanSteps from './utils/autoScanSteps';
 import fetchAmassIntelScans from './utils/fetchAmassIntelScans';
@@ -135,6 +135,11 @@ import { AmassEnumCompanyResultsModal } from './modals/AmassEnumCompanyResultsMo
 import { AmassEnumCompanyHistoryModal } from './modals/AmassEnumCompanyHistoryModal.js';
 import { initiateAmassEnumCompanyScan } from './utils/initiateAmassEnumCompanyScan.js';
 
+// Add DNSx imports
+import { DNSxCompanyResultsModal } from './modals/DNSxCompanyResultsModal.js';
+import { DNSxCompanyHistoryModal } from './modals/DNSxCompanyHistoryModal.js';
+import { initiateDNSxCompanyScan } from './utils/initiateDNSxCompanyScan.js';
+
 // Add helper function
 const getHttpxResultsCount = (scan) => {
   if (!scan?.result?.String) return 0;
@@ -143,44 +148,32 @@ const getHttpxResultsCount = (scan) => {
 
 // Add helper function to get network ranges count for Amass Intel
 const getAmassIntelNetworkRangesCount = (networkRanges) => {
-  return Array.isArray(networkRanges) ? networkRanges.length : 0;
+  return networkRanges.reduce((count, range) => count + 1, 0);
 };
 
 // Add helper function to get network ranges count for Metabigor
 const getMetabigorNetworkRangesCount = (networkRanges) => {
-  return Array.isArray(networkRanges) ? networkRanges.length : 0;
+  return networkRanges.reduce((count, range) => count + 1, 0);
 };
 
 // Calculate estimated IP/Port scan time based on network ranges
 const calculateEstimatedScanTime = (networkRanges) => {
-  if (!Array.isArray(networkRanges) || networkRanges.length === 0) {
-    return "N/A";
-  }
+  // Calculate total IPs from all CIDR blocks
+  const totalIPs = networkRanges.reduce((total, range) => {
+    const cidr = range.cidr_block || range.cidr;
+    const [, prefix] = cidr.split('/');
+    const prefixLength = parseInt(prefix);
+    const ipCount = Math.pow(2, 32 - prefixLength);
+    return total + ipCount;
+  }, 0);
 
-  let totalIPs = 0;
-  
-  networkRanges.forEach(range => {
-    const cidr = range.cidr_block;
-    if (!cidr) return;
-    
-    try {
-      const [ip, prefixLength] = cidr.split('/');
-      const prefix = parseInt(prefixLength, 10);
-      
-      if (prefix >= 0 && prefix <= 32) {
-        const hostBits = 32 - prefix;
-        const possibleIPs = Math.pow(2, hostBits);
-        totalIPs += possibleIPs;
-      }
-    } catch (error) {
-      console.error('Error parsing CIDR:', cidr, error);
-    }
-  });
+  // Estimate 1000 IPs per minute (conservative estimate for Naabu)
+  const estimatedMinutes = Math.ceil(totalIPs / 1000);
+  const estimatedSeconds = estimatedMinutes * 60;
 
-  const estimatedSeconds = totalIPs * 1 * 0.2;
-  
+  // Format the time nicely
   if (estimatedSeconds < 60) {
-    return `${Math.round(estimatedSeconds)}s`;
+    return `${estimatedSeconds}s`;
   } else if (estimatedSeconds < 3600) {
     const minutes = Math.round(estimatedSeconds / 60);
     return `${minutes}m`;
@@ -193,10 +186,7 @@ const calculateEstimatedScanTime = (networkRanges) => {
   }
 };
 
-const getAmassEnumScannedDomainsPercentage = (scannedCount, totalDomains) => {
-  if (totalDomains === 0) return 0;
-  return Math.round((scannedCount / totalDomains) * 100);
-};
+
 
 // Add this function before the App component
 const calculateROIScore = (targetURL) => {
@@ -489,6 +479,8 @@ function App() {
   const [showAmassEnumConfigModal, setShowAmassEnumConfigModal] = useState(false);
   const [amassEnumSelectedDomainsCount, setAmassEnumSelectedDomainsCount] = useState(0);
   const [amassEnumScannedDomainsCount, setAmassEnumScannedDomainsCount] = useState(0);
+
+  const [amassEnumWildcardDomainsCount, setAmassEnumWildcardDomainsCount] = useState(0);
   const [showAmassEnumCompanyResultsModal, setShowAmassEnumCompanyResultsModal] = useState(false);
   const [showAmassEnumCompanyHistoryModal, setShowAmassEnumCompanyHistoryModal] = useState(false);
   const [amassEnumCompanyScans, setAmassEnumCompanyScans] = useState([]);
@@ -499,7 +491,7 @@ function App() {
   const [showAmassIntelConfigModal, setShowAmassIntelConfigModal] = useState(false);
   const [amassIntelSelectedNetworkRangesCount, setAmassIntelSelectedNetworkRangesCount] = useState(0);
   const [showDNSxConfigModal, setShowDNSxConfigModal] = useState(false);
-  const [dnsxSelectedWildcardTargetsCount, setDnsxSelectedWildcardTargetsCount] = useState(0);
+  // Removed unused DNSx wildcard targets variable - replaced with domains count below
   const [ipPortScans, setIPPortScans] = useState([]);
   const [mostRecentIPPortScan, setMostRecentIPPortScan] = useState(null);
   const [mostRecentIPPortScanStatus, setMostRecentIPPortScanStatus] = useState(null);
@@ -515,6 +507,18 @@ function App() {
   const [isCompanyMetaDataScanning, setIsCompanyMetaDataScanning] = useState(false);
   const [companyMetaDataResults, setCompanyMetaDataResults] = useState([]);
 
+  // DNSx Company scan state variables
+  const [dnsxSelectedDomainsCount, setDnsxSelectedDomainsCount] = useState(0);
+  const [dnsxScannedDomainsCount, setDnsxScannedDomainsCount] = useState(0);
+
+  const [dnsxWildcardDomainsCount, setDnsxWildcardDomainsCount] = useState(0);
+  const [showDNSxCompanyResultsModal, setShowDNSxCompanyResultsModal] = useState(false);
+  const [showDNSxCompanyHistoryModal, setShowDNSxCompanyHistoryModal] = useState(false);
+  const [dnsxCompanyScans, setDnsxCompanyScans] = useState([]);
+  const [mostRecentDNSxCompanyScan, setMostRecentDNSxCompanyScan] = useState(null);
+  const [mostRecentDNSxCompanyScanStatus, setMostRecentDNSxCompanyScanStatus] = useState(null);
+  const [isDNSxCompanyScanning, setIsDNSxCompanyScanning] = useState(false);
+  const [dnsxCompanyDnsRecords, setDnsxCompanyDnsRecords] = useState([]);
 
   const handleCloseSubdomainsModal = () => setShowSubdomainsModal(false);
   const handleCloseCloudDomainsModal = () => setShowCloudDomainsModal(false);
@@ -629,10 +633,12 @@ function App() {
   const handleCloseAmassEnumCompanyHistoryModal = () => setShowAmassEnumCompanyHistoryModal(false);
   const handleOpenAmassEnumCompanyHistoryModal = () => setShowAmassEnumCompanyHistoryModal(true);
 
-  const handleAmassEnumConfigSave = (config) => {
+  const handleAmassEnumConfigSave = async (config) => {
     if (config && config.domains) {
       setAmassEnumSelectedDomainsCount(config.domains.length);
     }
+    // Reload the complete config to recalculate wildcard domains count
+    await loadAmassEnumConfig();
   };
 
   const loadAmassEnumConfig = async () => {
@@ -650,12 +656,89 @@ function App() {
         } else {
           setAmassEnumSelectedDomainsCount(0);
         }
+        
+        // Always calculate wildcard domains count from discovered domains
+        if (config.wildcard_domains && Array.isArray(config.wildcard_domains) && config.wildcard_domains.length > 0) {
+          try {
+            // Fetch all scope targets to find wildcard targets
+            const scopeTargetsResponse = await fetch(
+              `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/read`
+            );
+            
+            if (scopeTargetsResponse.ok) {
+              const scopeTargetsData = await scopeTargetsResponse.json();
+              const targets = Array.isArray(scopeTargetsData) ? scopeTargetsData : scopeTargetsData.targets;
+              
+              if (targets && Array.isArray(targets)) {
+                let totalDiscoveredDomains = 0;
+                
+                // Find wildcard targets that match our saved wildcard domains
+                const wildcardTargets = targets.filter(target => {
+                  if (!target || target.type !== 'Wildcard') return false;
+                  
+                  const rootDomainFromWildcard = target.scope_target.startsWith('*.') 
+                    ? target.scope_target.substring(2) 
+                    : target.scope_target;
+                  
+                  return config.wildcard_domains.includes(rootDomainFromWildcard);
+                });
+                
+                // Count discovered domains from each wildcard target
+                for (const wildcardTarget of wildcardTargets) {
+                  try {
+                    const liveWebServersResponse = await fetch(
+                      `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/scope-targets/${wildcardTarget.id}/target-urls`
+                    );
+                    
+                    if (liveWebServersResponse.ok) {
+                      const liveWebServersData = await liveWebServersResponse.json();
+                      const targetUrls = Array.isArray(liveWebServersData) ? liveWebServersData : liveWebServersData.target_urls;
+                      
+                      if (targetUrls && Array.isArray(targetUrls)) {
+                        const discoveredDomains = Array.from(new Set(
+                          targetUrls
+                            .map(url => {
+                              try {
+                                if (!url || !url.url) return null;
+                                const urlObj = new URL(url.url);
+                                return urlObj.hostname;
+                              } catch {
+                                return null;
+                              }
+                            })
+                            .filter(domain => domain && domain !== wildcardTarget.scope_target)
+                        ));
+                        
+                        totalDiscoveredDomains += discoveredDomains.length;
+                      }
+                    }
+                  } catch (error) {
+                    console.error(`Error fetching wildcard domains for ${wildcardTarget.scope_target}:`, error);
+                  }
+                }
+                
+                setAmassEnumWildcardDomainsCount(totalDiscoveredDomains);
+              } else {
+                setAmassEnumWildcardDomainsCount(0);
+              }
+            } else {
+              setAmassEnumWildcardDomainsCount(0);
+            }
+          } catch (error) {
+            console.error('Error calculating wildcard domains count:', error);
+            setAmassEnumWildcardDomainsCount(0);
+          }
+        } else {
+          setAmassEnumWildcardDomainsCount(0);
+        }
       } else {
         setAmassEnumSelectedDomainsCount(0);
+        setAmassEnumWildcardDomainsCount(0);
       }
     } catch (error) {
       console.error('Error loading Amass Enum config:', error);
       setAmassEnumSelectedDomainsCount(0);
+      setAmassEnumWildcardDomainsCount(0);
     }
   };
 
@@ -670,7 +753,9 @@ function App() {
           );
           if (rawResultsResponse.ok) {
             const rawResults = await rawResultsResponse.json();
-            setAmassEnumScannedDomainsCount(rawResults ? rawResults.length : 0);
+            // Count unique domains from raw results, not total number of results
+            const uniqueDomains = rawResults ? [...new Set(rawResults.map(result => result.domain))].length : 0;
+            setAmassEnumScannedDomainsCount(uniqueDomains);
           }
 
           // Fetch cloud domains count
@@ -689,6 +774,36 @@ function App() {
     
     updateScanResults();
   }, [activeTarget, mostRecentAmassEnumCompanyScan, mostRecentAmassEnumCompanyScanStatus]);
+
+  // Update DNSx scan results when scan status changes
+  useEffect(() => {
+    const updateDNSxScanResults = async () => {
+      if (activeTarget && mostRecentDNSxCompanyScan && mostRecentDNSxCompanyScan.scan_id) {
+        try {
+          // Get the actual number of root domains that were scanned from the scan configuration
+          // instead of counting discovered DNS records from raw results
+          if (mostRecentDNSxCompanyScan.domains && Array.isArray(mostRecentDNSxCompanyScan.domains)) {
+            setDnsxScannedDomainsCount(mostRecentDNSxCompanyScan.domains.length);
+          } else {
+            setDnsxScannedDomainsCount(0);
+          }
+
+          // Fetch DNS records count
+          const dnsRecordsResponse = await fetch(
+            `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/dnsx-company/${mostRecentDNSxCompanyScan.scan_id}/dns-records`
+          );
+          if (dnsRecordsResponse.ok) {
+            const dnsRecords = await dnsRecordsResponse.json();
+            setDnsxCompanyDnsRecords(dnsRecords || []);
+          }
+        } catch (error) {
+          console.error('Error updating DNSx scan results:', error);
+        }
+      }
+    };
+    
+    updateDNSxScanResults();
+  }, [activeTarget, mostRecentDNSxCompanyScan, mostRecentDNSxCompanyScanStatus]);
 
   const handleCloseAmassIntelConfigModal = () => setShowAmassIntelConfigModal(false);
   const handleOpenAmassIntelConfigModal = () => setShowAmassIntelConfigModal(true);
@@ -2996,7 +3111,9 @@ function App() {
                 );
                 if (rawResultsResponse.ok) {
                   const rawResults = await rawResultsResponse.json();
-                  setAmassEnumScannedDomainsCount(rawResults ? rawResults.length : 0);
+                  // Count unique domains from raw results, not total number of results
+                  const uniqueDomains = rawResults ? [...new Set(rawResults.map(result => result.domain))].length : 0;
+                  setAmassEnumScannedDomainsCount(uniqueDomains);
                 } else {
                   setAmassEnumScannedDomainsCount(0);
                 }
@@ -3028,6 +3145,66 @@ function App() {
       // Reset states when no active target
       setAmassEnumScannedDomainsCount(0);
       setAmassEnumCompanyCloudDomains([]);
+    }
+  }, [activeTarget]);
+
+  // DNSx Company scans useEffect  
+  useEffect(() => {
+    if (activeTarget) {
+      const fetchDNSxCompanyScans = async () => {
+        try {
+          const response = await fetch(
+            `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${activeTarget.id}/scans/dnsx-company`
+          );
+          if (!response.ok) {
+            throw new Error('Failed to fetch DNSx Company scans');
+          }
+          const scans = await response.json();
+          if (Array.isArray(scans)) {
+            setDnsxCompanyScans(scans);
+            if (scans.length > 0) {
+              // API returns scans in descending order (newest first), so just use the first one
+              const mostRecentScan = scans[0];
+              setMostRecentDNSxCompanyScan(mostRecentScan);
+              setMostRecentDNSxCompanyScanStatus(mostRecentScan.status);
+              
+              // Fetch raw results to get actual scanned domains count
+              if (mostRecentScan.scan_id) {
+                // Get the actual number of root domains that were scanned from the scan configuration
+                // instead of counting discovered DNS records from raw results
+                if (mostRecentScan.domains && Array.isArray(mostRecentScan.domains)) {
+                  setDnsxScannedDomainsCount(mostRecentScan.domains.length);
+                } else {
+                  setDnsxScannedDomainsCount(0);
+                }
+
+                // Fetch DNS records for the main card display
+                const dnsRecordsResponse = await fetch(
+                  `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/dnsx-company/${mostRecentScan.scan_id}/dns-records`
+                );
+                if (dnsRecordsResponse.ok) {
+                  const dnsRecords = await dnsRecordsResponse.json();
+                  setDnsxCompanyDnsRecords(dnsRecords || []);
+                } else {
+                  setDnsxCompanyDnsRecords([]);
+                }
+              }
+            } else {
+              setDnsxScannedDomainsCount(0);
+              setDnsxCompanyDnsRecords([]);
+            }
+          }
+        } catch (error) {
+          console.error('[DNSX-COMPANY] Error fetching scans:', error);
+          setDnsxScannedDomainsCount(0);
+          setDnsxCompanyDnsRecords([]);
+        }
+      };
+      fetchDNSxCompanyScans();
+    } else {
+      // Reset states when no active target
+      setDnsxScannedDomainsCount(0);
+      setDnsxCompanyDnsRecords([]);
     }
   }, [activeTarget]);
 
@@ -3144,6 +3321,30 @@ function App() {
           setMostRecentShodanCompanyScanStatus
         );
         
+        // Refresh DNSx Company scans
+        const fetchDNSxCompanyScansRefresh = async () => {
+          try {
+            const response = await fetch(
+              `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${activeTarget.id}/scans/dnsx-company`
+            );
+            if (!response.ok) {
+              throw new Error('Failed to fetch DNSx Company scans');
+            }
+            const scans = await response.json();
+            if (Array.isArray(scans)) {
+              setDnsxCompanyScans(scans);
+              if (scans.length > 0) {
+                const mostRecentScan = scans[0];
+                setMostRecentDNSxCompanyScan(mostRecentScan);
+                setMostRecentDNSxCompanyScanStatus(mostRecentScan.status);
+              }
+            }
+          } catch (error) {
+            console.error('[DNSX-COMPANY] Error refreshing scans:', error);
+          }
+        };
+        fetchDNSxCompanyScansRefresh();
+        
       } catch (error) {
         console.error('Error refreshing individual tool scan data after deletion:', error);
       }
@@ -3153,10 +3354,12 @@ function App() {
   const handleCloseDNSxConfigModal = () => setShowDNSxConfigModal(false);
   const handleOpenDNSxConfigModal = () => setShowDNSxConfigModal(true);
 
-  const handleDNSxConfigSave = (config) => {
-    if (config && config.wildcard_targets) {
-      setDnsxSelectedWildcardTargetsCount(config.wildcard_targets.length);
+  const handleDNSxConfigSave = async (config) => {
+    if (config && config.domains) {
+      setDnsxSelectedDomainsCount(config.domains.length);
     }
+    // Reload the complete config to recalculate wildcard domains count
+    await loadDNSxConfig();
   };
 
   const loadDNSxConfig = async () => {
@@ -3169,17 +3372,150 @@ function App() {
       
       if (response.ok) {
         const config = await response.json();
-        if (config.wildcard_targets && Array.isArray(config.wildcard_targets)) {
-          setDnsxSelectedWildcardTargetsCount(config.wildcard_targets.length);
+        if (config.domains && Array.isArray(config.domains)) {
+          setDnsxSelectedDomainsCount(config.domains.length);
         } else {
-          setDnsxSelectedWildcardTargetsCount(0);
+          setDnsxSelectedDomainsCount(0);
+        }
+        
+        // Always calculate wildcard domains count from discovered domains
+        if (config.wildcard_domains && Array.isArray(config.wildcard_domains) && config.wildcard_domains.length > 0) {
+          try {
+            // Fetch all scope targets to find wildcard targets
+            const scopeTargetsResponse = await fetch(
+              `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/read`
+            );
+            
+            if (scopeTargetsResponse.ok) {
+              const scopeTargetsData = await scopeTargetsResponse.json();
+              const targets = Array.isArray(scopeTargetsData) ? scopeTargetsData : scopeTargetsData.targets;
+              
+              if (targets && Array.isArray(targets)) {
+                let totalDiscoveredDomains = 0;
+                
+                // Find wildcard targets that match our saved wildcard domains
+                const wildcardTargets = targets.filter(target => {
+                  if (!target || target.type !== 'Wildcard') return false;
+                  
+                  const rootDomainFromWildcard = target.scope_target.startsWith('*.') 
+                    ? target.scope_target.substring(2) 
+                    : target.scope_target;
+                  
+                  return config.wildcard_domains.includes(rootDomainFromWildcard);
+                });
+                
+                // Count discovered domains from each wildcard target
+                for (const wildcardTarget of wildcardTargets) {
+                  try {
+                    const liveWebServersResponse = await fetch(
+                      `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/scope-targets/${wildcardTarget.id}/target-urls`
+                    );
+                    
+                    if (liveWebServersResponse.ok) {
+                      const liveWebServersData = await liveWebServersResponse.json();
+                      const targetUrls = Array.isArray(liveWebServersData) ? liveWebServersData : liveWebServersData.target_urls;
+                      
+                      if (targetUrls && Array.isArray(targetUrls)) {
+                        const discoveredDomains = Array.from(new Set(
+                          targetUrls
+                            .map(url => {
+                              try {
+                                if (!url || !url.url) return null;
+                                const urlObj = new URL(url.url);
+                                return urlObj.hostname;
+                              } catch {
+                                return null;
+                              }
+                            })
+                            .filter(domain => domain && domain !== wildcardTarget.scope_target)
+                        ));
+                        
+                        totalDiscoveredDomains += discoveredDomains.length;
+                      }
+                    }
+                  } catch (error) {
+                    console.error(`Error fetching wildcard domains for ${wildcardTarget.scope_target}:`, error);
+                  }
+                }
+                
+                setDnsxWildcardDomainsCount(totalDiscoveredDomains);
+              } else {
+                setDnsxWildcardDomainsCount(0);
+              }
+            } else {
+              setDnsxWildcardDomainsCount(0);
+            }
+          } catch (error) {
+            console.error('Error calculating wildcard domains count:', error);
+            setDnsxWildcardDomainsCount(0);
+          }
+        } else {
+          setDnsxWildcardDomainsCount(0);
         }
       } else {
-        setDnsxSelectedWildcardTargetsCount(0);
+        setDnsxSelectedDomainsCount(0);
+        setDnsxWildcardDomainsCount(0);
       }
     } catch (error) {
       console.error('Error loading DNSx config:', error);
-      setDnsxSelectedWildcardTargetsCount(0);
+      setDnsxSelectedDomainsCount(0);
+      setDnsxWildcardDomainsCount(0);
+    }
+  };
+
+  // Add DNSx Company handlers
+  const handleCloseDNSxCompanyResultsModal = () => setShowDNSxCompanyResultsModal(false);
+  const handleOpenDNSxCompanyResultsModal = () => setShowDNSxCompanyResultsModal(true);
+  
+  const handleCloseDNSxCompanyHistoryModal = () => setShowDNSxCompanyHistoryModal(false);
+  const handleOpenDNSxCompanyHistoryModal = () => setShowDNSxCompanyHistoryModal(true);
+
+  const startDNSxCompanyScan = async () => {
+    if (!activeTarget) {
+      console.error('No active target selected');
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/dnsx-config/${activeTarget.id}`
+      );
+      
+      if (!response.ok) {
+        console.error('No DNSx configuration found');
+        setToastTitle('Configuration Required');
+        setToastMessage('Please configure domains in the DNSx configuration before starting the scan.');
+        setShowToast(true);
+        setTimeout(() => setShowToast(false), 5000);
+        return;
+      }
+
+      const config = await response.json();
+      
+      if (!config.domains || config.domains.length === 0) {
+        console.error('No domains configured for DNSx scan');
+        setToastTitle('Configuration Required');
+        setToastMessage('Please select domains in the DNSx configuration before starting the scan.');
+        setShowToast(true);
+        setTimeout(() => setShowToast(false), 5000);
+        return;
+      }
+
+      await initiateDNSxCompanyScan(
+        activeTarget,
+        config.domains,
+        setIsDNSxCompanyScanning,
+        setDnsxCompanyScans,
+        setMostRecentDNSxCompanyScan,
+        setMostRecentDNSxCompanyScanStatus,
+        setDnsxCompanyDnsRecords
+      );
+    } catch (error) {
+      console.error('Error starting DNSx Company scan:', error);
+      setToastTitle('Error');
+      setToastMessage('Failed to start DNSx scan. Please try again.');
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 5000);
     }
   };
 
@@ -3455,6 +3791,19 @@ function App() {
         show={showAmassEnumCompanyHistoryModal}
         handleClose={handleCloseAmassEnumCompanyHistoryModal}
         scans={amassEnumCompanyScans}
+      />
+
+      <DNSxCompanyResultsModal
+        show={showDNSxCompanyResultsModal}
+        handleClose={handleCloseDNSxCompanyResultsModal}
+        activeTarget={activeTarget}
+        mostRecentDNSxCompanyScan={mostRecentDNSxCompanyScan}
+      />
+
+      <DNSxCompanyHistoryModal
+        show={showDNSxCompanyHistoryModal}
+        handleClose={handleCloseDNSxCompanyHistoryModal}
+        scans={dnsxCompanyScans}
       />
 
       <SubfinderResultsModal
@@ -4114,7 +4463,7 @@ function App() {
                 </Row>
                 
                 <h4 className="text-secondary mb-3 fs-5">Cloud Asset Enumeration (DNS)</h4>
-                <Row className="row-cols-3 g-3 mb-4">
+                <Row className="row-cols-2 g-3 mb-4">
                   <Col>
                     <Card className="shadow-sm h-100 text-center" style={{ minHeight: '300px' }}>
                       <Card.Body className="d-flex flex-column">
@@ -4129,8 +4478,8 @@ function App() {
                         <div className="text-danger mb-4">
                           <div className="row">
                             <div className="col">
-                              <h3 className="mb-0">{getAmassEnumScannedDomainsPercentage(amassEnumScannedDomainsCount, consolidatedCompanyDomainsCount)}%</h3>
-                              <small className="text-white-50">Root Domains<br/>Scanned</small>
+                              <h3 className="mb-0">{amassEnumScannedDomainsCount}</h3>
+                              <small className="text-white-50">Company Domains<br/>Scanned</small>
                             </div>
                             <div className="col">
                               <h3 className="mb-0">{amassEnumCompanyCloudDomains.length || 0}</h3>
@@ -4170,48 +4519,36 @@ function App() {
                     <Card className="shadow-sm h-100 text-center" style={{ minHeight: '300px' }}>
                       <Card.Body className="d-flex flex-column">
                         <Card.Title className="text-danger fs-4 mb-3">
-                          <a href="https://github.com/OWASP/Amass" className="text-danger text-decoration-none">
-                            Amass Intel
+                          <a href="https://github.com/projectdiscovery/dnsx" className="text-danger text-decoration-none">
+                            DNSx
                           </a>
                         </Card.Title>
                         <Card.Text className="text-white small fst-italic mb-4">
-                          Intelligence gathering tool that searches CIDR blocks to discover cloud assets and infrastructure owned by target organizations.
+                          Fast and multi-purpose DNS toolkit for running multiple DNS queries and comprehensive DNS record discovery through advanced resolution techniques.
                         </Card.Text>
                         <div className="text-danger mb-4">
                           <div className="row">
                             <div className="col">
-                              <h3 className="mb-0">{amassIntelSelectedNetworkRangesCount}</h3>
-                              <small className="text-white-50">Network Ranges<br/>to be Scanned</small>
+                              <h3 className="mb-0">{dnsxScannedDomainsCount}</h3>
+                              <small className="text-white-50">Company Domains<br/>Scanned</small>
                             </div>
                             <div className="col">
-                              <h3 className="mb-0">{amassIntelNetworkRanges.length || 0}</h3>
-                              <small className="text-white-50">Cloud Assets<br/>Discovered</small>
+                              <h3 className="mb-0">{dnsxCompanyDnsRecords?.length || 0}</h3>
+                              <small className="text-white-50">DNS Records<br/>Discovered</small>
                             </div>
                           </div>
                         </div>
                         <div className="d-flex justify-content-between mt-auto gap-2">
+                          <Button variant="outline-danger" className="flex-fill" onClick={handleOpenDNSxConfigModal}>Config</Button>
+                          <Button variant="outline-danger" className="flex-fill" onClick={handleOpenDNSxCompanyHistoryModal}>History</Button>
                           <Button 
                             variant="outline-danger" 
-                            className="flex-fill" 
-                            onClick={handleOpenAmassIntelConfigModal}
-                          >
-                            Config
-                          </Button>
-                          <Button 
-                            variant="outline-danger" 
-                            className="flex-fill" 
-                            onClick={handleOpenAmassIntelHistoryModal}
-                          >
-                            History
-                          </Button>
-                          <Button
-                            variant="outline-danger"
                             className="flex-fill"
-                            onClick={startAmassIntelScan}
-                            disabled={isAmassIntelScanning || mostRecentAmassIntelScanStatus === "pending" || mostRecentAmassIntelScanStatus === "running"}
+                            onClick={startDNSxCompanyScan}
+                            disabled={isDNSxCompanyScanning || mostRecentDNSxCompanyScanStatus === "pending" || mostRecentDNSxCompanyScanStatus === "running"}
                           >
                             <div className="btn-content">
-                              {isAmassIntelScanning || mostRecentAmassIntelScanStatus === "pending" || mostRecentAmassIntelScanStatus === "running" ? (
+                              {isDNSxCompanyScanning || mostRecentDNSxCompanyScanStatus === "pending" || mostRecentDNSxCompanyScanStatus === "running" ? (
                                 <Spinner animation="border" size="sm" />
                               ) : (
                                 'Scan'
@@ -4221,42 +4558,10 @@ function App() {
                           <Button 
                             variant="outline-danger" 
                             className="flex-fill" 
-                            onClick={handleOpenAmassIntelResultsModal}
+                            onClick={handleOpenDNSxCompanyResultsModal}
                           >
                             Results
                           </Button>
-                        </div>
-                      </Card.Body>
-                    </Card>
-                  </Col>
-                  <Col>
-                    <Card className="shadow-sm h-100 text-center" style={{ minHeight: '300px' }}>
-                      <Card.Body className="d-flex flex-column">
-                        <Card.Title className="text-danger fs-4 mb-3">
-                          <a href="https://github.com/projectdiscovery/dnsx" className="text-danger text-decoration-none">
-                            DNSx
-                          </a>
-                        </Card.Title>
-                        <Card.Text className="text-white small fst-italic mb-4">
-                          Fast and multi-purpose DNS toolkit for running multiple DNS queries and cloud provider detection through DNS resolution patterns.
-                        </Card.Text>
-                        <div className="text-danger mb-4">
-                          <div className="row">
-                            <div className="col">
-                              <h3 className="mb-0">{dnsxSelectedWildcardTargetsCount}</h3>
-                              <small className="text-white-50">Wildcard Targets<br/>to be Scanned</small>
-                            </div>
-                            <div className="col">
-                              <h3 className="mb-0">0</h3>
-                              <small className="text-white-50">Cloud Assets<br/>Discovered</small>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="d-flex justify-content-between mt-auto gap-2">
-                          <Button variant="outline-danger" className="flex-fill" onClick={handleOpenDNSxConfigModal}>Config</Button>
-                          <Button variant="outline-danger" className="flex-fill">History</Button>
-                          <Button variant="outline-danger" className="flex-fill">Scan</Button>
-                          <Button variant="outline-danger" className="flex-fill">Results</Button>
                         </div>
                       </Card.Body>
                     </Card>

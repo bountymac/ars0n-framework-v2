@@ -1,102 +1,98 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Modal, Button, Table, Form, Alert, InputGroup, Row, Col, Spinner } from 'react-bootstrap';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import { Modal, Table, Button, Spinner, Alert, Row, Col, Form, InputGroup } from 'react-bootstrap';
 import { FaCheck, FaTimes } from 'react-icons/fa';
 
 const DNSxConfigModal = ({ 
   show, 
   handleClose, 
-  scopeTargets = [],
-  consolidatedCompanyDomains = [],
+  consolidatedCompanyDomains = [], 
   activeTarget,
   onSaveConfig
 }) => {
-  const [selectedWildcardTargets, setSelectedWildcardTargets] = useState(new Set());
+  const [selectedDomains, setSelectedDomains] = useState(new Set());
   const [filters, setFilters] = useState({
     domain: ''
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [estimatedTime, setEstimatedTime] = useState(0);
-  const [wildcardTargetsWithCounts, setWildcardTargetsWithCounts] = useState([]);
-  const [loadingCounts, setLoadingCounts] = useState(false);
+  const [localDomains, setLocalDomains] = useState([]);
+  const [loadingDomains, setLoadingDomains] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStartIndex, setDragStartIndex] = useState(null);
   const [dragMode, setDragMode] = useState('select');
+
+  const [wildcardDomains, setWildcardDomains] = useState([]);
+  const [loadingWildcardDomains, setLoadingWildcardDomains] = useState(false);
   const tableRef = useRef(null);
 
-  useEffect(() => {
-    setEstimatedTime(selectedWildcardTargets.size * 1); // Estimate 1 hour per wildcard target
-  }, [selectedWildcardTargets]);
+  // Use consolidated domains from props, or fallback to locally fetched ones
+  const baseDomains = consolidatedCompanyDomains.length > 0 ? consolidatedCompanyDomains : localDomains;
+  
+  // Always combine base domains with wildcard domains
+  const domainsToUse = useMemo(() => {
+    const combined = [...baseDomains.map(domain => ({
+      domain,
+      type: 'root',
+      isWildcardTarget: wildcardDomains.some(wd => wd.rootDomain === domain)
+    }))];
+    
+    // Add wildcard discovered domains
+    wildcardDomains.forEach(wd => {
+      wd.discoveredDomains.forEach(discoveredDomain => {
+        if (!combined.some(item => item.domain === discoveredDomain)) {
+          combined.push({
+            domain: discoveredDomain,
+            type: 'wildcard',
+            rootDomain: wd.wildcardTarget || wd.rootDomain
+          });
+        }
+      });
+    });
+    
+    return combined.sort((a, b) => a.domain.localeCompare(b.domain));
+  }, [baseDomains, wildcardDomains]);
 
   useEffect(() => {
     if (show) {
       loadSavedConfig();
-      fetchWildcardTargetsWithCounts();
+      // If no domains provided via props, fetch them
+      if (consolidatedCompanyDomains.length === 0) {
+        fetchConsolidatedDomains();
+      }
     }
   }, [show, activeTarget]);
 
-  const getWildcardTargetsMatchingRootDomains = () => {
-    return scopeTargets.filter(target => {
-      if (target.type !== 'Wildcard' || !target.scope_target) return false;
-      
-      // Remove *. prefix if present to get the base domain
-      const baseDomain = target.scope_target.startsWith('*.') 
-        ? target.scope_target.substring(2) 
-        : target.scope_target;
-      
-      // Check if this domain exists in consolidated company domains
-      return consolidatedCompanyDomains.some(item => {
-        const domain = typeof item === 'string' ? item : item.domain;
-        return domain && domain.toLowerCase() === baseDomain.toLowerCase();
-      });
-    });
-  };
+  useEffect(() => {
+    setEstimatedTime(selectedDomains.size);
+  }, [selectedDomains]);
 
-  const fetchWildcardTargetsWithCounts = async () => {
-    const wildcardTargets = getWildcardTargetsMatchingRootDomains();
-    
-    if (wildcardTargets.length === 0) {
-      setWildcardTargetsWithCounts([]);
-      return;
+  useEffect(() => {
+    if (baseDomains.length > 0) {
+      fetchWildcardDomains();
     }
+  }, [baseDomains]);
 
-    setLoadingCounts(true);
+  const fetchConsolidatedDomains = async () => {
+    if (!activeTarget?.id) return;
+
+    setLoadingDomains(true);
     try {
-      const targetsWithCounts = await Promise.all(
-        wildcardTargets.map(async (target) => {
-          try {
-            const response = await fetch(
-              `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scope-target/${target.id}/live-web-servers-count`
-            );
-            
-            if (response.ok) {
-              const data = await response.json();
-              return {
-                ...target,
-                liveWebServersCount: data.count || 0
-              };
-            } else {
-              return {
-                ...target,
-                liveWebServersCount: 0
-              };
-            }
-          } catch (error) {
-            console.error(`Error fetching live web servers count for ${target.scope_target}:`, error);
-            return {
-              ...target,
-              liveWebServersCount: 0
-            };
-          }
-        })
+      const response = await fetch(
+        `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/consolidated-company-domains/${activeTarget.id}`
       );
       
-      setWildcardTargetsWithCounts(targetsWithCounts);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.domains && Array.isArray(data.domains)) {
+          setLocalDomains(data.domains);
+        }
+      }
     } catch (error) {
-      console.error('Error fetching wildcard targets with counts:', error);
-      setError('Failed to load wildcard targets. Please try again.');
+      console.error('Error fetching consolidated domains:', error);
+      setError('Failed to load domains. Please try again.');
     } finally {
-      setLoadingCounts(false);
+      setLoadingDomains(false);
     }
   };
 
@@ -110,12 +106,136 @@ const DNSxConfigModal = ({
       
       if (response.ok) {
         const config = await response.json();
-        if (config.wildcard_targets && Array.isArray(config.wildcard_targets)) {
-          setSelectedWildcardTargets(new Set(config.wildcard_targets));
+        if (config.domains && Array.isArray(config.domains)) {
+          setSelectedDomains(new Set(config.domains));
+        }
+        
+
+        
+        // If wildcard domains were saved, we'll need to reconstruct the wildcard data structure
+        if (config.wildcard_domains && Array.isArray(config.wildcard_domains) && config.wildcard_domains.length > 0) {
+          // For now, we'll fetch fresh wildcard data since the saved format is just domain strings
+          // The actual wildcard domains structure will be built by fetchWildcardDomains
         }
       }
     } catch (error) {
       console.error('Error loading DNSx config:', error);
+    }
+  };
+
+  const fetchWildcardDomains = async () => {
+    if (!activeTarget?.id) return;
+
+    setLoadingWildcardDomains(true);
+    console.log('fetchWildcardDomains - baseDomains:', baseDomains);
+    
+    try {
+      // Get all scope targets to find which root domains have been added as wildcard targets
+      const scopeTargetsResponse = await fetch(
+        `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/read`
+      );
+      
+      if (!scopeTargetsResponse.ok) {
+        throw new Error('Failed to fetch scope targets');
+      }
+
+      const scopeTargetsData = await scopeTargetsResponse.json();
+      
+      // Check if response is directly an array or has a targets property
+      const targets = Array.isArray(scopeTargetsData) ? scopeTargetsData : scopeTargetsData.targets;
+      
+      // Ensure we have valid targets data
+      if (!targets || !Array.isArray(targets)) {
+        console.log('No valid targets data found:', scopeTargetsData);
+        setWildcardDomains([]);
+        return;
+      }
+
+      console.log('All targets:', targets);
+
+      const wildcardTargets = targets.filter(target => {
+        if (!target || target.type !== 'Wildcard') return false;
+        
+        // Remove *. prefix from wildcard target to match with base domains
+        const rootDomainFromWildcard = target.scope_target.startsWith('*.') 
+          ? target.scope_target.substring(2) 
+          : target.scope_target;
+        
+        const isMatch = baseDomains.includes(rootDomainFromWildcard);
+        console.log(`Checking wildcard target ${target.scope_target} -> ${rootDomainFromWildcard}, match: ${isMatch}`);
+        
+        return isMatch;
+      });
+
+      console.log(`Found ${wildcardTargets.length} matching wildcard targets:`, wildcardTargets.map(t => t.scope_target));
+
+      const wildcardDomainsData = [];
+
+      // For each wildcard target, fetch its live web servers
+      for (const wildcardTarget of wildcardTargets) {
+        console.log(`Fetching live web servers for wildcard target: ${wildcardTarget.scope_target} (ID: ${wildcardTarget.id})`);
+        try {
+          const liveWebServersResponse = await fetch(
+            `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/scope-targets/${wildcardTarget.id}/target-urls`
+          );
+
+          console.log(`Live web servers response status for ${wildcardTarget.scope_target}:`, liveWebServersResponse.status);
+
+          if (liveWebServersResponse.ok) {
+            const liveWebServersData = await liveWebServersResponse.json();
+            console.log(`Live web servers data for ${wildcardTarget.scope_target}:`, liveWebServersData);
+            
+            // Check if response is directly an array or has a target_urls property
+            const targetUrls = Array.isArray(liveWebServersData) ? liveWebServersData : liveWebServersData.target_urls;
+            
+            // Ensure we have valid target_urls data
+            if (!targetUrls || !Array.isArray(targetUrls)) {
+              console.log(`No valid target_urls data for ${wildcardTarget.scope_target}:`, liveWebServersData);
+              continue;
+            }
+
+            console.log(`Processing ${targetUrls.length} target URLs for ${wildcardTarget.scope_target}`);
+
+            const discoveredDomains = Array.from(new Set(
+              targetUrls
+                .map(url => {
+                  try {
+                    if (!url || !url.url) return null;
+                    const urlObj = new URL(url.url);
+                    return urlObj.hostname;
+                  } catch {
+                    return null;
+                  }
+                })
+                .filter(domain => domain && domain !== wildcardTarget.scope_target)
+            ));
+
+            console.log(`Discovered domains for ${wildcardTarget.scope_target}:`, discoveredDomains);
+
+            if (discoveredDomains.length > 0) {
+              const rootDomainFromWildcard = wildcardTarget.scope_target.startsWith('*.') 
+                ? wildcardTarget.scope_target.substring(2) 
+                : wildcardTarget.scope_target;
+              
+              wildcardDomainsData.push({
+                rootDomain: rootDomainFromWildcard,
+                wildcardTarget: wildcardTarget.scope_target,
+                discoveredDomains
+              });
+            }
+          }
+        } catch (error) {
+          console.error(`Error fetching live web servers for ${wildcardTarget.scope_target}:`, error);
+        }
+      }
+
+      console.log('Final wildcardDomainsData:', wildcardDomainsData);
+      setWildcardDomains(wildcardDomainsData);
+    } catch (error) {
+      console.error('Error fetching wildcard domains:', error);
+      setError('Failed to load wildcard domains. Please try again.');
+    } finally {
+      setLoadingWildcardDomains(false);
     }
   };
 
@@ -130,7 +250,9 @@ const DNSxConfigModal = ({
 
     try {
       const config = {
-        wildcard_targets: Array.from(selectedWildcardTargets),
+        domains: Array.from(selectedDomains),
+        include_wildcard_results: true,
+        wildcard_domains: wildcardDomains.map(wd => wd.rootDomain).filter(domain => domain),
         created_at: new Date().toISOString()
       };
 
@@ -175,57 +297,57 @@ const DNSxConfigModal = ({
     });
   };
 
-  const handleWildcardTargetSelect = (targetId, index) => {
-    const newSelected = new Set(selectedWildcardTargets);
-    if (newSelected.has(targetId)) {
-      newSelected.delete(targetId);
+  const handleDomainSelect = (domain, index) => {
+    const newSelected = new Set(selectedDomains);
+    if (newSelected.has(domain)) {
+      newSelected.delete(domain);
     } else {
-      newSelected.add(targetId);
+      newSelected.add(domain);
     }
-    setSelectedWildcardTargets(newSelected);
+    setSelectedDomains(newSelected);
   };
 
-  const handleMouseDown = (targetId, index, event) => {
+  const handleMouseDown = (domain, index, event) => {
     if (event.button !== 0) return;
     
     setIsDragging(true);
     setDragStartIndex(index);
     
-    const newSelected = new Set(selectedWildcardTargets);
-    const wasSelected = newSelected.has(targetId);
+    const newSelected = new Set(selectedDomains);
+    const wasSelected = newSelected.has(domain);
     
     if (wasSelected) {
-      newSelected.delete(targetId);
+      newSelected.delete(domain);
       setDragMode('deselect');
     } else {
-      newSelected.add(targetId);
+      newSelected.add(domain);
       setDragMode('select');
     }
     
-    setSelectedWildcardTargets(newSelected);
+    setSelectedDomains(newSelected);
     event.preventDefault();
   };
 
-  const handleMouseEnter = useCallback((targetId, index) => {
+  const handleMouseEnter = useCallback((domain, index) => {
     if (!isDragging || dragStartIndex === null) return;
     
-    const filteredTargets = getFilteredAndSortedWildcardTargets();
+    const filteredDomains = getFilteredAndSortedDomains();
     const startIndex = Math.min(dragStartIndex, index);
     const endIndex = Math.max(dragStartIndex, index);
     
-    const newSelected = new Set(selectedWildcardTargets);
+    const newSelected = new Set(selectedDomains);
     for (let i = startIndex; i <= endIndex; i++) {
-      if (i < filteredTargets.length) {
-        const targetAtIndex = filteredTargets[i].id;
+      if (i < filteredDomains.length) {
+        const domainAtIndex = typeof filteredDomains[i] === 'string' ? filteredDomains[i] : filteredDomains[i].domain;
         if (dragMode === 'select') {
-          newSelected.add(targetAtIndex);
+          newSelected.add(domainAtIndex);
         } else {
-          newSelected.delete(targetAtIndex);
+          newSelected.delete(domainAtIndex);
         }
       }
     }
-    setSelectedWildcardTargets(newSelected);
-  }, [isDragging, dragStartIndex, selectedWildcardTargets, dragMode]);
+    setSelectedDomains(newSelected);
+  }, [isDragging, dragStartIndex, selectedDomains, dragMode]);
 
   const handleMouseUp = useCallback(() => {
     setIsDragging(false);
@@ -242,41 +364,32 @@ const DNSxConfigModal = ({
     }
   }, [isDragging, handleMouseUp]);
 
-  const selectAllFiltered = () => {
-    const filteredTargets = getFilteredAndSortedWildcardTargets();
-    const allTargetIds = filteredTargets.map(target => target.id);
-    setSelectedWildcardTargets(new Set([...selectedWildcardTargets, ...allTargetIds]));
-  };
-
-  const deselectAllFiltered = () => {
-    const filteredTargets = getFilteredAndSortedWildcardTargets();
-    const filteredTargetIds = new Set(filteredTargets.map(target => target.id));
-    const newSelectedTargets = new Set([...selectedWildcardTargets].filter(targetId => !filteredTargetIds.has(targetId)));
-    setSelectedWildcardTargets(newSelectedTargets);
-  };
-
   const handleSelectAll = () => {
-    const filteredTargets = getFilteredAndSortedWildcardTargets();
-    const allTargetIds = filteredTargets.map(target => target.id);
-    setSelectedWildcardTargets(new Set(allTargetIds));
+    const filteredDomains = getFilteredAndSortedDomains();
+    const allDomains = filteredDomains.map(item => typeof item === 'string' ? item : item.domain);
+    setSelectedDomains(new Set([...selectedDomains, ...allDomains]));
   };
 
   const handleDeselectAll = () => {
-    setSelectedWildcardTargets(new Set());
+    const filteredDomains = getFilteredAndSortedDomains();
+    const filteredDomainsSet = new Set(filteredDomains.map(item => typeof item === 'string' ? item : item.domain));
+    const newSelectedDomains = new Set([...selectedDomains].filter(domain => !filteredDomainsSet.has(domain)));
+    setSelectedDomains(newSelectedDomains);
   };
 
-  const getFilteredAndSortedWildcardTargets = () => {
-    let filteredTargets = wildcardTargetsWithCounts.filter(target => {
-      if (!target.scope_target) return false;
+  const getFilteredAndSortedDomains = () => {
+    let filteredDomains = domainsToUse.filter(item => {
+      const domain = typeof item === 'string' ? item : item.domain;
+      if (!domain) return false;
       
-      if (filters.domain && !target.scope_target.toLowerCase().includes(filters.domain.toLowerCase())) {
+      if (filters.domain && !domain.toLowerCase().includes(filters.domain.toLowerCase())) {
         return false;
       }
       
       return true;
     });
 
-    return filteredTargets.sort((a, b) => a.scope_target.localeCompare(b.scope_target));
+    return filteredDomains;
   };
 
   const handleCloseModal = () => {
@@ -287,10 +400,7 @@ const DNSxConfigModal = ({
     handleClose();
   };
 
-  const filteredWildcardTargets = getFilteredAndSortedWildcardTargets();
-  const totalLiveWebServers = filteredWildcardTargets
-    .filter(target => selectedWildcardTargets.has(target.id))
-    .reduce((sum, target) => sum + target.liveWebServersCount, 0);
+  const filteredDomains = getFilteredAndSortedDomains();
 
   return (
     <Modal 
@@ -318,33 +428,32 @@ const DNSxConfigModal = ({
             <div className="d-flex align-items-center">
               <i className="bi bi-info-circle-fill me-2" />
               <div>
-                <strong>DNSx Configuration:</strong> Select wildcard targets to scan with DNSx for DNS enumeration and cloud provider detection.
-                Selected targets: <strong>{selectedWildcardTargets.size}</strong> 
-                | Total FQDNs to scan: <strong>{totalLiveWebServers}</strong>
-                | Estimated time: <strong>{estimatedTime === 1 ? '~1 hour' : `~${estimatedTime} hours`}</strong>
+                <strong>DNSx Configuration:</strong> Select root domains to scan with DNSx for comprehensive DNS enumeration and record discovery.
+                Selected domains: <strong>{selectedDomains.size}</strong> 
+                | Estimated time: <strong>{estimatedTime === 1 ? '~1 minute' : `~${estimatedTime} minutes`}</strong>
               </div>
             </div>
           </Alert>
         </div>
 
-        {wildcardTargetsWithCounts.length === 0 ? (
+        {domainsToUse.length === 0 ? (
           <div className="text-center py-4">
-            {loadingCounts ? (
+            {loadingDomains ? (
               <>
                 <div className="spinner-border text-danger mb-3" role="status">
                   <span className="visually-hidden">Loading...</span>
                 </div>
-                <h5 className="text-white-50">Loading Wildcard Targets...</h5>
+                <h5 className="text-white-50">Loading Consolidated Domains...</h5>
                 <p className="text-white-50">
-                  Fetching wildcard targets and live web server counts...
+                  Fetching consolidated company domains for DNSx scanning...
                 </p>
               </>
             ) : (
               <>
                 <i className="bi bi-diagram-3 text-white-50" style={{ fontSize: '3rem' }} />
-                <h5 className="text-white-50 mt-3">No Wildcard Targets Available</h5>
+                <h5 className="text-white-50 mt-3">No Consolidated Domains Available</h5>
                 <p className="text-white-50">
-                  Create wildcard targets from consolidated root domains first.
+                  Run domain consolidation first to populate available domains for DNSx scanning.
                 </p>
               </>
             )}
@@ -353,8 +462,8 @@ const DNSxConfigModal = ({
           <>
             <div className="d-flex justify-content-between align-items-center mb-3">
               <h6 className="mb-0 text-white">
-                Select wildcard targets for DNSx scanning 
-                <span className="text-light ms-2">({selectedWildcardTargets.size}/{wildcardTargetsWithCounts.length})</span>
+                Select root domains for DNSx scanning 
+                <span className="text-light ms-2">({selectedDomains.size}/{domainsToUse.length})</span>
               </h6>
             </div>
 
@@ -381,52 +490,39 @@ const DNSxConfigModal = ({
               </Col>
             </Row>
 
-            <div className="d-flex mb-3" style={{ gap: '8px' }}>
-              <Button
-                variant="danger"
-                size="sm"
-                onClick={handleDeselectAll}
-                disabled={selectedWildcardTargets.size === 0}
-                style={{ flex: 1 }}
-              >
-                <FaTimes className="me-1" />
-                De-Select All
-              </Button>
-              <Button
-                variant="danger"
-                size="sm"
-                onClick={handleSelectAll}
-                disabled={filteredWildcardTargets.length === 0}
-                style={{ flex: 1 }}
-              >
-                <FaCheck className="me-1" />
-                Select All Filtered
-              </Button>
-              <Button
-                variant="danger"
-                size="sm"
-                onClick={selectAllFiltered}
-                disabled={filteredWildcardTargets.length === 0}
-                style={{ flex: 1 }}
-              >
-                <FaCheck className="me-1" />
-                Select All Visible
-              </Button>
-              <Button
-                variant="danger"
-                size="sm"
-                onClick={deselectAllFiltered}
-                disabled={selectedWildcardTargets.size === 0}
-                style={{ flex: 1 }}
-              >
-                <FaTimes className="me-1" />
-                Deselect All Visible
-              </Button>
+            <div className="d-flex align-items-center mb-3" style={{ gap: '12px' }}>
+              <div className="d-flex" style={{ gap: '8px' }}>
+                <Button
+                  variant="success"
+                  size="sm"
+                  onClick={handleSelectAll}
+                  disabled={filteredDomains.length === 0}
+                >
+                  <FaCheck className="me-1" />
+                  Select All
+                </Button>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={handleDeselectAll}
+                  disabled={selectedDomains.size === 0}
+                >
+                  <FaTimes className="me-1" />
+                  Deselect All
+                </Button>
+              </div>
+              
+              <div className="d-flex align-items-center">
+                <span className="text-white">Wildcard target results are automatically included</span>
+                {loadingWildcardDomains && (
+                  <Spinner size="sm" animation="border" variant="light" className="ms-2" />
+                )}
+              </div>
             </div>
 
             <div className="mb-3">
               <small className="text-white-50">
-                Showing {filteredWildcardTargets.length} of {wildcardTargetsWithCounts.length} wildcard targets
+                Showing {filteredDomains.length} of {domainsToUse.length} domains
               </small>
             </div>
 
@@ -457,8 +553,9 @@ const DNSxConfigModal = ({
                     <th width="40" style={{ backgroundColor: 'var(--bs-dark)' }}>
                       <Form.Check
                         type="checkbox"
-                        checked={filteredWildcardTargets.length > 0 && filteredWildcardTargets.every(target => {
-                          return selectedWildcardTargets.has(target.id);
+                        checked={filteredDomains.length > 0 && filteredDomains.every(item => {
+                          const domain = typeof item === 'string' ? item : item.domain;
+                          return selectedDomains.has(domain);
                         })}
                         onChange={(e) => {
                           if (e.target.checked) {
@@ -469,17 +566,58 @@ const DNSxConfigModal = ({
                         }}
                       />
                     </th>
-                    <th style={{ backgroundColor: 'var(--bs-dark)' }}>Wildcard Domain</th>
-                    <th style={{ backgroundColor: 'var(--bs-dark)' }} className="text-center">Live Web Servers</th>
+                    <th style={{ backgroundColor: 'var(--bs-dark)', width: '50%' }}>Domain</th>
+                    <th style={{ backgroundColor: 'var(--bs-dark)', width: '30%' }}>Type</th>
+                    <th style={{ backgroundColor: 'var(--bs-dark)', width: '20%' }}>Source</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredWildcardTargets.map((target, index) => {
-                    const isSelected = selectedWildcardTargets.has(target.id);
+                  {filteredDomains.map((item, index) => {
+                    const domain = typeof item === 'string' ? item : item.domain;
+                    const domainType = typeof item === 'string' ? 'root' : item.type;
+                    const isWildcardTarget = typeof item === 'string' ? false : item.isWildcardTarget;
+                    const rootDomain = typeof item === 'string' ? null : item.rootDomain;
+                    const isSelected = selectedDomains.has(domain);
+                    
+                    const getTypeBadge = () => {
+                      if (domainType === 'wildcard') {
+                        return <span className="badge bg-info text-dark">Wildcard Result</span>;
+                      } else if (isWildcardTarget) {
+                        return <span className="badge bg-warning text-dark">Root Domain (Wildcard Target)</span>;
+                      } else {
+                        return <span className="badge bg-success">Root Domain</span>;
+                      }
+                    };
+
+                    const getSource = () => {
+                      if (domainType === 'wildcard') {
+                        // Find the wildcard target that discovered this domain
+                        const wildcardInfo = wildcardDomains.find(wd => 
+                          wd.discoveredDomains.includes(domain)
+                        );
+                        return (
+                          <small className="text-white-50">
+                            From: {wildcardInfo?.wildcardTarget || rootDomain}
+                          </small>
+                        );
+                      } else if (isWildcardTarget) {
+                        return (
+                          <small className="text-white-50">
+                            Company Domains
+                          </small>
+                        );
+                      } else {
+                        return (
+                          <small className="text-white-50">
+                            Company Domains
+                          </small>
+                        );
+                      }
+                    };
                     
                     return (
                       <tr 
-                        key={target.id}
+                        key={domain}
                         style={{
                           backgroundColor: isSelected 
                             ? 'rgba(220, 53, 69, 0.25)' 
@@ -488,14 +626,14 @@ const DNSxConfigModal = ({
                           userSelect: 'none',
                           transition: 'background-color 0.15s ease-in-out'
                         }}
-                        onMouseDown={(e) => handleMouseDown(target.id, index, e)}
-                        onMouseEnter={() => handleMouseEnter(target.id, index)}
+                        onMouseDown={(e) => handleMouseDown(domain, index, e)}
+                        onMouseEnter={() => handleMouseEnter(domain, index)}
                       >
                         <td>
                           <Form.Check
                             type="checkbox"
                             checked={isSelected}
-                            onChange={() => handleWildcardTargetSelect(target.id, index)}
+                            onChange={() => handleDomainSelect(domain, index)}
                             onClick={(e) => e.stopPropagation()}
                           />
                         </td>
@@ -505,12 +643,13 @@ const DNSxConfigModal = ({
                             fontSize: '0.875rem'
                           }}
                         >
-                          {target.scope_target}
+                          {domain}
                         </td>
-                        <td className="text-center">
-                          <span className="badge bg-secondary">
-                            {target.liveWebServersCount}
-                          </span>
+                        <td>
+                          {getTypeBadge()}
+                        </td>
+                        <td>
+                          {getSource()}
                         </td>
                       </tr>
                     );
@@ -519,10 +658,10 @@ const DNSxConfigModal = ({
               </Table>
             </div>
 
-            {filteredWildcardTargets.length === 0 && (
+            {filteredDomains.length === 0 && (
               <div className="text-center py-4">
                 <i className="bi bi-funnel text-white-50" style={{ fontSize: '2rem' }} />
-                <h6 className="text-white-50 mt-2">No wildcard targets match the current filters</h6>
+                <h6 className="text-white-50 mt-2">No domains match the current filters</h6>
                 <Button variant="outline-secondary" size="sm" onClick={clearFilters}>
                   Clear Filters
                 </Button>
@@ -534,10 +673,10 @@ const DNSxConfigModal = ({
       <Modal.Footer>
         <div className="d-flex justify-content-between align-items-center w-100">
           <div className="text-white-50 small">
-            {selectedWildcardTargets.size > 0 && (
+            {selectedDomains.size > 0 && (
               <>
                 <i className="bi bi-clock me-1" />
-                Total FQDNs to scan: {totalLiveWebServers} | Estimated time: {estimatedTime === 1 ? '~1 hour' : `~${estimatedTime} hours`}
+                Estimated time: {estimatedTime === 1 ? '~1 minute' : `~${estimatedTime} minutes`}
               </>
             )}
           </div>
@@ -548,7 +687,7 @@ const DNSxConfigModal = ({
             <Button 
               variant="danger" 
               onClick={handleSaveConfig}
-              disabled={saving || selectedWildcardTargets.size === 0}
+              disabled={saving || selectedDomains.size === 0}
             >
               {saving ? (
                 <>
@@ -558,7 +697,7 @@ const DNSxConfigModal = ({
               ) : (
                 <>
                   <i className="bi bi-save me-2" />
-                  Save Configuration ({selectedWildcardTargets.size} targets)
+                  Save Configuration ({selectedDomains.size} domains)
                 </>
               )}
             </Button>

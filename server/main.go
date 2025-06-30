@@ -213,6 +213,13 @@ func main() {
 	r.HandleFunc("/dnsx-config/{scope_target_id}", getDNSxConfig).Methods("GET", "OPTIONS")
 	r.HandleFunc("/dnsx-config/{scope_target_id}", saveDNSxConfig).Methods("POST", "OPTIONS")
 
+	// DNSx Company scan routes
+	r.HandleFunc("/dnsx-company/run/{scope_target_id}", utils.RunDNSxCompanyScan).Methods("POST", "OPTIONS")
+	r.HandleFunc("/dnsx-company/status/{scan_id}", utils.GetDNSxCompanyScanStatus).Methods("GET", "OPTIONS")
+	r.HandleFunc("/scopetarget/{id}/scans/dnsx-company", utils.GetDNSxCompanyScansForScopeTarget).Methods("GET", "OPTIONS")
+	r.HandleFunc("/dnsx-company/{scan_id}/dns-records", utils.GetDNSxDNSRecords).Methods("GET", "OPTIONS")
+	r.HandleFunc("/dnsx-company/{scan_id}/raw-results", utils.GetDNSxRawResults).Methods("GET", "OPTIONS")
+
 	// Live web servers count route
 	r.HandleFunc("/scope-target/{scope_target_id}/live-web-servers-count", getLiveWebServersCount).Methods("GET", "OPTIONS")
 
@@ -1674,15 +1681,16 @@ func getAmassEnumConfig(w http.ResponseWriter, r *http.Request) {
 
 	// Query the configuration from the database
 	query := `
-		SELECT selected_domains
+		SELECT selected_domains, 
+		       COALESCE(wildcard_domains, '[]'::jsonb) as wildcard_domains
 		FROM amass_enum_configs 
 		WHERE scope_target_id = $1
 		ORDER BY updated_at DESC 
 		LIMIT 1
 	`
 
-	var selectedDomainsJSON []byte
-	err := dbPool.QueryRow(context.Background(), query, scopeTargetID).Scan(&selectedDomainsJSON)
+	var selectedDomainsJSON, wildcardDomainsJSON []byte
+	err := dbPool.QueryRow(context.Background(), query, scopeTargetID).Scan(&selectedDomainsJSON, &wildcardDomainsJSON)
 
 	if err != nil {
 		if err.Error() == "no rows in result set" {
@@ -1690,7 +1698,9 @@ func getAmassEnumConfig(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			json.NewEncoder(w).Encode(map[string]interface{}{
-				"domains": []string{},
+				"domains":                  []string{},
+				"include_wildcard_results": true,
+				"wildcard_domains":         []string{},
 			})
 			return
 		}
@@ -1699,10 +1709,15 @@ func getAmassEnumConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse the JSONB array of selected domains
-	var selectedDomains []string
+	// Parse the JSONB arrays
+	var selectedDomains, wildcardDomains []string
 	if err := json.Unmarshal(selectedDomainsJSON, &selectedDomains); err != nil {
 		log.Printf("Error parsing selected domains JSON: %v", err)
+		http.Error(w, "Failed to parse configuration", http.StatusInternalServerError)
+		return
+	}
+	if err := json.Unmarshal(wildcardDomainsJSON, &wildcardDomains); err != nil {
+		log.Printf("Error parsing wildcard domains JSON: %v", err)
 		http.Error(w, "Failed to parse configuration", http.StatusInternalServerError)
 		return
 	}
@@ -1710,7 +1725,9 @@ func getAmassEnumConfig(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"domains": selectedDomains,
+		"domains":                  selectedDomains,
+		"include_wildcard_results": true,
+		"wildcard_domains":         wildcardDomains,
 	})
 }
 
@@ -1726,7 +1743,9 @@ func saveAmassEnumConfig(w http.ResponseWriter, r *http.Request) {
 
 	// Parse the request body
 	var request struct {
-		Domains []string `json:"domains"`
+		Domains                []string `json:"domains"`
+		IncludeWildcardResults bool     `json:"include_wildcard_results"`
+		WildcardDomains        []string `json:"wildcard_domains"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
@@ -1735,7 +1754,7 @@ func saveAmassEnumConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Convert selected domains to JSON
+	// Convert arrays to JSON
 	selectedDomainsJSON, err := json.Marshal(request.Domains)
 	if err != nil {
 		log.Printf("Error marshaling selected domains: %v", err)
@@ -1743,19 +1762,28 @@ func saveAmassEnumConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	wildcardDomainsJSON, err := json.Marshal(request.WildcardDomains)
+	if err != nil {
+		log.Printf("Error marshaling wildcard domains: %v", err)
+		http.Error(w, "Failed to process wildcard domains", http.StatusInternalServerError)
+		return
+	}
+
 	// Insert or update the configuration
 	query := `
-		INSERT INTO amass_enum_configs (scope_target_id, selected_domains, created_at, updated_at)
-		VALUES ($1, $2, NOW(), NOW())
+		INSERT INTO amass_enum_configs (scope_target_id, selected_domains, include_wildcard_results, wildcard_domains, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, NOW(), NOW())
 		ON CONFLICT (scope_target_id)
 		DO UPDATE SET 
 			selected_domains = EXCLUDED.selected_domains,
+			include_wildcard_results = EXCLUDED.include_wildcard_results,
+			wildcard_domains = EXCLUDED.wildcard_domains,
 			updated_at = NOW()
 		RETURNING id
 	`
 
 	var configID string
-	err = dbPool.QueryRow(context.Background(), query, scopeTargetID, string(selectedDomainsJSON)).Scan(&configID)
+	err = dbPool.QueryRow(context.Background(), query, scopeTargetID, string(selectedDomainsJSON), request.IncludeWildcardResults, string(wildcardDomainsJSON)).Scan(&configID)
 	if err != nil {
 		log.Printf("Error saving Amass Enum config: %v", err)
 		http.Error(w, "Failed to save configuration", http.StatusInternalServerError)
@@ -1896,15 +1924,16 @@ func getDNSxConfig(w http.ResponseWriter, r *http.Request) {
 
 	// Query the configuration from the database
 	query := `
-		SELECT wildcard_targets
+		SELECT selected_domains, 
+		       COALESCE(wildcard_domains, '[]'::jsonb) as wildcard_domains
 		FROM dnsx_configs 
 		WHERE scope_target_id = $1
 		ORDER BY updated_at DESC 
 		LIMIT 1
 	`
 
-	var wildcardTargetsJSON []byte
-	err := dbPool.QueryRow(context.Background(), query, scopeTargetID).Scan(&wildcardTargetsJSON)
+	var selectedDomainsJSON, wildcardDomainsJSON []byte
+	err := dbPool.QueryRow(context.Background(), query, scopeTargetID).Scan(&selectedDomainsJSON, &wildcardDomainsJSON)
 
 	if err != nil {
 		if err.Error() == "no rows in result set" {
@@ -1912,7 +1941,9 @@ func getDNSxConfig(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			json.NewEncoder(w).Encode(map[string]interface{}{
-				"wildcard_targets": []string{},
+				"domains":                  []string{},
+				"include_wildcard_results": true,
+				"wildcard_domains":         []string{},
 			})
 			return
 		}
@@ -1921,10 +1952,15 @@ func getDNSxConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse the JSONB array of selected wildcard targets
-	var wildcardTargets []string
-	if err := json.Unmarshal(wildcardTargetsJSON, &wildcardTargets); err != nil {
-		log.Printf("Error parsing wildcard targets JSON: %v", err)
+	// Parse the JSONB arrays
+	var selectedDomains, wildcardDomains []string
+	if err := json.Unmarshal(selectedDomainsJSON, &selectedDomains); err != nil {
+		log.Printf("Error parsing selected domains JSON: %v", err)
+		http.Error(w, "Failed to parse configuration", http.StatusInternalServerError)
+		return
+	}
+	if err := json.Unmarshal(wildcardDomainsJSON, &wildcardDomains); err != nil {
+		log.Printf("Error parsing wildcard domains JSON: %v", err)
 		http.Error(w, "Failed to parse configuration", http.StatusInternalServerError)
 		return
 	}
@@ -1932,7 +1968,9 @@ func getDNSxConfig(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"wildcard_targets": wildcardTargets,
+		"domains":                  selectedDomains,
+		"include_wildcard_results": true,
+		"wildcard_domains":         wildcardDomains,
 	})
 }
 
@@ -1948,7 +1986,9 @@ func saveDNSxConfig(w http.ResponseWriter, r *http.Request) {
 
 	// Parse the request body
 	var request struct {
-		WildcardTargets []string `json:"wildcard_targets"`
+		Domains                []string `json:"domains"`
+		IncludeWildcardResults bool     `json:"include_wildcard_results"`
+		WildcardDomains        []string `json:"wildcard_domains"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
@@ -1957,41 +1997,50 @@ func saveDNSxConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Convert selected wildcard targets to JSON
-	wildcardTargetsJSON, err := json.Marshal(request.WildcardTargets)
+	// Convert arrays to JSON
+	selectedDomainsJSON, err := json.Marshal(request.Domains)
 	if err != nil {
-		log.Printf("Error marshaling wildcard targets: %v", err)
-		http.Error(w, "Failed to process wildcard targets", http.StatusInternalServerError)
+		log.Printf("Error marshaling selected domains: %v", err)
+		http.Error(w, "Failed to process domains", http.StatusInternalServerError)
+		return
+	}
+
+	wildcardDomainsJSON, err := json.Marshal(request.WildcardDomains)
+	if err != nil {
+		log.Printf("Error marshaling wildcard domains: %v", err)
+		http.Error(w, "Failed to process wildcard domains", http.StatusInternalServerError)
 		return
 	}
 
 	// Insert or update the configuration
 	query := `
-		INSERT INTO dnsx_configs (scope_target_id, wildcard_targets, created_at, updated_at)
-		VALUES ($1, $2, NOW(), NOW())
+		INSERT INTO dnsx_configs (scope_target_id, selected_domains, include_wildcard_results, wildcard_domains, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, NOW(), NOW())
 		ON CONFLICT (scope_target_id)
 		DO UPDATE SET 
-			wildcard_targets = EXCLUDED.wildcard_targets,
+			selected_domains = EXCLUDED.selected_domains,
+			include_wildcard_results = EXCLUDED.include_wildcard_results,
+			wildcard_domains = EXCLUDED.wildcard_domains,
 			updated_at = NOW()
 		RETURNING id
 	`
 
 	var configID string
-	err = dbPool.QueryRow(context.Background(), query, scopeTargetID, string(wildcardTargetsJSON)).Scan(&configID)
+	err = dbPool.QueryRow(context.Background(), query, scopeTargetID, string(selectedDomainsJSON), request.IncludeWildcardResults, string(wildcardDomainsJSON)).Scan(&configID)
 	if err != nil {
 		log.Printf("Error saving DNSx config: %v", err)
 		http.Error(w, "Failed to save configuration", http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("Saved DNSx config for scope target %s with %d wildcard targets", scopeTargetID, len(request.WildcardTargets))
+	log.Printf("Saved DNSx config for scope target %s with %d domains", scopeTargetID, len(request.Domains))
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success":   true,
 		"config_id": configID,
-		"message":   fmt.Sprintf("Configuration saved with %d wildcard targets", len(request.WildcardTargets)),
+		"message":   fmt.Sprintf("Configuration saved with %d domains", len(request.Domains)),
 	})
 }
 

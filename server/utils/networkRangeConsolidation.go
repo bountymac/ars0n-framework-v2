@@ -130,27 +130,6 @@ func ConsolidateNetworkRanges(scopeTargetID string) ([]ConsolidatedNetworkRange,
 
 	log.Printf("[NETWORK-CONSOLIDATION] [INFO] Total unique network ranges found: %d", len(consolidatedRanges))
 
-	// Create consolidated network ranges table if it doesn't exist
-	createTableQuery := `
-		CREATE TABLE IF NOT EXISTS consolidated_network_ranges (
-			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
-			cidr_block TEXT NOT NULL,
-			asn TEXT,
-			organization TEXT,
-			description TEXT,
-			country TEXT,
-			source TEXT NOT NULL,
-			scan_type TEXT,
-			created_at TIMESTAMP DEFAULT NOW(),
-			UNIQUE(scope_target_id, cidr_block, asn)
-		);`
-
-	_, err = tx.Exec(context.Background(), createTableQuery)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create consolidated network ranges table: %v", err)
-	}
-
 	// Clear old consolidated network ranges and insert new ones
 	_, err = tx.Exec(context.Background(), `DELETE FROM consolidated_network_ranges WHERE scope_target_id = $1`, scopeTargetID)
 	if err != nil {
@@ -161,7 +140,12 @@ func ConsolidateNetworkRanges(scopeTargetID string) ([]ConsolidatedNetworkRange,
 		_, err = tx.Exec(context.Background(), `
 			INSERT INTO consolidated_network_ranges (scope_target_id, cidr_block, asn, organization, description, country, source, scan_type) 
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-			ON CONFLICT (scope_target_id, cidr_block, asn) DO NOTHING`,
+			ON CONFLICT (scope_target_id, cidr_block, source) DO UPDATE SET
+				asn = EXCLUDED.asn,
+				organization = EXCLUDED.organization,
+				description = EXCLUDED.description,
+				country = EXCLUDED.country,
+				scan_type = EXCLUDED.scan_type`,
 			scopeTargetID, networkRange.CIDRBlock, networkRange.ASN, networkRange.Organization,
 			networkRange.Description, networkRange.Country, networkRange.Source, networkRange.ScanType)
 		if err != nil {

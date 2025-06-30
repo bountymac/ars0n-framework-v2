@@ -488,6 +488,27 @@ func createTables() {
 			END;
 		END $$;`,
 
+		// Add wildcard config columns to existing tables
+		`DO $$ 
+		BEGIN 
+			BEGIN
+				ALTER TABLE amass_enum_configs ADD COLUMN IF NOT EXISTS include_wildcard_results BOOLEAN DEFAULT FALSE;
+				ALTER TABLE amass_enum_configs ADD COLUMN IF NOT EXISTS wildcard_domains JSONB DEFAULT '[]';
+			EXCEPTION WHEN duplicate_column THEN 
+				RAISE NOTICE 'Wildcard columns already exist in amass_enum_configs.';
+			END;
+		END $$;`,
+
+		`DO $$ 
+		BEGIN 
+			BEGIN
+				ALTER TABLE dnsx_configs ADD COLUMN IF NOT EXISTS include_wildcard_results BOOLEAN DEFAULT FALSE;
+				ALTER TABLE dnsx_configs ADD COLUMN IF NOT EXISTS wildcard_domains JSONB DEFAULT '[]';
+			EXCEPTION WHEN duplicate_column THEN 
+				RAISE NOTICE 'Wildcard columns already exist in dnsx_configs.';
+			END;
+		END $$;`,
+
 		`DO $$ 
 		BEGIN 
 			BEGIN
@@ -683,6 +704,8 @@ func createTables() {
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			scope_target_id UUID NOT NULL UNIQUE REFERENCES scope_targets(id) ON DELETE CASCADE,
 			selected_domains JSONB NOT NULL DEFAULT '[]',
+			include_wildcard_results BOOLEAN DEFAULT FALSE,
+			wildcard_domains JSONB DEFAULT '[]',
 			created_at TIMESTAMP DEFAULT NOW(),
 			updated_at TIMESTAMP DEFAULT NOW()
 		);`,
@@ -698,9 +721,69 @@ func createTables() {
 		`CREATE TABLE IF NOT EXISTS dnsx_configs (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			scope_target_id UUID NOT NULL UNIQUE REFERENCES scope_targets(id) ON DELETE CASCADE,
-			wildcard_targets JSONB NOT NULL DEFAULT '[]',
+			selected_domains JSONB NOT NULL DEFAULT '[]',
+			include_wildcard_results BOOLEAN DEFAULT FALSE,
+			wildcard_domains JSONB DEFAULT '[]',
 			created_at TIMESTAMP DEFAULT NOW(),
 			updated_at TIMESTAMP DEFAULT NOW()
+		);`,
+
+		`CREATE TABLE IF NOT EXISTS dnsx_company_scans (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scan_id UUID NOT NULL UNIQUE,
+			scope_target_id UUID NOT NULL REFERENCES scope_targets(id) ON DELETE CASCADE,
+			domains JSONB NOT NULL DEFAULT '[]',
+			status VARCHAR(50) NOT NULL,
+			result TEXT,
+			error TEXT,
+			stdout TEXT,
+			stderr TEXT,
+			command TEXT,
+			execution_time TEXT,
+			created_at TIMESTAMP DEFAULT NOW()
+		);`,
+
+		`CREATE TABLE IF NOT EXISTS dnsx_dns_records (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scan_id UUID NOT NULL,
+			domain TEXT NOT NULL,
+			record TEXT NOT NULL,
+			record_type TEXT NOT NULL,
+			created_at TIMESTAMP DEFAULT NOW(),
+			FOREIGN KEY (scan_id) REFERENCES dnsx_company_scans(scan_id) ON DELETE CASCADE
+		);`,
+
+		`CREATE TABLE IF NOT EXISTS dnsx_raw_results (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scan_id UUID NOT NULL,
+			domain TEXT NOT NULL,
+			raw_output TEXT NOT NULL,
+			created_at TIMESTAMP DEFAULT NOW(),
+			FOREIGN KEY (scan_id) REFERENCES dnsx_company_scans(scan_id) ON DELETE CASCADE
+		);`,
+
+		`CREATE TABLE IF NOT EXISTS dnsx_company_domain_results (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scope_target_id UUID NOT NULL REFERENCES scope_targets(id) ON DELETE CASCADE,
+			domain TEXT NOT NULL,
+			last_scanned_at TIMESTAMP DEFAULT NOW(),
+			last_scan_id UUID,
+			raw_output TEXT,
+			created_at TIMESTAMP DEFAULT NOW(),
+			updated_at TIMESTAMP DEFAULT NOW(),
+			UNIQUE(scope_target_id, domain)
+		);`,
+
+		`CREATE TABLE IF NOT EXISTS dnsx_company_dns_records (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scope_target_id UUID NOT NULL REFERENCES scope_targets(id) ON DELETE CASCADE,
+			root_domain TEXT NOT NULL,
+			record TEXT NOT NULL,
+			record_type TEXT NOT NULL,
+			last_scanned_at TIMESTAMP DEFAULT NOW(),
+			created_at TIMESTAMP DEFAULT NOW(),
+			FOREIGN KEY (scope_target_id, root_domain) REFERENCES dnsx_company_domain_results(scope_target_id, domain) ON DELETE CASCADE,
+			UNIQUE(scope_target_id, root_domain, record, record_type)
 		);`,
 
 		// IP/Port scan tables

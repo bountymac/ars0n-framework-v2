@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { Modal, Table, Button, Spinner, Alert, Row, Col, Form, InputGroup } from 'react-bootstrap';
 import { FaCheck, FaTimes } from 'react-icons/fa';
 
@@ -21,10 +21,37 @@ const AmassEnumConfigModal = ({
   const [isDragging, setIsDragging] = useState(false);
   const [dragStartIndex, setDragStartIndex] = useState(null);
   const [dragMode, setDragMode] = useState('select');
+
+  const [wildcardDomains, setWildcardDomains] = useState([]);
+  const [loadingWildcardDomains, setLoadingWildcardDomains] = useState(false);
   const tableRef = useRef(null);
 
   // Use consolidated domains from props, or fallback to locally fetched ones
-  const domainsToUse = consolidatedCompanyDomains.length > 0 ? consolidatedCompanyDomains : localDomains;
+  const baseDomains = consolidatedCompanyDomains.length > 0 ? consolidatedCompanyDomains : localDomains;
+  
+  // Always combine base domains with wildcard domains
+  const domainsToUse = useMemo(() => {
+    const combined = [...baseDomains.map(domain => ({
+      domain,
+      type: 'root',
+      isWildcardTarget: wildcardDomains.some(wd => wd.rootDomain === domain)
+    }))];
+    
+    // Add wildcard discovered domains
+    wildcardDomains.forEach(wd => {
+      wd.discoveredDomains.forEach(discoveredDomain => {
+        if (!combined.some(item => item.domain === discoveredDomain)) {
+          combined.push({
+            domain: discoveredDomain,
+            type: 'wildcard',
+            rootDomain: wd.wildcardTarget || wd.rootDomain
+          });
+        }
+      });
+    });
+    
+    return combined.sort((a, b) => a.domain.localeCompare(b.domain));
+  }, [baseDomains, wildcardDomains]);
 
   useEffect(() => {
     if (show) {
@@ -39,6 +66,12 @@ const AmassEnumConfigModal = ({
   useEffect(() => {
     setEstimatedTime(selectedDomains.size);
   }, [selectedDomains]);
+
+  useEffect(() => {
+    if (baseDomains.length > 0) {
+      fetchWildcardDomains();
+    }
+  }, [baseDomains]);
 
   const fetchConsolidatedDomains = async () => {
     if (!activeTarget?.id) return;
@@ -76,9 +109,133 @@ const AmassEnumConfigModal = ({
         if (config.domains && Array.isArray(config.domains)) {
           setSelectedDomains(new Set(config.domains));
         }
+        
+
+        
+        // If wildcard domains were saved, we'll need to reconstruct the wildcard data structure
+        if (config.wildcard_domains && Array.isArray(config.wildcard_domains) && config.wildcard_domains.length > 0) {
+          // For now, we'll fetch fresh wildcard data since the saved format is just domain strings
+          // The actual wildcard domains structure will be built by fetchWildcardDomains
+        }
       }
     } catch (error) {
       console.error('Error loading Amass Enum config:', error);
+    }
+  };
+
+  const fetchWildcardDomains = async () => {
+    if (!activeTarget?.id) return;
+
+    setLoadingWildcardDomains(true);
+    console.log('fetchWildcardDomains - baseDomains:', baseDomains);
+    
+    try {
+      // Get all scope targets to find which root domains have been added as wildcard targets
+      const scopeTargetsResponse = await fetch(
+        `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/read`
+      );
+      
+      if (!scopeTargetsResponse.ok) {
+        throw new Error('Failed to fetch scope targets');
+      }
+
+      const scopeTargetsData = await scopeTargetsResponse.json();
+      
+      // Check if response is directly an array or has a targets property
+      const targets = Array.isArray(scopeTargetsData) ? scopeTargetsData : scopeTargetsData.targets;
+      
+      // Ensure we have valid targets data
+      if (!targets || !Array.isArray(targets)) {
+        console.log('No valid targets data found:', scopeTargetsData);
+        setWildcardDomains([]);
+        return;
+      }
+
+      console.log('All targets:', targets);
+
+      const wildcardTargets = targets.filter(target => {
+        if (!target || target.type !== 'Wildcard') return false;
+        
+        // Remove *. prefix from wildcard target to match with base domains
+        const rootDomainFromWildcard = target.scope_target.startsWith('*.') 
+          ? target.scope_target.substring(2) 
+          : target.scope_target;
+        
+        const isMatch = baseDomains.includes(rootDomainFromWildcard);
+        console.log(`Checking wildcard target ${target.scope_target} -> ${rootDomainFromWildcard}, match: ${isMatch}`);
+        
+        return isMatch;
+      });
+
+      console.log(`Found ${wildcardTargets.length} matching wildcard targets:`, wildcardTargets.map(t => t.scope_target));
+
+      const wildcardDomainsData = [];
+
+      // For each wildcard target, fetch its live web servers
+      for (const wildcardTarget of wildcardTargets) {
+        console.log(`Fetching live web servers for wildcard target: ${wildcardTarget.scope_target} (ID: ${wildcardTarget.id})`);
+        try {
+          const liveWebServersResponse = await fetch(
+            `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/scope-targets/${wildcardTarget.id}/target-urls`
+          );
+
+          console.log(`Live web servers response status for ${wildcardTarget.scope_target}:`, liveWebServersResponse.status);
+
+          if (liveWebServersResponse.ok) {
+            const liveWebServersData = await liveWebServersResponse.json();
+            console.log(`Live web servers data for ${wildcardTarget.scope_target}:`, liveWebServersData);
+            
+            // Check if response is directly an array or has a target_urls property
+            const targetUrls = Array.isArray(liveWebServersData) ? liveWebServersData : liveWebServersData.target_urls;
+            
+            // Ensure we have valid target_urls data
+            if (!targetUrls || !Array.isArray(targetUrls)) {
+              console.log(`No valid target_urls data for ${wildcardTarget.scope_target}:`, liveWebServersData);
+              continue;
+            }
+
+            console.log(`Processing ${targetUrls.length} target URLs for ${wildcardTarget.scope_target}`);
+
+            const discoveredDomains = Array.from(new Set(
+              targetUrls
+                .map(url => {
+                  try {
+                    if (!url || !url.url) return null;
+                    const urlObj = new URL(url.url);
+                    return urlObj.hostname;
+                  } catch {
+                    return null;
+                  }
+                })
+                .filter(domain => domain && domain !== wildcardTarget.scope_target)
+            ));
+
+            console.log(`Discovered domains for ${wildcardTarget.scope_target}:`, discoveredDomains);
+
+            if (discoveredDomains.length > 0) {
+              const rootDomainFromWildcard = wildcardTarget.scope_target.startsWith('*.') 
+                ? wildcardTarget.scope_target.substring(2) 
+                : wildcardTarget.scope_target;
+              
+              wildcardDomainsData.push({
+                rootDomain: rootDomainFromWildcard,
+                wildcardTarget: wildcardTarget.scope_target,
+                discoveredDomains
+              });
+            }
+          }
+        } catch (error) {
+          console.error(`Error fetching live web servers for ${wildcardTarget.scope_target}:`, error);
+        }
+      }
+
+      console.log('Final wildcardDomainsData:', wildcardDomainsData);
+      setWildcardDomains(wildcardDomainsData);
+    } catch (error) {
+      console.error('Error fetching wildcard domains:', error);
+      setError('Failed to load wildcard domains. Please try again.');
+    } finally {
+      setLoadingWildcardDomains(false);
     }
   };
 
@@ -94,6 +251,8 @@ const AmassEnumConfigModal = ({
     try {
       const config = {
         domains: Array.from(selectedDomains),
+        include_wildcard_results: true,
+        wildcard_domains: wildcardDomains.map(wd => wd.rootDomain).filter(domain => domain),
         created_at: new Date().toISOString()
       };
 
@@ -205,27 +364,17 @@ const AmassEnumConfigModal = ({
     }
   }, [isDragging, handleMouseUp]);
 
-  const selectAllFiltered = () => {
+  const handleSelectAll = () => {
     const filteredDomains = getFilteredAndSortedDomains();
     const allDomains = filteredDomains.map(item => typeof item === 'string' ? item : item.domain);
     setSelectedDomains(new Set([...selectedDomains, ...allDomains]));
   };
 
-  const deselectAllFiltered = () => {
+  const handleDeselectAll = () => {
     const filteredDomains = getFilteredAndSortedDomains();
     const filteredDomainsSet = new Set(filteredDomains.map(item => typeof item === 'string' ? item : item.domain));
     const newSelectedDomains = new Set([...selectedDomains].filter(domain => !filteredDomainsSet.has(domain)));
     setSelectedDomains(newSelectedDomains);
-  };
-
-  const handleSelectAll = () => {
-    const filteredDomains = getFilteredAndSortedDomains();
-    const allDomains = filteredDomains.map(item => typeof item === 'string' ? item : item.domain);
-    setSelectedDomains(new Set(allDomains));
-  };
-
-  const handleDeselectAll = () => {
-    setSelectedDomains(new Set());
   };
 
   const getFilteredAndSortedDomains = () => {
@@ -263,8 +412,8 @@ const AmassEnumConfigModal = ({
     >
       <Modal.Header closeButton>
         <Modal.Title className="text-danger">
-          <i className="bi bi-cloud-arrow-down me-2" />
-          Configure Amass Enum - Cloud Asset Discovery
+          <i className="bi bi-search me-2" />
+          Configure Amass Enum - Cloud Asset Enumeration
         </Modal.Title>
       </Modal.Header>
       <Modal.Body>
@@ -275,13 +424,13 @@ const AmassEnumConfigModal = ({
         )}
 
         <div className="mb-4">
-          <Alert variant="warning">
+          <Alert variant="info">
             <div className="d-flex align-items-center">
-              <i className="bi bi-exclamation-triangle-fill me-2" />
+              <i className="bi bi-info-circle-fill me-2" />
               <div>
-                <strong>Performance Warning:</strong> Amass Enum can take up to 1 hour per domain to complete.
+                <strong>Amass Enum Configuration:</strong> Select root domains to scan with Amass Enum for comprehensive cloud asset discovery.
                 Selected domains: <strong>{selectedDomains.size}</strong> 
-                | Estimated total time: <strong>{estimatedTime === 1 ? '~1 hour' : `~${estimatedTime} hours`}</strong>
+                | Estimated time: <strong>{estimatedTime === 1 ? '~1 minute' : `~${estimatedTime} minutes`}</strong>
               </div>
             </div>
           </Alert>
@@ -294,17 +443,17 @@ const AmassEnumConfigModal = ({
                 <div className="spinner-border text-danger mb-3" role="status">
                   <span className="visually-hidden">Loading...</span>
                 </div>
-                <h5 className="text-white-50">Loading Domains...</h5>
+                <h5 className="text-white-50">Loading Consolidated Domains...</h5>
                 <p className="text-white-50">
-                  Fetching consolidated company domains...
+                  Fetching consolidated company domains for Amass Enum scanning...
                 </p>
               </>
             ) : (
               <>
-                <i className="bi bi-cloud text-white-50" style={{ fontSize: '3rem' }} />
-                <h5 className="text-white-50 mt-3">No Domains Available</h5>
+                <i className="bi bi-diagram-3 text-white-50" style={{ fontSize: '3rem' }} />
+                <h5 className="text-white-50 mt-3">No Consolidated Domains Available</h5>
                 <p className="text-white-50">
-                  Run the company domain discovery tools and consolidate the results first.
+                  Run domain consolidation first to populate available domains for Amass Enum scanning.
                 </p>
               </>
             )}
@@ -313,7 +462,7 @@ const AmassEnumConfigModal = ({
           <>
             <div className="d-flex justify-content-between align-items-center mb-3">
               <h6 className="mb-0 text-white">
-                Select domains for Amass Enum cloud asset discovery 
+                Select root domains for Amass Enum scanning 
                 <span className="text-light ms-2">({selectedDomains.size}/{domainsToUse.length})</span>
               </h6>
             </div>
@@ -341,47 +490,34 @@ const AmassEnumConfigModal = ({
               </Col>
             </Row>
 
-            <div className="d-flex mb-3" style={{ gap: '8px' }}>
+            <div className="d-flex align-items-center mb-3" style={{ gap: '12px' }}>
+              <div className="d-flex" style={{ gap: '8px' }}>
               <Button
-                variant="danger"
-                size="sm"
-                onClick={handleDeselectAll}
-                disabled={selectedDomains.size === 0}
-                style={{ flex: 1 }}
-              >
-                <FaTimes className="me-1" />
-                De-Select All
-              </Button>
-              <Button
-                variant="danger"
+                  variant="success"
                 size="sm"
                 onClick={handleSelectAll}
                 disabled={filteredDomains.length === 0}
-                style={{ flex: 1 }}
               >
                 <FaCheck className="me-1" />
-                Select All Filtered
+                  Select All
               </Button>
               <Button
                 variant="danger"
                 size="sm"
-                onClick={selectAllFiltered}
-                disabled={filteredDomains.length === 0}
-                style={{ flex: 1 }}
-              >
-                <FaCheck className="me-1" />
-                Select All Visible
-              </Button>
-              <Button
-                variant="danger"
-                size="sm"
-                onClick={deselectAllFiltered}
+                  onClick={handleDeselectAll}
                 disabled={selectedDomains.size === 0}
-                style={{ flex: 1 }}
               >
                 <FaTimes className="me-1" />
-                Deselect All Visible
+                  Deselect All
               </Button>
+              </div>
+              
+              <div className="d-flex align-items-center">
+                <span className="text-white">Wildcard target results are automatically included</span>
+                {loadingWildcardDomains && (
+                  <Spinner size="sm" animation="border" variant="light" className="ms-2" />
+                )}
+              </div>
             </div>
 
             <div className="mb-3">
@@ -430,17 +566,58 @@ const AmassEnumConfigModal = ({
                         }}
                       />
                     </th>
-                    <th style={{ backgroundColor: 'var(--bs-dark)' }}>Domain</th>
+                    <th style={{ backgroundColor: 'var(--bs-dark)', width: '50%' }}>Domain</th>
+                    <th style={{ backgroundColor: 'var(--bs-dark)', width: '30%' }}>Type</th>
+                    <th style={{ backgroundColor: 'var(--bs-dark)', width: '20%' }}>Source</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredDomains.map((item, index) => {
                     const domain = typeof item === 'string' ? item : item.domain;
+                    const domainType = typeof item === 'string' ? 'root' : item.type;
+                    const isWildcardTarget = typeof item === 'string' ? false : item.isWildcardTarget;
+                    const rootDomain = typeof item === 'string' ? null : item.rootDomain;
                     const isSelected = selectedDomains.has(domain);
+                    
+                    const getTypeBadge = () => {
+                      if (domainType === 'wildcard') {
+                        return <span className="badge bg-info text-dark">Wildcard Result</span>;
+                      } else if (isWildcardTarget) {
+                        return <span className="badge bg-warning text-dark">Root Domain (Wildcard Target)</span>;
+                      } else {
+                        return <span className="badge bg-success">Root Domain</span>;
+                      }
+                    };
+
+                    const getSource = () => {
+                      if (domainType === 'wildcard') {
+                        // Find the wildcard target that discovered this domain
+                        const wildcardInfo = wildcardDomains.find(wd => 
+                          wd.discoveredDomains.includes(domain)
+                        );
+                        return (
+                          <small className="text-white-50">
+                            From: {wildcardInfo?.wildcardTarget || rootDomain}
+                          </small>
+                        );
+                      } else if (isWildcardTarget) {
+                        return (
+                          <small className="text-white-50">
+                            Company Domains
+                          </small>
+                        );
+                      } else {
+                        return (
+                          <small className="text-white-50">
+                            Company Domains
+                          </small>
+                        );
+                      }
+                    };
                     
                     return (
                       <tr 
-                        key={index}
+                        key={domain}
                         style={{
                           backgroundColor: isSelected 
                             ? 'rgba(220, 53, 69, 0.25)' 
@@ -468,6 +645,12 @@ const AmassEnumConfigModal = ({
                         >
                           {domain}
                         </td>
+                        <td>
+                          {getTypeBadge()}
+                        </td>
+                        <td>
+                          {getSource()}
+                        </td>
                       </tr>
                     );
                   })}
@@ -493,7 +676,7 @@ const AmassEnumConfigModal = ({
             {selectedDomains.size > 0 && (
               <>
                 <i className="bi bi-clock me-1" />
-                Estimated scan time: {estimatedTime === 1 ? '~1 hour' : `~${estimatedTime} hours`}
+                Estimated time: {estimatedTime === 1 ? '~1 minute' : `~${estimatedTime} minutes`}
               </>
             )}
           </div>
