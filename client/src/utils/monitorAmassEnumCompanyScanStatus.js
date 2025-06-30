@@ -4,7 +4,8 @@ const monitorAmassEnumCompanyScanStatus = async (
   setAmassEnumCompanyScans, 
   setMostRecentAmassEnumCompanyScan, 
   setMostRecentAmassEnumCompanyScanStatus,
-  setAmassEnumCompanyCloudDomains = null
+  setAmassEnumCompanyCloudDomains = null,
+  activeTarget = null // Add activeTarget parameter to refresh scan list
 ) => {
   let attempts = 0;
   const maxAttempts = 600; // 10 minutes with 1-second intervals
@@ -46,7 +47,7 @@ const monitorAmassEnumCompanyScanStatus = async (
         if (setAmassEnumCompanyCloudDomains) {
           try {
             const cloudDomainsResponse = await fetch(
-              `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/amass-enum-company/cloud-domains/${scanId}`
+              `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/amass-enum-company/${scanId}/cloud-domains`
             );
             
             if (cloudDomainsResponse.ok) {
@@ -55,6 +56,32 @@ const monitorAmassEnumCompanyScanStatus = async (
             }
           } catch (error) {
             console.error('Error fetching cloud domains:', error);
+          }
+        }
+
+        // Refresh the complete scan list when scan completes to ensure UI consistency
+        if (activeTarget && setAmassEnumCompanyScans) {
+          try {
+            const refreshResponse = await fetch(
+              `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${activeTarget.id}/scans/amass-enum-company`
+            );
+            if (refreshResponse.ok) {
+              const refreshedScans = await refreshResponse.json();
+              if (Array.isArray(refreshedScans)) {
+                setAmassEnumCompanyScans(refreshedScans);
+                // Update the most recent scan from the refreshed data
+                if (refreshedScans.length > 0) {
+                  const mostRecentScan = refreshedScans.reduce((latest, scan) => {
+                    const scanDate = new Date(scan.created_at);
+                    return scanDate > new Date(latest.created_at) ? scan : latest;
+                  }, refreshedScans[0]);
+                  setMostRecentAmassEnumCompanyScan(mostRecentScan);
+                  setMostRecentAmassEnumCompanyScanStatus(mostRecentScan.status);
+                }
+              }
+            }
+          } catch (error) {
+            console.error('Error refreshing scan list:', error);
           }
         }
         

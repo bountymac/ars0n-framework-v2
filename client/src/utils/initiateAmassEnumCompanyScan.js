@@ -30,7 +30,8 @@ export const initiateAmassEnumCompanyScan = async (activeTarget, domains, setIsS
       setAmassEnumCompanyScans,
       setMostRecentAmassEnumCompanyScan,
       setMostRecentAmassEnumCompanyScanStatus,
-      setAmassEnumCompanyCloudDomains
+      setAmassEnumCompanyCloudDomains,
+      activeTarget
     );
 
   } catch (error) {

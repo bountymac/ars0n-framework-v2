@@ -745,7 +745,7 @@ function App() {
   // Update scanned domains count and cloud domains when scan status changes
   useEffect(() => {
     const updateScanResults = async () => {
-      if (activeTarget && mostRecentAmassEnumCompanyScan && mostRecentAmassEnumCompanyScan.scan_id) {
+      if (activeTarget && mostRecentAmassEnumCompanyScan && mostRecentAmassEnumCompanyScan.scan_id && !isAmassEnumCompanyScanning && mostRecentAmassEnumCompanyScanStatus === 'success') {
         try {
           // Fetch raw results count
           const rawResultsResponse = await fetch(
@@ -773,12 +773,12 @@ function App() {
     };
     
     updateScanResults();
-  }, [activeTarget, mostRecentAmassEnumCompanyScan, mostRecentAmassEnumCompanyScanStatus]);
+  }, [mostRecentAmassEnumCompanyScan, mostRecentAmassEnumCompanyScanStatus, isAmassEnumCompanyScanning]); // Removed activeTarget to prevent race condition
 
   // Update DNSx scan results when scan status changes
   useEffect(() => {
     const updateDNSxScanResults = async () => {
-      if (activeTarget && mostRecentDNSxCompanyScan && mostRecentDNSxCompanyScan.scan_id) {
+      if (activeTarget && mostRecentDNSxCompanyScan && mostRecentDNSxCompanyScan.scan_id && mostRecentDNSxCompanyScanStatus === 'success') {
         try {
           // Get the actual number of root domains that were scanned from the scan configuration
           // instead of counting discovered DNS records from raw results
@@ -803,7 +803,7 @@ function App() {
     };
     
     updateDNSxScanResults();
-  }, [activeTarget, mostRecentDNSxCompanyScan, mostRecentDNSxCompanyScanStatus]);
+  }, [mostRecentDNSxCompanyScan, mostRecentDNSxCompanyScanStatus]); // Removed activeTarget to prevent race condition
 
   const handleCloseAmassIntelConfigModal = () => setShowAmassIntelConfigModal(false);
   const handleOpenAmassIntelConfigModal = () => setShowAmassIntelConfigModal(true);
@@ -3083,8 +3083,15 @@ function App() {
     }
   }, [activeTarget]);
 
+  // Amass Enum Company scans useEffect
   useEffect(() => {
-    if (activeTarget) {
+    // Immediately reset counts when target changes to prevent showing stale data
+    setAmassEnumScannedDomainsCount(0);
+    setAmassEnumCompanyCloudDomains([]);
+    setMostRecentAmassEnumCompanyScan(null);
+    setMostRecentAmassEnumCompanyScanStatus(null);
+    
+    if (activeTarget && !isAmassEnumCompanyScanning) { // Only fetch when not actively scanning
       const fetchAmassEnumCompanyScans = async () => {
         try {
           const response = await fetch(
@@ -3129,9 +3136,6 @@ function App() {
                   setAmassEnumCompanyCloudDomains([]);
                 }
               }
-            } else {
-              setAmassEnumScannedDomainsCount(0);
-              setAmassEnumCompanyCloudDomains([]);
             }
           }
         } catch (error) {
@@ -3141,15 +3145,17 @@ function App() {
         }
       };
       fetchAmassEnumCompanyScans();
-    } else {
-      // Reset states when no active target
-      setAmassEnumScannedDomainsCount(0);
-      setAmassEnumCompanyCloudDomains([]);
     }
-  }, [activeTarget]);
+  }, [activeTarget, isAmassEnumCompanyScanning]); // Add isAmassEnumCompanyScanning dependency
 
   // DNSx Company scans useEffect  
   useEffect(() => {
+    // Immediately reset counts when target changes to prevent showing stale data
+    setDnsxScannedDomainsCount(0);
+    setDnsxCompanyDnsRecords([]);
+    setMostRecentDNSxCompanyScan(null);
+    setMostRecentDNSxCompanyScanStatus(null);
+    
     if (activeTarget) {
       const fetchDNSxCompanyScans = async () => {
         try {
@@ -3189,9 +3195,6 @@ function App() {
                   setDnsxCompanyDnsRecords([]);
                 }
               }
-            } else {
-              setDnsxScannedDomainsCount(0);
-              setDnsxCompanyDnsRecords([]);
             }
           }
         } catch (error) {
@@ -3201,10 +3204,6 @@ function App() {
         }
       };
       fetchDNSxCompanyScans();
-    } else {
-      // Reset states when no active target
-      setDnsxScannedDomainsCount(0);
-      setDnsxCompanyDnsRecords([]);
     }
   }, [activeTarget]);
 
