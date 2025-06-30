@@ -241,6 +241,16 @@ services:
     networks:
       - ars0n-network
 
+  cloud_enum:
+    container_name: ars0n-framework-v2-cloud_enum-1
+    build: ./docker/cloud_enum
+    depends_on:
+      - api
+    entrypoint: ["sleep", "infinity"]
+    restart: "no"
+    networks:
+      - ars0n-network
+
 volumes:
   postgres_data:
   temp_data:

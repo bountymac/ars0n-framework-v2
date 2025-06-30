@@ -17,19 +17,19 @@ import Ars0nFrameworkHeader from './components/ars0nFrameworkHeader.js';
 import ManageScopeTargets from './components/manageScopeTargets.js';
 import fetchAmassScans from './utils/fetchAmassScans.js';
 import {
-    Container,
-    Fade,
-    Card,
-    Row,
-    Col,
-    Button,
-    ListGroup,
-    Accordion,
-    Modal,
-    Table,
-    Toast,
-    ToastContainer,
-    Spinner,
+  Container,
+  Fade,
+  Card,
+  Row,
+  Col,
+  Button,
+  ListGroup,
+  Accordion,
+  Modal,
+  Table,
+  Toast,
+  ToastContainer,
+  Spinner,
 } from 'react-bootstrap';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'bootstrap-icons/font/bootstrap-icons.css';
@@ -37,14 +37,14 @@ import initiateAmassScan from './utils/initiateAmassScan';
 import monitorScanStatus from './utils/monitorScanStatus';
 import validateInput from './utils/validateInput.js';
 import {
-    getTypeIcon,
-    getLastScanDate,
-    getLatestScanStatus,
-    getLatestScanTime,
-    getLatestScanId,
-    getExecutionTime,
-    getResultLength,
-    copyToClipboard,
+  getTypeIcon,
+  getLastScanDate,
+  getLatestScanStatus,
+  getLatestScanTime,
+  getLatestScanId,
+  getExecutionTime,
+  getResultLength,
+  copyToClipboard,
 } from './utils/miscUtils.js';
 import { MdCopyAll, MdCheckCircle } from 'react-icons/md';
 import initiateHttpxScan from './utils/initiateHttpxScan';
@@ -88,9 +88,9 @@ import fetchHttpxScans from './utils/fetchHttpxScans';
 import ROIReport from './components/ROIReport';
 import HelpMeLearn from './components/HelpMeLearn';
 import {
-    AUTO_SCAN_STEPS,
-    resumeAutoScan as resumeAutoScanUtil,
-    startAutoScan as startAutoScanUtil
+  AUTO_SCAN_STEPS,
+  resumeAutoScan as resumeAutoScanUtil,
+  startAutoScan as startAutoScanUtil
 } from './utils/wildcardAutoScan';
 import getAutoScanSteps from './utils/autoScanSteps';
 import fetchAmassIntelScans from './utils/fetchAmassIntelScans';
@@ -99,6 +99,7 @@ import initiateAmassIntelScan from './utils/initiateAmassIntelScan';
 import initiateCTLCompanyScan from './utils/initiateCTLCompanyScan';
 import monitorCTLCompanyScanStatus from './utils/monitorCTLCompanyScanStatus';
 import { CTLCompanyResultsModal, CTLCompanyHistoryModal } from './modals/CTLCompanyResultsModal';
+import { CloudEnumResultsModal, CloudEnumHistoryModal } from './modals/CloudEnumResultsModal';
 import monitorMetabigorCompanyScanStatus from './utils/monitorMetabigorCompanyScanStatus';
 import initiateMetabigorCompanyScan from './utils/initiateMetabigorCompanyScan';
 import { MetabigorCompanyResultsModal, MetabigorCompanyHistoryModal } from './modals/MetabigorCompanyResultsModal';
@@ -139,6 +140,10 @@ import { initiateAmassEnumCompanyScan } from './utils/initiateAmassEnumCompanySc
 import { DNSxCompanyResultsModal } from './modals/DNSxCompanyResultsModal.js';
 import { DNSxCompanyHistoryModal } from './modals/DNSxCompanyHistoryModal.js';
 import { initiateDNSxCompanyScan } from './utils/initiateDNSxCompanyScan.js';
+
+// Add Cloud Enum imports
+import initiateCloudEnumScan from './utils/initiateCloudEnumScan';
+import monitorCloudEnumScanStatus from './utils/monitorCloudEnumScanStatus';
 
 // Add helper function
 const getHttpxResultsCount = (scan) => {
@@ -520,6 +525,23 @@ function App() {
   const [isDNSxCompanyScanning, setIsDNSxCompanyScanning] = useState(false);
   const [dnsxCompanyDnsRecords, setDnsxCompanyDnsRecords] = useState([]);
 
+  const [cloudEnumScans, setCloudEnumScans] = useState([]);
+  const [mostRecentCloudEnumScanStatus, setMostRecentCloudEnumScanStatus] = useState(null);
+  const [mostRecentCloudEnumScan, setMostRecentCloudEnumScan] = useState(null);
+  const [isCloudEnumScanning, setIsCloudEnumScanning] = useState(false);
+  const [showCloudEnumResultsModal, setShowCloudEnumResultsModal] = useState(false);
+  const [showCloudEnumHistoryModal, setShowCloudEnumHistoryModal] = useState(false);
+  const [showCloudEnumConfigModal, setShowCloudEnumConfigModal] = useState(false);
+
+  // Cloud Fire state variables
+  const [cloudFireScans, setCloudFireScans] = useState([]);
+  const [mostRecentCloudFireScanStatus, setMostRecentCloudFireScanStatus] = useState(null);
+  const [mostRecentCloudFireScan, setMostRecentCloudFireScan] = useState(null);
+  const [isCloudFireScanning, setIsCloudFireScanning] = useState(false);
+  const [showCloudFireResultsModal, setShowCloudFireResultsModal] = useState(false);
+  const [showCloudFireHistoryModal, setShowCloudFireHistoryModal] = useState(false);
+  const [showCloudFireConfigModal, setShowCloudFireConfigModal] = useState(false);
+  
   const handleCloseSubdomainsModal = () => setShowSubdomainsModal(false);
   const handleCloseCloudDomainsModal = () => setShowCloudDomainsModal(false);
   const handleCloseUniqueSubdomainsModal = () => setShowUniqueSubdomainsModal(false);
@@ -2063,6 +2085,17 @@ function App() {
     );
   };
 
+  const startCloudEnumScan = () => {
+    initiateCloudEnumScan(
+      activeTarget,
+      monitorCloudEnumScanStatus,
+      setIsCloudEnumScanning,
+      setCloudEnumScans,
+      setMostRecentCloudEnumScanStatus,
+      setMostRecentCloudEnumScan
+    );
+  };
+
   const startMetabigorCompanyScan = () => {
     initiateMetabigorCompanyScan(
       activeTarget,
@@ -2188,6 +2221,30 @@ function App() {
   
   const handleCloseCTLCompanyHistoryModal = () => setShowCTLCompanyHistoryModal(false);
   const handleOpenCTLCompanyHistoryModal = () => setShowCTLCompanyHistoryModal(true);
+
+    const handleCloseCloudEnumResultsModal = () => setShowCloudEnumResultsModal(false);
+  const handleOpenCloudEnumResultsModal = () => setShowCloudEnumResultsModal(true);
+
+  const handleCloseCloudEnumHistoryModal = () => setShowCloudEnumHistoryModal(false);
+  const handleOpenCloudEnumHistoryModal = () => setShowCloudEnumHistoryModal(true);
+
+  const handleCloseCloudEnumConfigModal = () => setShowCloudEnumConfigModal(false);
+  const handleOpenCloudEnumConfigModal = () => setShowCloudEnumConfigModal(true);
+
+  // Cloud Fire handlers
+  const handleCloseCloudFireResultsModal = () => setShowCloudFireResultsModal(false);
+  const handleOpenCloudFireResultsModal = () => setShowCloudFireResultsModal(true);
+
+  const handleCloseCloudFireHistoryModal = () => setShowCloudFireHistoryModal(false);
+  const handleOpenCloudFireHistoryModal = () => setShowCloudFireHistoryModal(true);
+
+  const handleCloseCloudFireConfigModal = () => setShowCloudFireConfigModal(false);
+  const handleOpenCloudFireConfigModal = () => setShowCloudFireConfigModal(true);
+
+  const startCloudFireScan = () => {
+    // Placeholder for future Cloud Fire implementation
+    console.log('Cloud Fire scan initiated for target:', activeTarget?.scope_target);
+  };
 
   const handleCloseMetabigorCompanyResultsModal = () => setShowMetabigorCompanyResultsModal(false);
   const handleOpenMetabigorCompanyResultsModal = () => setShowMetabigorCompanyResultsModal(true);
@@ -2378,6 +2435,18 @@ function App() {
         setMostRecentCTLCompanyScan,
         setIsCTLCompanyScanning,
         setMostRecentCTLCompanyScanStatus
+      );
+    }
+  }, [activeTarget]);
+
+  useEffect(() => {
+    if (activeTarget) {
+      monitorCloudEnumScanStatus(
+        activeTarget,
+        setCloudEnumScans,
+        setMostRecentCloudEnumScan,
+        setIsCloudEnumScanning,
+        setMostRecentCloudEnumScanStatus
       );
     }
   }, [activeTarget]);
@@ -3571,6 +3640,201 @@ function App() {
     }
   };
 
+  // Add Cloud Enum scans useEffect
+  useEffect(() => {
+    // Immediately reset counts when target changes to prevent showing stale data
+    setAmassEnumScannedDomainsCount(0);
+    setAmassEnumCompanyCloudDomains([]);
+    setMostRecentAmassEnumCompanyScan(null);
+    setMostRecentAmassEnumCompanyScanStatus(null);
+    
+    if (activeTarget && !isAmassEnumCompanyScanning) { // Only fetch when not actively scanning
+      const fetchAmassEnumCompanyScans = async () => {
+        try {
+          const response = await fetch(
+            `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${activeTarget.id}/scans/amass-enum-company`
+          );
+          if (!response.ok) {
+            throw new Error('Failed to fetch Amass Enum Company scans');
+          }
+          const scans = await response.json();
+          if (Array.isArray(scans)) {
+            setAmassEnumCompanyScans(scans);
+            if (scans.length > 0) {
+              const mostRecentScan = scans.reduce((latest, scan) => {
+                const scanDate = new Date(scan.created_at);
+                return scanDate > new Date(latest.created_at) ? scan : latest;
+              }, scans[0]);
+              setMostRecentAmassEnumCompanyScan(mostRecentScan);
+              setMostRecentAmassEnumCompanyScanStatus(mostRecentScan.status);
+              
+              // Fetch raw results to get actual scanned domains count
+              if (mostRecentScan.scan_id) {
+                const rawResultsResponse = await fetch(
+                  `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/amass-enum-company/${mostRecentScan.scan_id}/raw-results`
+                );
+                if (rawResultsResponse.ok) {
+                  const rawResults = await rawResultsResponse.json();
+                  // Count unique domains from raw results, not total number of results
+                  const uniqueDomains = rawResults ? [...new Set(rawResults.map(result => result.domain))].length : 0;
+                  setAmassEnumScannedDomainsCount(uniqueDomains);
+                } else {
+                  setAmassEnumScannedDomainsCount(0);
+                }
+
+                // Fetch cloud domains for the main card display
+                const cloudDomainsResponse = await fetch(
+                  `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/amass-enum-company/${mostRecentScan.scan_id}/cloud-domains`
+                );
+                if (cloudDomainsResponse.ok) {
+                  const cloudDomains = await cloudDomainsResponse.json();
+                  setAmassEnumCompanyCloudDomains(cloudDomains || []);
+                } else {
+                  setAmassEnumCompanyCloudDomains([]);
+                }
+              }
+            }
+          }
+        } catch (error) {
+          console.error('[AMASS-ENUM-COMPANY] Error fetching scans:', error);
+          setAmassEnumScannedDomainsCount(0);
+          setAmassEnumCompanyCloudDomains([]);
+        }
+      };
+      fetchAmassEnumCompanyScans();
+    }
+  }, [activeTarget, isAmassEnumCompanyScanning]); // Add isAmassEnumCompanyScanning dependency
+
+  // Add Cloud Enum scans useEffect
+  useEffect(() => {
+    // Immediately reset counts when target changes to prevent showing stale data
+    setAmassEnumScannedDomainsCount(0);
+    setAmassEnumCompanyCloudDomains([]);
+    setMostRecentAmassEnumCompanyScan(null);
+    setMostRecentAmassEnumCompanyScanStatus(null);
+    
+    if (activeTarget && !isAmassEnumCompanyScanning) { // Only fetch when not actively scanning
+      const fetchAmassEnumCompanyScans = async () => {
+        try {
+          const response = await fetch(
+            `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${activeTarget.id}/scans/amass-enum-company`
+          );
+          if (!response.ok) {
+            throw new Error('Failed to fetch Amass Enum Company scans');
+          }
+          const scans = await response.json();
+          if (Array.isArray(scans)) {
+            setAmassEnumCompanyScans(scans);
+            if (scans.length > 0) {
+              const mostRecentScan = scans.reduce((latest, scan) => {
+                const scanDate = new Date(scan.created_at);
+                return scanDate > new Date(latest.created_at) ? scan : latest;
+              }, scans[0]);
+              setMostRecentAmassEnumCompanyScan(mostRecentScan);
+              setMostRecentAmassEnumCompanyScanStatus(mostRecentScan.status);
+              
+              // Fetch raw results to get actual scanned domains count
+              if (mostRecentScan.scan_id) {
+                const rawResultsResponse = await fetch(
+                  `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/amass-enum-company/${mostRecentScan.scan_id}/raw-results`
+                );
+                if (rawResultsResponse.ok) {
+                  const rawResults = await rawResultsResponse.json();
+                  // Count unique domains from raw results, not total number of results
+                  const uniqueDomains = rawResults ? [...new Set(rawResults.map(result => result.domain))].length : 0;
+                  setAmassEnumScannedDomainsCount(uniqueDomains);
+                } else {
+                  setAmassEnumScannedDomainsCount(0);
+                }
+
+                // Fetch cloud domains for the main card display
+                const cloudDomainsResponse = await fetch(
+                  `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/amass-enum-company/${mostRecentScan.scan_id}/cloud-domains`
+                );
+                if (cloudDomainsResponse.ok) {
+                  const cloudDomains = await cloudDomainsResponse.json();
+                  setAmassEnumCompanyCloudDomains(cloudDomains || []);
+                } else {
+                  setAmassEnumCompanyCloudDomains([]);
+                }
+              }
+            }
+          }
+        } catch (error) {
+          console.error('[AMASS-ENUM-COMPANY] Error fetching scans:', error);
+          setAmassEnumScannedDomainsCount(0);
+          setAmassEnumCompanyCloudDomains([]);
+        }
+      };
+      fetchAmassEnumCompanyScans();
+    }
+  }, [activeTarget, isAmassEnumCompanyScanning]); // Add isAmassEnumCompanyScanning dependency
+
+  // Add Cloud Enum scans useEffect
+  useEffect(() => {
+    // Immediately reset counts when target changes to prevent showing stale data
+    setAmassEnumScannedDomainsCount(0);
+    setAmassEnumCompanyCloudDomains([]);
+    setMostRecentAmassEnumCompanyScan(null);
+    setMostRecentAmassEnumCompanyScanStatus(null);
+    
+    if (activeTarget && !isAmassEnumCompanyScanning) { // Only fetch when not actively scanning
+      const fetchAmassEnumCompanyScans = async () => {
+        try {
+          const response = await fetch(
+            `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${activeTarget.id}/scans/amass-enum-company`
+          );
+          if (!response.ok) {
+            throw new Error('Failed to fetch Amass Enum Company scans');
+          }
+          const scans = await response.json();
+          if (Array.isArray(scans)) {
+            setAmassEnumCompanyScans(scans);
+            if (scans.length > 0) {
+              const mostRecentScan = scans.reduce((latest, scan) => {
+                const scanDate = new Date(scan.created_at);
+                return scanDate > new Date(latest.created_at) ? scan : latest;
+              }, scans[0]);
+              setMostRecentAmassEnumCompanyScan(mostRecentScan);
+              setMostRecentAmassEnumCompanyScanStatus(mostRecentScan.status);
+              
+              // Fetch raw results to get actual scanned domains count
+              if (mostRecentScan.scan_id) {
+                const rawResultsResponse = await fetch(
+                  `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/amass-enum-company/${mostRecentScan.scan_id}/raw-results`
+                );
+                if (rawResultsResponse.ok) {
+                  const rawResults = await rawResultsResponse.json();
+                  // Count unique domains from raw results, not total number of results
+                  const uniqueDomains = rawResults ? [...new Set(rawResults.map(result => result.domain))].length : 0;
+                  setAmassEnumScannedDomainsCount(uniqueDomains);
+                } else {
+                  setAmassEnumScannedDomainsCount(0);
+                }
+
+                // Fetch cloud domains for the main card display
+                const cloudDomainsResponse = await fetch(
+                  `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/amass-enum-company/${mostRecentScan.scan_id}/cloud-domains`
+                );
+                if (cloudDomainsResponse.ok) {
+                  const cloudDomains = await cloudDomainsResponse.json();
+                  setAmassEnumCompanyCloudDomains(cloudDomains || []);
+                } else {
+                  setAmassEnumCompanyCloudDomains([]);
+                }
+              }
+            }
+          }
+        } catch (error) {
+          console.error('[AMASS-ENUM-COMPANY] Error fetching scans:', error);
+          setAmassEnumScannedDomainsCount(0);
+          setAmassEnumCompanyCloudDomains([]);
+        }
+      };
+      fetchAmassEnumCompanyScans();
+    }
+  }, [activeTarget, isAmassEnumCompanyScanning]); // Add isAmassEnumCompanyScanning dependency
+
   return (
     <Container data-bs-theme="dark" className="App" style={{ padding: '20px' }}>
       <style>
@@ -3777,6 +4041,19 @@ function App() {
         showCTLCompanyHistoryModal={showCTLCompanyHistoryModal}
         handleCloseCTLCompanyHistoryModal={handleCloseCTLCompanyHistoryModal}
         ctlCompanyScans={ctlCompanyScans}
+      />
+
+      <CloudEnumResultsModal
+        showCloudEnumResultsModal={showCloudEnumResultsModal}
+        handleCloseCloudEnumResultsModal={handleCloseCloudEnumResultsModal}
+        cloudEnumResults={mostRecentCloudEnumScan}
+        setShowToast={setShowToast}
+      />
+
+      <CloudEnumHistoryModal
+        showCloudEnumHistoryModal={showCloudEnumHistoryModal}
+        handleCloseCloudEnumHistoryModal={handleCloseCloudEnumHistoryModal}
+        cloudEnumScans={cloudEnumScans}
       />
 
       <AmassEnumCompanyResultsModal
@@ -4568,9 +4845,9 @@ function App() {
                 </Row>
 
                 <h4 className="text-secondary mb-3 fs-5">Cloud Asset Enumeration (Brute-Force)</h4>
-                <Row className="row-cols-4 g-3 mb-4">
+                <Row className="row-cols-2 g-3 mb-4">
                   <Col>
-                    <Card className="shadow-sm h-100 text-center" style={{ minHeight: '250px' }}>
+                    <Card className="shadow-sm h-100 text-center" style={{ minHeight: '300px' }}>
                       <Card.Body className="d-flex flex-column">
                         <Card.Title className="text-danger fs-4 mb-3">
                           <a href="https://github.com/initstring/cloud_enum" className="text-danger text-decoration-none">
@@ -4578,81 +4855,123 @@ function App() {
                           </a>
                         </Card.Title>
                         <Card.Text className="text-white small fst-italic mb-4">
-                          Multi-cloud OSINT tool for enumerating public resources in AWS, Azure, and Google Cloud.
+                          Multi-cloud OSINT tool for enumerating public resources in AWS, Azure, and Google Cloud through brute-force techniques.
                         </Card.Text>
                         <div className="text-danger mb-4">
-                          <h3 className="mb-0">0</h3>
-                          <small className="text-white-50">Resources Found</small>
+                          <h3 className="mb-0">{(() => {
+                            if (!mostRecentCloudEnumScan?.result) return 0;
+                            try {
+                              // Backend stores results as JSON array string, not newline-delimited JSON
+                              const cloudAssets = JSON.parse(mostRecentCloudEnumScan.result);
+                              if (Array.isArray(cloudAssets)) {
+                                return cloudAssets.filter(asset => asset.platform && asset.target).length;
+                              }
+                              return 0;
+                            } catch (error) {
+                              return 0;
+                            }
+                          })()}</h3>
+                          <small className="text-white-50">Cloud Assets<br/>Discovered</small>
                         </div>
                         <div className="d-flex justify-content-between mt-auto gap-2">
-                          <Button variant="outline-danger" className="flex-fill">Scan</Button>
-                          <Button variant="outline-danger" className="flex-fill">Results</Button>
+                          <Button 
+                            variant="outline-danger" 
+                            className="flex-fill"
+                            onClick={handleOpenCloudEnumConfigModal}
+                          >
+                            Config
+                          </Button>
+                          <Button 
+                            variant="outline-danger" 
+                            className="flex-fill"
+                            onClick={handleOpenCloudEnumHistoryModal}
+                          >
+                            History
+                          </Button>
+                          <Button 
+                            variant="outline-danger" 
+                            className="flex-fill"
+                            onClick={startCloudEnumScan}
+                            disabled={isCloudEnumScanning || mostRecentCloudEnumScanStatus === "pending" || mostRecentCloudEnumScanStatus === "running"}
+                          >
+                            {isCloudEnumScanning || mostRecentCloudEnumScanStatus === "pending" || mostRecentCloudEnumScanStatus === "running" ? (
+                              <Spinner animation="border" size="sm" />
+                            ) : (
+                              'Scan'
+                            )}
+                          </Button>
+                          <Button 
+                            variant="outline-danger" 
+                            className="flex-fill"
+                            onClick={handleOpenCloudEnumResultsModal}
+                          >
+                            Results
+                          </Button>
                         </div>
                       </Card.Body>
                     </Card>
                   </Col>
                   <Col>
-                    <Card className="shadow-sm h-100 text-center" style={{ minHeight: '250px' }}>
+                    <Card className="shadow-sm h-100 text-center" style={{ minHeight: '300px' }}>
                       <Card.Body className="d-flex flex-column">
                         <Card.Title className="text-danger fs-4 mb-3">
-                          <a href="https://github.com/nccgroup/ScoutSuite" className="text-danger text-decoration-none">
-                            AWS Specific
-                          </a>
+                          <span className="text-danger text-decoration-none">
+                            CloudFire (Brute Mode)
+                          </span>
                         </Card.Title>
                         <Card.Text className="text-white small fst-italic mb-4">
-                          Specialized AWS asset enumeration including S3 buckets, EC2 instances, and other AWS-specific resources.
+                          Advanced cloud asset discovery tool built by rs0n, designed for comprehensive enumeration across all major cloud platforms with enhanced intelligence.
                         </Card.Text>
                         <div className="text-danger mb-4">
-                          <h3 className="mb-0">0</h3>
-                          <small className="text-white-50">AWS Resources</small>
+                          <h3 className="mb-0">{(() => {
+                            if (!mostRecentCloudFireScan?.result) return 0;
+                            try {
+                              // Future implementation for Cloud Fire results
+                              const cloudAssets = JSON.parse(mostRecentCloudFireScan.result);
+                              if (Array.isArray(cloudAssets)) {
+                                return cloudAssets.filter(asset => asset.platform && asset.target).length;
+                              }
+                              return 0;
+                            } catch (error) {
+                              return 0;
+                            }
+                          })()}</h3>
+                          <small className="text-white-50">Cloud Assets<br/>Discovered</small>
                         </div>
                         <div className="d-flex justify-content-between mt-auto gap-2">
-                          <Button variant="outline-danger" className="flex-fill">Scan</Button>
-                          <Button variant="outline-danger" className="flex-fill">Results</Button>
-                        </div>
-                      </Card.Body>
-                    </Card>
-                  </Col>
-                  <Col>
-                    <Card className="shadow-sm h-100 text-center" style={{ minHeight: '250px' }}>
-                      <Card.Body className="d-flex flex-column">
-                        <Card.Title className="text-danger fs-4 mb-3">
-                          <a href="https://cloud.google.com/sdk/gcloud" className="text-danger text-decoration-none">
-                            GCP Specific
-                          </a>
-                        </Card.Title>
-                        <Card.Text className="text-white small fst-italic mb-4">
-                          Google Cloud Platform specific enumeration for Cloud Storage, Compute Engine, and other GCP services.
-                        </Card.Text>
-                        <div className="text-danger mb-4">
-                          <h3 className="mb-0">0</h3>
-                          <small className="text-white-50">GCP Resources</small>
-                        </div>
-                        <div className="d-flex justify-content-between mt-auto gap-2">
-                          <Button variant="outline-danger" className="flex-fill">Scan</Button>
-                          <Button variant="outline-danger" className="flex-fill">Results</Button>
-                        </div>
-                      </Card.Body>
-                    </Card>
-                  </Col>
-                  <Col>
-                    <Card className="shadow-sm h-100 text-center" style={{ minHeight: '250px' }}>
-                      <Card.Body className="d-flex flex-column">
-                        <Card.Title className="text-danger fs-4 mb-3">
-                          <a href="https://docs.microsoft.com/en-us/cli/azure/" className="text-danger text-decoration-none">
-                            Azure Specific
-                          </a>
-                        </Card.Title>
-                        <Card.Text className="text-white small fst-italic mb-4">
-                          Microsoft Azure specific enumeration for Blob storage, Virtual Machines, and other Azure services.
-                        </Card.Text>
-                        <div className="text-danger mb-4">
-                          <h3 className="mb-0">0</h3>
-                          <small className="text-white-50">Azure Resources</small>
-                        </div>
-                        <div className="d-flex justify-content-between mt-auto gap-2">
-                          <Button variant="outline-danger" className="flex-fill">Scan</Button>
-                          <Button variant="outline-danger" className="flex-fill">Results</Button>
+                          <Button 
+                            variant="outline-danger" 
+                            className="flex-fill"
+                            onClick={handleOpenCloudFireConfigModal}
+                          >
+                            Config
+                          </Button>
+                          <Button 
+                            variant="outline-danger" 
+                            className="flex-fill"
+                            onClick={handleOpenCloudFireHistoryModal}
+                          >
+                            History
+                          </Button>
+                          <Button 
+                            variant="outline-danger" 
+                            className="flex-fill"
+                            onClick={startCloudFireScan}
+                            disabled={isCloudFireScanning || mostRecentCloudFireScanStatus === "pending" || mostRecentCloudFireScanStatus === "running"}
+                          >
+                            {isCloudFireScanning || mostRecentCloudFireScanStatus === "pending" || mostRecentCloudFireScanStatus === "running" ? (
+                              <Spinner animation="border" size="sm" />
+                            ) : (
+                              'Scan'
+                            )}
+                          </Button>
+                          <Button 
+                            variant="outline-danger" 
+                            className="flex-fill"
+                            onClick={handleOpenCloudFireResultsModal}
+                          >
+                            Results
+                          </Button>
                         </div>
                       </Card.Body>
                     </Card>
