@@ -243,7 +243,9 @@ services:
 
   cloud_enum:
     container_name: ars0n-framework-v2-cloud_enum-1
-    build: ./docker/cloud_enum
+    build:
+      context: .
+      dockerfile: docker/cloud_enum/Dockerfile
     depends_on:
       - api
     entrypoint: ["sleep", "infinity"]

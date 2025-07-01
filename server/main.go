@@ -5,9 +5,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -215,6 +217,11 @@ func main() {
 	// DNSx configuration routes
 	r.HandleFunc("/dnsx-config/{scope_target_id}", getDNSxConfig).Methods("GET", "OPTIONS")
 	r.HandleFunc("/dnsx-config/{scope_target_id}", saveDNSxConfig).Methods("POST", "OPTIONS")
+
+	// Cloud Enum configuration routes
+	r.HandleFunc("/cloud-enum-config/{scope_target_id}", getCloudEnumConfig).Methods("GET", "OPTIONS")
+	r.HandleFunc("/cloud-enum-config/{scope_target_id}", saveCloudEnumConfig).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/build-wordlist/{scope_target_id}/{type}", buildWordlistFromDomains).Methods("POST", "OPTIONS")
 
 	// DNSx Company scan routes
 	r.HandleFunc("/dnsx-company/run/{scope_target_id}", utils.RunDNSxCompanyScan).Methods("POST", "OPTIONS")
@@ -2107,4 +2114,555 @@ func getLiveWebServersCount(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"count": count,
 	})
+}
+
+func getCloudEnumConfig(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	scopeTargetID := vars["scope_target_id"]
+
+	log.Printf("[CLOUD-ENUM-CONFIG] Getting configuration for scope target: %s", scopeTargetID)
+
+	// Create table if it doesn't exist
+	_, err := dbPool.Exec(context.Background(), `
+		CREATE TABLE IF NOT EXISTS cloud_enum_configs (
+			id SERIAL PRIMARY KEY,
+			scope_target_id UUID NOT NULL UNIQUE,
+			keywords TEXT[],
+			threads INTEGER DEFAULT 5,
+			enabled_platforms JSONB DEFAULT '{"aws": true, "azure": true, "gcp": true}',
+			custom_dns_server TEXT DEFAULT '',
+			dns_resolver_mode TEXT DEFAULT 'multiple',
+			resolver_config TEXT DEFAULT 'default',
+			additional_resolvers TEXT DEFAULT '',
+			mutations_file_path TEXT DEFAULT '',
+			brute_file_path TEXT DEFAULT '',
+			resolver_file_path TEXT DEFAULT '',
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	if err != nil {
+		log.Printf("[CLOUD-ENUM-CONFIG] Error creating config table: %v", err)
+		http.Error(w, "Database error", http.StatusInternalServerError)
+		return
+	}
+
+	var config struct {
+		Keywords            []string               `json:"keywords"`
+		Threads             int                    `json:"threads"`
+		EnabledPlatforms    map[string]interface{} `json:"enabled_platforms"`
+		CustomDNSServer     string                 `json:"custom_dns_server"`
+		DNSResolverMode     string                 `json:"dns_resolver_mode"`
+		ResolverConfig      string                 `json:"resolver_config"`
+		AdditionalResolvers string                 `json:"additional_resolvers"`
+		MutationsFilePath   string                 `json:"mutations_file_path"`
+		BruteFilePath       string                 `json:"brute_file_path"`
+		ResolverFilePath    string                 `json:"resolver_file_path"`
+	}
+
+	var platformsJSON []byte
+	err = dbPool.QueryRow(context.Background(), `
+		SELECT keywords, threads, enabled_platforms, custom_dns_server, 
+		       dns_resolver_mode, resolver_config, additional_resolvers,
+		       mutations_file_path, brute_file_path, resolver_file_path
+		FROM cloud_enum_configs 
+		WHERE scope_target_id = $1 
+		ORDER BY updated_at DESC 
+		LIMIT 1
+	`, scopeTargetID).Scan(
+		&config.Keywords,
+		&config.Threads,
+		&platformsJSON,
+		&config.CustomDNSServer,
+		&config.DNSResolverMode,
+		&config.ResolverConfig,
+		&config.AdditionalResolvers,
+		&config.MutationsFilePath,
+		&config.BruteFilePath,
+		&config.ResolverFilePath,
+	)
+
+	if err != nil && err != sql.ErrNoRows {
+		log.Printf("[CLOUD-ENUM-CONFIG] Error getting config: %v", err)
+		http.Error(w, "Database error", http.StatusInternalServerError)
+		return
+	}
+
+	if err == sql.ErrNoRows {
+		// Return default config
+		config.Keywords = []string{}
+		config.Threads = 5
+		config.EnabledPlatforms = map[string]interface{}{
+			"aws":   true,
+			"azure": true,
+			"gcp":   true,
+		}
+		config.CustomDNSServer = ""
+		config.DNSResolverMode = "multiple"
+		config.ResolverConfig = "default"
+		config.AdditionalResolvers = ""
+		config.MutationsFilePath = ""
+		config.BruteFilePath = ""
+		config.ResolverFilePath = ""
+	} else {
+		// Parse JSON field for platforms
+		json.Unmarshal(platformsJSON, &config.EnabledPlatforms)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(config)
+}
+
+func saveCloudEnumConfig(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	scopeTargetID := vars["scope_target_id"]
+
+	log.Printf("[CLOUD-ENUM-CONFIG] Saving configuration for scope target: %s", scopeTargetID)
+
+	// Parse multipart form
+	err := r.ParseMultipartForm(10 << 20) // 10 MB limit
+	if err != nil {
+		log.Printf("[CLOUD-ENUM-CONFIG] Error parsing multipart form: %v", err)
+		http.Error(w, "Error parsing form", http.StatusBadRequest)
+		return
+	}
+
+	// Get config JSON
+	configJSON := r.FormValue("config")
+	if configJSON == "" {
+		http.Error(w, "Config is required", http.StatusBadRequest)
+		return
+	}
+
+	var config struct {
+		Keywords            []string               `json:"keywords"`
+		Threads             int                    `json:"threads"`
+		EnabledPlatforms    map[string]interface{} `json:"enabled_platforms"`
+		CustomDNSServer     string                 `json:"custom_dns_server"`
+		DNSResolverMode     string                 `json:"dns_resolver_mode"`
+		ResolverConfig      string                 `json:"resolver_config"`
+		AdditionalResolvers string                 `json:"additional_resolvers"`
+	}
+
+	err = json.Unmarshal([]byte(configJSON), &config)
+	if err != nil {
+		log.Printf("[CLOUD-ENUM-CONFIG] Error parsing config JSON: %v", err)
+		http.Error(w, "Invalid config format", http.StatusBadRequest)
+		return
+	}
+
+	// Handle file uploads
+	var mutationsFilePath, bruteFilePath, resolverFilePath string
+
+	// Create uploads directory if it doesn't exist
+	os.MkdirAll("/tmp/cloud_enum_configs", 0755)
+
+	// Handle mutations file
+	mutationsFile, _, err := r.FormFile("mutations_file")
+	if err == nil {
+		defer mutationsFile.Close()
+
+		mutationsFilePath = fmt.Sprintf("/tmp/cloud_enum_configs/mutations_%s.txt", scopeTargetID)
+		outFile, err := os.Create(mutationsFilePath)
+		if err != nil {
+			log.Printf("[CLOUD-ENUM-CONFIG] Error creating mutations file: %v", err)
+		} else {
+			defer outFile.Close()
+			io.Copy(outFile, mutationsFile)
+			log.Printf("[CLOUD-ENUM-CONFIG] Saved mutations file: %s", mutationsFilePath)
+		}
+	}
+
+	// Handle brute force file
+	bruteFile, _, err := r.FormFile("brute_file")
+	if err == nil {
+		defer bruteFile.Close()
+
+		bruteFilePath = fmt.Sprintf("/tmp/cloud_enum_configs/brute_%s.txt", scopeTargetID)
+		outFile, err := os.Create(bruteFilePath)
+		if err != nil {
+			log.Printf("[CLOUD-ENUM-CONFIG] Error creating brute file: %v", err)
+		} else {
+			defer outFile.Close()
+			io.Copy(outFile, bruteFile)
+			log.Printf("[CLOUD-ENUM-CONFIG] Saved brute file: %s", bruteFilePath)
+		}
+	}
+
+	// Handle resolver file
+	resolverFile, _, err := r.FormFile("resolver_file")
+	if err == nil {
+		defer resolverFile.Close()
+
+		resolverFilePath = fmt.Sprintf("/tmp/cloud_enum_configs/resolvers_%s.txt", scopeTargetID)
+		outFile, err := os.Create(resolverFilePath)
+		if err != nil {
+			log.Printf("[CLOUD-ENUM-CONFIG] Error creating resolver file: %v", err)
+		} else {
+			defer outFile.Close()
+			io.Copy(outFile, resolverFile)
+			log.Printf("[CLOUD-ENUM-CONFIG] Saved resolver file: %s", resolverFilePath)
+		}
+	}
+
+	// Convert platforms to JSON for database storage (JSONB column)
+	platformsJSON, _ := json.Marshal(config.EnabledPlatforms)
+
+	// Insert or update config
+	_, err = dbPool.Exec(context.Background(), `
+		INSERT INTO cloud_enum_configs (
+			scope_target_id, keywords, threads, enabled_platforms, 
+			custom_dns_server, dns_resolver_mode, resolver_config, additional_resolvers,
+			mutations_file_path, brute_file_path, resolver_file_path, updated_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, CURRENT_TIMESTAMP)
+		ON CONFLICT (scope_target_id) 
+		DO UPDATE SET 
+			keywords = EXCLUDED.keywords,
+			threads = EXCLUDED.threads,
+			enabled_platforms = EXCLUDED.enabled_platforms,
+			custom_dns_server = EXCLUDED.custom_dns_server,
+			dns_resolver_mode = EXCLUDED.dns_resolver_mode,
+			resolver_config = EXCLUDED.resolver_config,
+			additional_resolvers = EXCLUDED.additional_resolvers,
+			mutations_file_path = COALESCE(NULLIF(EXCLUDED.mutations_file_path, ''), cloud_enum_configs.mutations_file_path),
+			brute_file_path = COALESCE(NULLIF(EXCLUDED.brute_file_path, ''), cloud_enum_configs.brute_file_path),
+			resolver_file_path = COALESCE(NULLIF(EXCLUDED.resolver_file_path, ''), cloud_enum_configs.resolver_file_path),
+			updated_at = CURRENT_TIMESTAMP
+	`, scopeTargetID, config.Keywords, config.Threads, platformsJSON,
+		config.CustomDNSServer, config.DNSResolverMode, config.ResolverConfig, config.AdditionalResolvers,
+		mutationsFilePath, bruteFilePath, resolverFilePath)
+
+	if err != nil {
+		log.Printf("[CLOUD-ENUM-CONFIG] Error saving config: %v", err)
+		http.Error(w, "Database error", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("[CLOUD-ENUM-CONFIG] Configuration saved successfully for scope target: %s", scopeTargetID)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+}
+
+func buildWordlistFromDomains(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	scopeTargetID := vars["scope_target_id"]
+	wordlistType := vars["type"] // "mutations" or "brute"
+
+	log.Printf("[BUILD-WORDLIST] Building %s wordlist for scope target: %s", wordlistType, scopeTargetID)
+
+	// Get domains from various sources
+	rootDomains, err := getConsolidatedRootDomains(scopeTargetID)
+	if err != nil {
+		log.Printf("[BUILD-WORDLIST] Error fetching root domains: %v", err)
+	}
+
+	amassEnumDomains, err := getAmassEnumDomains(scopeTargetID)
+	if err != nil {
+		log.Printf("[BUILD-WORDLIST] Error fetching Amass domains: %v", err)
+	}
+
+	dnsxDomains, err := getDNSxDomains(scopeTargetID)
+	if err != nil {
+		log.Printf("[BUILD-WORDLIST] Error fetching DNSx domains: %v", err)
+	}
+
+	liveWebServerDomains, err := getLiveWebServerDomains(scopeTargetID)
+	if err != nil {
+		log.Printf("[BUILD-WORDLIST] Error fetching live web server domains: %v", err)
+	}
+
+	// Combine all domains
+	allDomains := append(rootDomains, amassEnumDomains...)
+	allDomains = append(allDomains, dnsxDomains...)
+	allDomains = append(allDomains, liveWebServerDomains...)
+
+	log.Printf("[BUILD-WORDLIST] Found %d root domains, %d Amass domains, %d DNSx domains, %d live web server domains",
+		len(rootDomains), len(amassEnumDomains), len(dnsxDomains), len(liveWebServerDomains))
+
+	// Extract unique words from domains
+	domainWords := make(map[string]bool)
+	tlds := map[string]bool{
+		"com": true, "net": true, "org": true, "edu": true, "gov": true,
+		"mil": true, "co": true, "uk": true, "au": true, "ca": true,
+		"de": true, "fr": true, "jp": true, "br": true, "mx": true,
+		"in": true, "cn": true, "ru": true, "kr": true, "it": true,
+		"www": true, "mail": true, "ftp": true, "smtp": true, "pop": true,
+		"imap": true, "ns": true, "dns": true,
+	}
+
+	for _, domain := range allDomains {
+		// Split domain by dots and extract words
+		parts := strings.Split(strings.ToLower(domain), ".")
+		for _, part := range parts {
+			// Further split by hyphens and underscores
+			subParts := strings.FieldsFunc(part, func(c rune) bool {
+				return c == '-' || c == '_'
+			})
+
+			for _, word := range subParts {
+				word = strings.TrimSpace(word)
+				if len(word) >= 2 && !tlds[word] && word != "" {
+					domainWords[word] = true
+				}
+			}
+		}
+	}
+
+	// Build wordlist in container using the same pattern as resolvers
+	containerName := "ars0n-framework-v2-cloud_enum-1"
+	tempFile := fmt.Sprintf("/tmp/generated_%s_%s.txt", wordlistType, scopeTargetID)
+
+	// Create the wordlist generation script
+	var domainWordsList []string
+	for word := range domainWords {
+		domainWordsList = append(domainWordsList, word)
+	}
+
+	domainWordsContent := strings.Join(domainWordsList, "\n")
+
+	createScript := fmt.Sprintf(`
+		# Copy base rs0nfuzz.txt wordlist
+		cp /app/rs0nfuzz.txt %s
+		
+		# Add domain-derived words
+		cat << 'EOF' >> %s
+%s
+EOF
+		
+		# Remove duplicates and sort
+		sort %s | uniq > %s.tmp && mv %s.tmp %s
+	`, tempFile, tempFile, domainWordsContent, tempFile, tempFile, tempFile, tempFile)
+
+	log.Printf("[BUILD-WORDLIST] Extracted %d unique words from domains", len(domainWordsList))
+
+	// First test if rs0nfuzz.txt exists in container
+	testCmd := exec.Command("docker", "exec", containerName, "test", "-f", "/app/rs0nfuzz.txt")
+	if err := testCmd.Run(); err != nil {
+		log.Printf("[BUILD-WORDLIST] rs0nfuzz.txt not found in container, using fallback approach")
+
+		// Fallback: Create wordlist with domain words + basic terms
+		fallbackWords := strings.Join(domainWordsList, "\n")
+		if fallbackWords == "" {
+			fallbackWords = "admin\napi\ndev\ntest\nstaging\nprod\nbackup\nassets\ndata\nfiles"
+		} else {
+			fallbackWords += "\nadmin\napi\ndev\ntest\nstaging\nprod\nbackup\nassets\ndata\nfiles"
+		}
+
+		// Count words in fallback
+		fallbackWordCount := len(strings.Split(fallbackWords, "\n"))
+
+		filename := fmt.Sprintf("%s-wordlist.txt", wordlistType)
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
+		w.Header().Set("Content-Type", "text/plain")
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(fallbackWords)))
+
+		w.Write([]byte(fallbackWords))
+
+		log.Printf("[BUILD-WORDLIST] Generated %d total words (fallback) for %s wordlist",
+			fallbackWordCount, wordlistType)
+		return
+	}
+
+	log.Printf("[BUILD-WORDLIST] rs0nfuzz.txt found in container, executing script...")
+
+	// Execute script in container
+	cmd := exec.Command("docker", "exec", containerName, "sh", "-c", createScript)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Printf("[BUILD-WORDLIST] Error creating wordlist in container: %v", err)
+		log.Printf("[BUILD-WORDLIST] Container output: %s", string(output))
+		http.Error(w, "Failed to generate wordlist", http.StatusInternalServerError)
+		return
+	}
+	log.Printf("[BUILD-WORDLIST] Container script executed successfully")
+
+	// Copy the generated wordlist back to host for download
+	hostTempFile := fmt.Sprintf("/tmp/wordlist_%s_%s.txt", wordlistType, scopeTargetID)
+	copyCmd := exec.Command("docker", "cp", fmt.Sprintf("%s:%s", containerName, tempFile), hostTempFile)
+	copyOutput, copyErr := copyCmd.CombinedOutput()
+	if copyErr != nil {
+		log.Printf("[BUILD-WORDLIST] Error copying wordlist from container: %v", copyErr)
+		log.Printf("[BUILD-WORDLIST] Copy output: %s", string(copyOutput))
+		http.Error(w, "Failed to retrieve wordlist", http.StatusInternalServerError)
+		return
+	}
+	log.Printf("[BUILD-WORDLIST] Successfully copied wordlist from container to host")
+
+	// Read the generated file to count words and send response
+	content, err := os.ReadFile(hostTempFile)
+	if err != nil {
+		log.Printf("[BUILD-WORDLIST] Error reading generated wordlist: %v", err)
+		http.Error(w, "Failed to read wordlist", http.StatusInternalServerError)
+		return
+	}
+
+	// Count total words
+	lines := strings.Split(string(content), "\n")
+	var totalWords int
+	for _, line := range lines {
+		if strings.TrimSpace(line) != "" {
+			totalWords++
+		}
+	}
+
+	baseWordCount := totalWords - len(domainWordsList)
+	if baseWordCount < 0 {
+		baseWordCount = 0
+	}
+
+	log.Printf("[BUILD-WORDLIST] Generated %d total words (%d from domains, %d from base) for %s wordlist",
+		totalWords, len(domainWordsList), baseWordCount, wordlistType)
+
+	// Set headers for file download
+	filename := fmt.Sprintf("%s-wordlist.txt", wordlistType)
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
+	w.Header().Set("Content-Type", "text/plain")
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(content)))
+
+	// Send file content
+	w.Write(content)
+
+	// Clean up temp files
+	os.Remove(hostTempFile)
+
+	// Clean up container temp file
+	cleanupCmd := exec.Command("docker", "exec", containerName, "rm", "-f", tempFile)
+	cleanupCmd.Run()
+}
+
+func getConsolidatedRootDomains(scopeTargetID string) ([]string, error) {
+	var domains []string
+
+	rows, err := dbPool.Query(context.Background(), `
+		SELECT DISTINCT domain 
+		FROM consolidated_company_domains 
+		WHERE scope_target_id = $1
+	`, scopeTargetID)
+	if err != nil {
+		return domains, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var domain string
+		if err := rows.Scan(&domain); err == nil {
+			domains = append(domains, domain)
+		}
+	}
+
+	return domains, nil
+}
+
+func getAmassEnumDomains(scopeTargetID string) ([]string, error) {
+	var domains []string
+
+	rows, err := dbPool.Query(context.Background(), `
+		SELECT DISTINCT subdomain 
+		FROM subdomains s
+		JOIN amass_scans a ON s.scan_id = a.scan_id
+		WHERE a.scope_target_id = $1
+	`, scopeTargetID)
+	if err != nil {
+		return domains, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var domain string
+		if err := rows.Scan(&domain); err == nil {
+			domains = append(domains, domain)
+		}
+	}
+
+	return domains, nil
+}
+
+func getDNSxDomains(scopeTargetID string) ([]string, error) {
+	var domains []string
+
+	// Get domains from dnsx company scans
+	rows, err := dbPool.Query(context.Background(), `
+		SELECT DISTINCT record 
+		FROM dns_records d
+		JOIN dnsx_company_scans ds ON d.scan_id = ds.scan_id
+		WHERE ds.scope_target_id = $1
+		AND d.record_type IN ('A', 'AAAA', 'CNAME')
+	`, scopeTargetID)
+	if err != nil {
+		return domains, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var domain string
+		if err := rows.Scan(&domain); err == nil {
+			domains = append(domains, domain)
+		}
+	}
+
+	return domains, nil
+}
+
+func getLiveWebServerDomains(scopeTargetID string) ([]string, error) {
+	var domains []string
+	domainMap := make(map[string]bool)
+
+	// Get domains from live web server URLs
+	rows, err := dbPool.Query(context.Background(), `
+		SELECT DISTINCT lws.url 
+		FROM live_web_servers lws
+		JOIN ip_port_scans ips ON lws.scan_id = ips.scan_id
+		WHERE ips.scope_target_id = $1 AND ips.status = 'success' 
+		AND lws.url IS NOT NULL AND lws.url != ''
+	`, scopeTargetID)
+	if err != nil {
+		return domains, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var url string
+		if err := rows.Scan(&url); err == nil {
+			// Extract domain from URL
+			if url != "" {
+				if domain := extractDomainFromURL(url); domain != "" && !isIPv4Address(domain) {
+					domainMap[domain] = true
+				}
+			}
+		}
+	}
+
+	// Convert map to slice
+	for domain := range domainMap {
+		domains = append(domains, domain)
+	}
+
+	return domains, nil
+}
+
+// Helper function to extract domain from URL
+func extractDomainFromURL(urlStr string) string {
+	if !strings.HasPrefix(urlStr, "http://") && !strings.HasPrefix(urlStr, "https://") {
+		urlStr = "http://" + urlStr
+	}
+
+	// Simple domain extraction from URL
+	parts := strings.Split(urlStr, "/")
+	if len(parts) >= 3 {
+		hostPart := parts[2]
+		// Remove port if present
+		if colonIndex := strings.Index(hostPart, ":"); colonIndex != -1 {
+			hostPart = hostPart[:colonIndex]
+		}
+		return hostPart
+	}
+	return ""
+}
+
+// Helper function to check if a string is an IPv4 address
+func isIPv4Address(s string) bool {
+	return strings.Contains(s, ".") &&
+		len(strings.Split(s, ".")) == 4 &&
+		!strings.Contains(s, " ")
 }

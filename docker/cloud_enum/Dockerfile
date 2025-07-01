@@ -10,4 +10,7 @@ WORKDIR /app
 RUN git clone https://github.com/initstring/cloud_enum.git . && \
     pip install -r requirements.txt
 
+COPY docker/shuffledns/wordlists/resolvers.txt /app/resolvers.txt
+COPY docker/cloud_enum/rs0nfuzz.txt /app/rs0nfuzz.txt
+
 ENTRYPOINT ["python", "cloud_enum.py"] 

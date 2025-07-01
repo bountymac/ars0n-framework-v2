@@ -39,6 +39,20 @@ type CloudEnumResult struct {
 	Access   string `json:"access"`
 }
 
+// CloudEnumConfig represents the configuration loaded from the database
+type CloudEnumConfig struct {
+	Keywords            []string               `json:"keywords"`
+	Threads             int                    `json:"threads"`
+	EnabledPlatforms    map[string]interface{} `json:"enabled_platforms"`
+	CustomDNSServer     string                 `json:"custom_dns_server"`
+	DNSResolverMode     string                 `json:"dns_resolver_mode"`
+	ResolverConfig      string                 `json:"resolver_config"`
+	AdditionalResolvers string                 `json:"additional_resolvers"`
+	MutationsFilePath   string                 `json:"mutations_file_path"`
+	BruteFilePath       string                 `json:"brute_file_path"`
+	ResolverFilePath    string                 `json:"resolver_file_path"`
+}
+
 func RunCloudEnumScan(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[CLOUD-ENUM] [INFO] Starting Cloud Enum scan request handling")
 	var payload struct {
@@ -119,15 +133,90 @@ func ExecuteAndParseCloudEnumScan(scanID, companyName string) {
 	log.Printf("[CLOUD-ENUM] [INFO] Starting Cloud Enum scan execution for company %s (scan ID: %s)", companyName, scanID)
 	startTime := time.Now()
 
+	// Get scope target ID for config lookup
+	query := `SELECT id FROM scope_targets WHERE type = 'Company' AND scope_target = $1`
+	var scopeTargetID string
+	err := dbPool.QueryRow(context.Background(), query, companyName).Scan(&scopeTargetID)
+	if err != nil {
+		log.Printf("[CLOUD-ENUM] [ERROR] Failed to find scope target for company %s: %v", companyName, err)
+		UpdateCloudEnumScanStatus(scanID, "error", "", fmt.Sprintf("Failed to find scope target: %v", err), "", time.Since(startTime).String())
+		return
+	}
+
+	// Load CloudEnum configuration
+	config := loadCloudEnumConfig(scopeTargetID)
+	log.Printf("[CLOUD-ENUM] [INFO] Loaded config for company %s: keywords=%v, dns_mode=%s, resolver_config=%s",
+		companyName, config.Keywords, config.DNSResolverMode, config.ResolverConfig)
+
 	containerName := "ars0n-framework-v2-cloud_enum-1"
 	logFile := fmt.Sprintf("/tmp/cloud_enum_%s.json", scanID)
 
+	// Build base command
 	command := []string{
 		"docker", "exec", containerName,
 		"python", "cloud_enum.py",
-		"-k", companyName,
 		"-l", logFile,
 		"-f", "json",
+	}
+
+	// Add keywords or use company name
+	if len(config.Keywords) > 0 {
+		for _, keyword := range config.Keywords {
+			command = append(command, "-k", keyword)
+		}
+	} else {
+		command = append(command, "-k", companyName)
+	}
+
+	// Add DNS resolver configuration
+	if config.DNSResolverMode == "multiple" {
+		if config.ResolverConfig == "default" {
+			// Use built-in resolver file
+			command = append(command, "-nsf", "/app/resolvers.txt")
+		} else if config.ResolverConfig == "custom" && config.ResolverFilePath != "" {
+			// Copy custom resolver file to container
+			copyResolverFile(containerName, config.ResolverFilePath, scanID)
+			command = append(command, "-nsf", fmt.Sprintf("/tmp/custom_resolvers_%s.txt", scanID))
+		} else if config.ResolverConfig == "hybrid" {
+			// Create hybrid resolver file
+			createHybridResolverFile(containerName, config.AdditionalResolvers, scanID)
+			command = append(command, "-nsf", fmt.Sprintf("/tmp/hybrid_resolvers_%s.txt", scanID))
+		}
+	} else if config.DNSResolverMode == "single" && config.CustomDNSServer != "" {
+		// Use single DNS server
+		command = append(command, "-ns", config.CustomDNSServer)
+	}
+
+	// Add platform filters
+	if len(config.EnabledPlatforms) > 0 {
+		platforms := []string{}
+		for platform, enabled := range config.EnabledPlatforms {
+			if enabled.(bool) {
+				platforms = append(platforms, platform)
+			}
+		}
+		if len(platforms) < 3 { // Only add if not all platforms are enabled
+			for _, platform := range platforms {
+				command = append(command, "-p", platform)
+			}
+		}
+	}
+
+	// Add other configuration options
+	if config.Threads > 0 && config.Threads != 5 {
+		command = append(command, "-t", fmt.Sprintf("%d", config.Threads))
+	}
+
+	// Add custom mutation file if available
+	if config.MutationsFilePath != "" {
+		copyMutationFile(containerName, config.MutationsFilePath, scanID)
+		command = append(command, "-m", fmt.Sprintf("/tmp/custom_mutations_%s.txt", scanID))
+	}
+
+	// Add custom brute force file if available
+	if config.BruteFilePath != "" {
+		copyBruteFile(containerName, config.BruteFilePath, scanID)
+		command = append(command, "-b", fmt.Sprintf("/tmp/custom_brute_%s.txt", scanID))
 	}
 
 	log.Printf("[CLOUD-ENUM] [DEBUG] Executing command: %v", command)
@@ -350,5 +439,121 @@ func GetCloudEnumScansForScopeTarget(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[CLOUD-ENUM] [ERROR] Failed to encode scans response: %v", err)
 	} else {
 		log.Printf("[CLOUD-ENUM] [INFO] Successfully sent Cloud Enum scans response")
+	}
+}
+
+// loadCloudEnumConfig loads the configuration for a given scope target
+func loadCloudEnumConfig(scopeTargetID string) CloudEnumConfig {
+	var config CloudEnumConfig
+
+	// Set defaults
+	config.Keywords = []string{}
+	config.Threads = 5
+	config.EnabledPlatforms = map[string]interface{}{
+		"aws":   true,
+		"azure": true,
+		"gcp":   true,
+	}
+	config.CustomDNSServer = ""
+	config.DNSResolverMode = "multiple"
+	config.ResolverConfig = "default"
+	config.AdditionalResolvers = ""
+	config.MutationsFilePath = ""
+	config.BruteFilePath = ""
+	config.ResolverFilePath = ""
+
+	var platformsJSON []byte
+	err := dbPool.QueryRow(context.Background(), `
+		SELECT keywords, threads, enabled_platforms, custom_dns_server, 
+		       dns_resolver_mode, resolver_config, additional_resolvers,
+		       mutations_file_path, brute_file_path, resolver_file_path
+		FROM cloud_enum_configs 
+		WHERE scope_target_id = $1 
+		ORDER BY updated_at DESC 
+		LIMIT 1
+	`, scopeTargetID).Scan(
+		&config.Keywords,
+		&config.Threads,
+		&platformsJSON,
+		&config.CustomDNSServer,
+		&config.DNSResolverMode,
+		&config.ResolverConfig,
+		&config.AdditionalResolvers,
+		&config.MutationsFilePath,
+		&config.BruteFilePath,
+		&config.ResolverFilePath,
+	)
+
+	if err != nil && err != sql.ErrNoRows {
+		log.Printf("[CLOUD-ENUM-CONFIG] [ERROR] Error loading config: %v", err)
+		return config // Return defaults
+	}
+
+	if err != sql.ErrNoRows {
+		// Parse JSON field for platforms
+		json.Unmarshal(platformsJSON, &config.EnabledPlatforms)
+	}
+
+	return config
+}
+
+// copyResolverFile copies a custom resolver file to the container
+func copyResolverFile(containerName, sourcePath, scanID string) {
+	destPath := fmt.Sprintf("/tmp/custom_resolvers_%s.txt", scanID)
+
+	// Copy file to container
+	copyCmd := exec.Command("docker", "cp", sourcePath, fmt.Sprintf("%s:%s", containerName, destPath))
+	if err := copyCmd.Run(); err != nil {
+		log.Printf("[CLOUD-ENUM] [ERROR] Failed to copy resolver file to container: %v", err)
+	} else {
+		log.Printf("[CLOUD-ENUM] [INFO] Copied resolver file to container: %s", destPath)
+	}
+}
+
+// createHybridResolverFile creates a hybrid resolver file combining defaults with additional resolvers
+func createHybridResolverFile(containerName, additionalResolvers, scanID string) {
+	destPath := fmt.Sprintf("/tmp/hybrid_resolvers_%s.txt", scanID)
+
+	// Create command to combine default resolvers with additional ones
+	createScript := fmt.Sprintf(`
+		# Copy default resolvers
+		cp /app/resolvers.txt %s
+		
+		# Add additional resolvers
+		cat << 'EOF' >> %s
+%s
+EOF
+	`, destPath, destPath, additionalResolvers)
+
+	// Execute script in container
+	cmd := exec.Command("docker", "exec", containerName, "sh", "-c", createScript)
+	if err := cmd.Run(); err != nil {
+		log.Printf("[CLOUD-ENUM] [ERROR] Failed to create hybrid resolver file: %v", err)
+	} else {
+		log.Printf("[CLOUD-ENUM] [INFO] Created hybrid resolver file: %s", destPath)
+	}
+}
+
+// copyMutationFile copies a custom mutation file to the container
+func copyMutationFile(containerName, sourcePath, scanID string) {
+	destPath := fmt.Sprintf("/tmp/custom_mutations_%s.txt", scanID)
+
+	copyCmd := exec.Command("docker", "cp", sourcePath, fmt.Sprintf("%s:%s", containerName, destPath))
+	if err := copyCmd.Run(); err != nil {
+		log.Printf("[CLOUD-ENUM] [ERROR] Failed to copy mutation file to container: %v", err)
+	} else {
+		log.Printf("[CLOUD-ENUM] [INFO] Copied mutation file to container: %s", destPath)
+	}
+}
+
+// copyBruteFile copies a custom brute force file to the container
+func copyBruteFile(containerName, sourcePath, scanID string) {
+	destPath := fmt.Sprintf("/tmp/custom_brute_%s.txt", scanID)
+
+	copyCmd := exec.Command("docker", "cp", sourcePath, fmt.Sprintf("%s:%s", containerName, destPath))
+	if err := copyCmd.Run(); err != nil {
+		log.Printf("[CLOUD-ENUM] [ERROR] Failed to copy brute file to container: %v", err)
+	} else {
+		log.Printf("[CLOUD-ENUM] [INFO] Copied brute file to container: %s", destPath)
 	}
 }

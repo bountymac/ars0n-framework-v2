@@ -488,27 +488,6 @@ func createTables() {
 			END;
 		END $$;`,
 
-		// Add wildcard config columns to existing tables
-		`DO $$ 
-		BEGIN 
-			BEGIN
-				ALTER TABLE amass_enum_configs ADD COLUMN IF NOT EXISTS include_wildcard_results BOOLEAN DEFAULT FALSE;
-				ALTER TABLE amass_enum_configs ADD COLUMN IF NOT EXISTS wildcard_domains JSONB DEFAULT '[]';
-			EXCEPTION WHEN duplicate_column THEN 
-				RAISE NOTICE 'Wildcard columns already exist in amass_enum_configs.';
-			END;
-		END $$;`,
-
-		`DO $$ 
-		BEGIN 
-			BEGIN
-				ALTER TABLE dnsx_configs ADD COLUMN IF NOT EXISTS include_wildcard_results BOOLEAN DEFAULT FALSE;
-				ALTER TABLE dnsx_configs ADD COLUMN IF NOT EXISTS wildcard_domains JSONB DEFAULT '[]';
-			EXCEPTION WHEN duplicate_column THEN 
-				RAISE NOTICE 'Wildcard columns already exist in dnsx_configs.';
-			END;
-		END $$;`,
-
 		`DO $$ 
 		BEGIN 
 			BEGIN

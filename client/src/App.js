@@ -100,6 +100,7 @@ import initiateCTLCompanyScan from './utils/initiateCTLCompanyScan';
 import monitorCTLCompanyScanStatus from './utils/monitorCTLCompanyScanStatus';
 import { CTLCompanyResultsModal, CTLCompanyHistoryModal } from './modals/CTLCompanyResultsModal';
 import { CloudEnumResultsModal, CloudEnumHistoryModal } from './modals/CloudEnumResultsModal';
+import CloudEnumConfigModal from './modals/CloudEnumConfigModal';
 import monitorMetabigorCompanyScanStatus from './utils/monitorMetabigorCompanyScanStatus';
 import initiateMetabigorCompanyScan from './utils/initiateMetabigorCompanyScan';
 import { MetabigorCompanyResultsModal, MetabigorCompanyHistoryModal } from './modals/MetabigorCompanyResultsModal';
@@ -2230,6 +2231,12 @@ function App() {
 
   const handleCloseCloudEnumConfigModal = () => setShowCloudEnumConfigModal(false);
   const handleOpenCloudEnumConfigModal = () => setShowCloudEnumConfigModal(true);
+
+  const handleCloudEnumConfigSave = async (config) => {
+    console.log('Cloud Enum configuration saved:', config);
+    // Configuration is already saved in the modal, just close it
+    setShowCloudEnumConfigModal(false);
+  };
 
   // Cloud Fire handlers
   const handleCloseCloudFireResultsModal = () => setShowCloudFireResultsModal(false);
@@ -6116,6 +6123,13 @@ function App() {
         scopeTargets={scopeTargets}
         consolidatedCompanyDomains={consolidatedCompanyDomains}
         onSaveConfig={handleDNSxConfigSave}
+      />
+
+      <CloudEnumConfigModal
+        show={showCloudEnumConfigModal}
+        handleClose={handleCloseCloudEnumConfigModal}
+        activeTarget={activeTarget}
+        onSaveConfig={handleCloudEnumConfigSave}
       />
 
     </Container>
