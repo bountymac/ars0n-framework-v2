@@ -105,7 +105,7 @@ export const HttpxResultsModal = ({ showHttpxResultsModal, handleCloseHttpxResul
   const parsedResults = parseResults(httpxResults);
 
   return (
-    <Modal data-bs-theme="dark" show={showHttpxResultsModal} onHide={handleCloseHttpxResultsModal} size="xl">
+    <Modal data-bs-theme="dark" show={showHttpxResultsModal} onHide={handleCloseHttpxResultsModal} fullscreen>
       <Modal.Header closeButton>
         <Modal.Title className="text-danger">Live Web Servers</Modal.Title>
       </Modal.Header>

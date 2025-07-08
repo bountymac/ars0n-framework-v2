@@ -142,6 +142,11 @@ import { DNSxCompanyResultsModal } from './modals/DNSxCompanyResultsModal.js';
 import { DNSxCompanyHistoryModal } from './modals/DNSxCompanyHistoryModal.js';
 import { initiateDNSxCompanyScan } from './utils/initiateDNSxCompanyScan.js';
 
+// Add Katana Company imports
+import KatanaCompanyConfigModal from './modals/KatanaCompanyConfigModal.js';
+import KatanaCompanyResultsModal from './modals/KatanaCompanyResultsModal.js';
+import { initiateKatanaCompanyScan } from './utils/initiateKatanaCompanyScan.js';
+
 // Add Cloud Enum imports
 import initiateCloudEnumScan from './utils/initiateCloudEnumScan';
 import monitorCloudEnumScanStatus from './utils/monitorCloudEnumScanStatus';
@@ -534,14 +539,17 @@ function App() {
   const [showCloudEnumHistoryModal, setShowCloudEnumHistoryModal] = useState(false);
   const [showCloudEnumConfigModal, setShowCloudEnumConfigModal] = useState(false);
 
-  // Cloud Fire state variables
-  const [cloudFireScans, setCloudFireScans] = useState([]);
-  const [mostRecentCloudFireScanStatus, setMostRecentCloudFireScanStatus] = useState(null);
-  const [mostRecentCloudFireScan, setMostRecentCloudFireScan] = useState(null);
-  const [isCloudFireScanning, setIsCloudFireScanning] = useState(false);
-  const [showCloudFireResultsModal, setShowCloudFireResultsModal] = useState(false);
-  const [showCloudFireHistoryModal, setShowCloudFireHistoryModal] = useState(false);
-  const [showCloudFireConfigModal, setShowCloudFireConfigModal] = useState(false);
+
+
+  // Katana Company state variables
+  const [katanaCompanyScans, setKatanaCompanyScans] = useState([]);
+  const [mostRecentKatanaCompanyScanStatus, setMostRecentKatanaCompanyScanStatus] = useState(null);
+  const [mostRecentKatanaCompanyScan, setMostRecentKatanaCompanyScan] = useState(null);
+  const [isKatanaCompanyScanning, setIsKatanaCompanyScanning] = useState(false);
+  const [showKatanaCompanyResultsModal, setShowKatanaCompanyResultsModal] = useState(false);
+  const [showKatanaCompanyHistoryModal, setShowKatanaCompanyHistoryModal] = useState(false);
+  const [showKatanaCompanyConfigModal, setShowKatanaCompanyConfigModal] = useState(false);
+  const [katanaCompanyCloudAssets, setKatanaCompanyCloudAssets] = useState([]);
   
   const handleCloseSubdomainsModal = () => setShowSubdomainsModal(false);
   const handleCloseCloudDomainsModal = () => setShowCloudDomainsModal(false);
@@ -2238,19 +2246,76 @@ function App() {
     setShowCloudEnumConfigModal(false);
   };
 
-  // Cloud Fire handlers
-  const handleCloseCloudFireResultsModal = () => setShowCloudFireResultsModal(false);
-  const handleOpenCloudFireResultsModal = () => setShowCloudFireResultsModal(true);
+  
 
-  const handleCloseCloudFireHistoryModal = () => setShowCloudFireHistoryModal(false);
-  const handleOpenCloudFireHistoryModal = () => setShowCloudFireHistoryModal(true);
+  // Katana Company handlers
+  const handleCloseKatanaCompanyResultsModal = () => setShowKatanaCompanyResultsModal(false);
+  const handleOpenKatanaCompanyResultsModal = () => setShowKatanaCompanyResultsModal(true);
 
-  const handleCloseCloudFireConfigModal = () => setShowCloudFireConfigModal(false);
-  const handleOpenCloudFireConfigModal = () => setShowCloudFireConfigModal(true);
+  const handleCloseKatanaCompanyHistoryModal = () => setShowKatanaCompanyHistoryModal(false);
+  const handleOpenKatanaCompanyHistoryModal = () => setShowKatanaCompanyHistoryModal(true);
 
-  const startCloudFireScan = () => {
-    // Placeholder for future Cloud Fire implementation
-    console.log('Cloud Fire scan initiated for target:', activeTarget?.scope_target);
+  const handleCloseKatanaCompanyConfigModal = () => setShowKatanaCompanyConfigModal(false);
+  const handleOpenKatanaCompanyConfigModal = () => setShowKatanaCompanyConfigModal(true);
+
+  const handleKatanaCompanyConfigSave = async (config) => {
+    console.log('Katana Company config saved:', config);
+  };
+
+  const startKatanaCompanyScan = async () => {
+    if (!activeTarget) {
+      console.error('No active target selected');
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/katana-company-config/${activeTarget.id}`
+      );
+      
+      if (!response.ok) {
+        console.error('No Katana Company configuration found');
+        setToastTitle('Configuration Required');
+        setToastMessage('Please configure domains in the Katana Company configuration before starting the scan.');
+        setShowToast(true);
+        setTimeout(() => setShowToast(false), 5000);
+        return;
+      }
+
+          const config = await response.json();
+    
+    // Combine all selected domains from different sources
+    const allDomains = [
+      ...(config.selected_domains || []),
+      ...(config.selected_wildcard_domains || []),
+      ...(config.selected_live_web_servers || [])
+    ];
+    
+    if (!allDomains || allDomains.length === 0) {
+      console.error('No domains configured for Katana Company scan');
+      setToastTitle('Configuration Required');
+      setToastMessage('Please select domains in the Katana Company configuration before starting the scan.');
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 5000);
+      return;
+    }
+
+    await initiateKatanaCompanyScan(
+      activeTarget,
+      allDomains,
+        setIsKatanaCompanyScanning,
+        setKatanaCompanyScans,
+        setMostRecentKatanaCompanyScan,
+        setMostRecentKatanaCompanyScanStatus,
+        setKatanaCompanyCloudAssets
+      );
+    } catch (error) {
+      console.error('Error starting Katana Company scan:', error);
+      setToastTitle('Error');
+      setToastMessage('Failed to start Katana Company scan. Please try again.');
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 5000);
+    }
   };
 
   const handleCloseMetabigorCompanyResultsModal = () => setShowMetabigorCompanyResultsModal(false);
@@ -3283,6 +3348,54 @@ function App() {
     }
   }, [activeTarget]);
 
+  // Katana Company scans useEffect
+  useEffect(() => {
+    if (activeTarget) {
+      const fetchKatanaCompanyScans = async () => {
+        try {
+          const response = await fetch(
+            `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${activeTarget.id}/scans/katana-company`
+          );
+          if (!response.ok) {
+            throw new Error('Failed to fetch Katana Company scans');
+          }
+          const scans = await response.json();
+          if (Array.isArray(scans)) {
+            setKatanaCompanyScans(scans);
+            if (scans.length > 0) {
+              const mostRecentScan = scans[0];
+              setMostRecentKatanaCompanyScan(mostRecentScan);
+              setMostRecentKatanaCompanyScanStatus(mostRecentScan.status);
+              
+              // Fetch accumulated cloud assets from the backend API
+              try {
+                const assetsResponse = await fetch(
+                  `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/katana-company/${mostRecentScan.scan_id}/cloud-assets`
+                );
+                if (assetsResponse.ok) {
+                  const assets = await assetsResponse.json();
+                  setKatanaCompanyCloudAssets(assets || []);
+                } else {
+                  console.error('[KATANA-COMPANY] Failed to fetch cloud assets');
+                  setKatanaCompanyCloudAssets([]);
+                }
+              } catch (error) {
+                console.error('[KATANA-COMPANY] Error fetching cloud assets:', error);
+                setKatanaCompanyCloudAssets([]);
+              }
+            } else {
+              setKatanaCompanyCloudAssets([]);
+            }
+          }
+        } catch (error) {
+          console.error('[KATANA-COMPANY] Error fetching scans:', error);
+          setKatanaCompanyCloudAssets([]);
+        }
+      };
+      fetchKatanaCompanyScans();
+    }
+  }, [activeTarget]);
+
   const startCensysCompanyScan = () => {
     initiateCensysCompanyScan(
       activeTarget,
@@ -3419,6 +3532,48 @@ function App() {
           }
         };
         fetchDNSxCompanyScansRefresh();
+        
+        // Refresh Katana Company scans
+        const fetchKatanaCompanyScansRefresh = async () => {
+          try {
+            const response = await fetch(
+              `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${activeTarget.id}/scans/katana-company`
+            );
+            if (!response.ok) {
+              throw new Error('Failed to fetch Katana Company scans');
+            }
+            const scans = await response.json();
+            if (Array.isArray(scans)) {
+              setKatanaCompanyScans(scans);
+              if (scans.length > 0) {
+                const mostRecentScan = scans[0];
+                setMostRecentKatanaCompanyScan(mostRecentScan);
+                setMostRecentKatanaCompanyScanStatus(mostRecentScan.status);
+                
+                // Fetch accumulated cloud assets for the card count
+                try {
+                  const assetsResponse = await fetch(
+                    `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/katana-company/${mostRecentScan.scan_id}/cloud-assets`
+                  );
+                  if (assetsResponse.ok) {
+                    const assets = await assetsResponse.json();
+                    setKatanaCompanyCloudAssets(assets || []);
+                  } else {
+                    setKatanaCompanyCloudAssets([]);
+                  }
+                } catch (error) {
+                  console.error('[KATANA-COMPANY] Error fetching cloud assets:', error);
+                  setKatanaCompanyCloudAssets([]);
+                }
+              } else {
+                setKatanaCompanyCloudAssets([]);
+              }
+            }
+          } catch (error) {
+            console.error('[KATANA-COMPANY] Error refreshing scans:', error);
+          }
+        };
+        fetchKatanaCompanyScansRefresh();
         
       } catch (error) {
         console.error('Error refreshing individual tool scan data after deletion:', error);
@@ -4765,7 +4920,7 @@ function App() {
                               <small className="text-white-50">Company Domains<br/>Scanned</small>
                             </div>
                             <div className="col">
-                              <h3 className="mb-0">{amassEnumCompanyCloudDomains.length || 0}</h3>
+                              <h3 className="mb-0">{amassEnumCompanyCloudDomains?.length || 0}</h3>
                               <small className="text-white-50">Cloud Assets<br/>Discovered</small>
                             </div>
                           </div>
@@ -4851,7 +5006,7 @@ function App() {
                   </Col>
                 </Row>
 
-                <h4 className="text-secondary mb-3 fs-5">Cloud Asset Enumeration (Brute-Force)</h4>
+                <h4 className="text-secondary mb-3 fs-5">Cloud Asset Enumeration (Brute-Force & Crawl)</h4>
                 <Row className="row-cols-2 g-3 mb-4">
                   <Col>
                     <Card className="shadow-sm h-100 text-center" style={{ minHeight: '300px' }}>
@@ -4922,51 +5077,39 @@ function App() {
                     <Card className="shadow-sm h-100 text-center" style={{ minHeight: '300px' }}>
                       <Card.Body className="d-flex flex-column">
                         <Card.Title className="text-danger fs-4 mb-3">
-                          <span className="text-danger text-decoration-none">
-                            CloudFire (Brute Mode)
-                          </span>
+                          <a href="https://github.com/projectdiscovery/katana" className="text-danger text-decoration-none">
+                            Katana
+                          </a>
                         </Card.Title>
                         <Card.Text className="text-white small fst-italic mb-4">
-                          Advanced cloud asset discovery tool built by rs0n, designed for comprehensive enumeration across all major cloud platforms with enhanced intelligence.
+                          Next-generation crawling and spidering framework designed for comprehensive web asset discovery and enumeration through intelligent crawling techniques.
                         </Card.Text>
                         <div className="text-danger mb-4">
-                          <h3 className="mb-0">{(() => {
-                            if (!mostRecentCloudFireScan?.result) return 0;
-                            try {
-                              // Future implementation for Cloud Fire results
-                              const cloudAssets = JSON.parse(mostRecentCloudFireScan.result);
-                              if (Array.isArray(cloudAssets)) {
-                                return cloudAssets.filter(asset => asset.platform && asset.target).length;
-                              }
-                              return 0;
-                            } catch (error) {
-                              return 0;
-                            }
-                          })()}</h3>
+                          <h3 className="mb-0">{katanaCompanyCloudAssets ? katanaCompanyCloudAssets.length : 0}</h3>
                           <small className="text-white-50">Cloud Assets<br/>Discovered</small>
                         </div>
                         <div className="d-flex justify-content-between mt-auto gap-2">
                           <Button 
                             variant="outline-danger" 
                             className="flex-fill"
-                            onClick={handleOpenCloudFireConfigModal}
+                            onClick={handleOpenKatanaCompanyConfigModal}
                           >
                             Config
                           </Button>
                           <Button 
                             variant="outline-danger" 
                             className="flex-fill"
-                            onClick={handleOpenCloudFireHistoryModal}
+                            onClick={handleOpenKatanaCompanyHistoryModal}
                           >
                             History
                           </Button>
                           <Button 
                             variant="outline-danger" 
                             className="flex-fill"
-                            onClick={startCloudFireScan}
-                            disabled={isCloudFireScanning || mostRecentCloudFireScanStatus === "pending" || mostRecentCloudFireScanStatus === "running"}
+                            onClick={startKatanaCompanyScan}
+                            disabled={isKatanaCompanyScanning || mostRecentKatanaCompanyScanStatus === "pending" || mostRecentKatanaCompanyScanStatus === "running"}
                           >
-                            {isCloudFireScanning || mostRecentCloudFireScanStatus === "pending" || mostRecentCloudFireScanStatus === "running" ? (
+                            {isKatanaCompanyScanning || mostRecentKatanaCompanyScanStatus === "pending" || mostRecentKatanaCompanyScanStatus === "running" ? (
                               <Spinner animation="border" size="sm" />
                             ) : (
                               'Scan'
@@ -4975,7 +5118,7 @@ function App() {
                           <Button 
                             variant="outline-danger" 
                             className="flex-fill"
-                            onClick={handleOpenCloudFireResultsModal}
+                            onClick={handleOpenKatanaCompanyResultsModal}
                           >
                             Results
                           </Button>
@@ -4985,12 +5128,12 @@ function App() {
                   </Col>
                 </Row>
 
-                <h4 className="text-secondary mb-3 fs-5">Company Attack Surface</h4>
+                <h4 className="text-secondary mb-3 fs-5">{activeTarget.scope_target}'s Full Attack Surface</h4>
                 <Row className="mb-4">
                   <Col>
                     <Card className="shadow-sm h-100 text-center" style={{ minHeight: '200px' }}>
                       <Card.Body className="d-flex flex-column">
-                        <Card.Title className="text-danger fs-4 mb-3">Company Attack Surface</Card.Title>
+                        <Card.Title className="text-danger fs-4 mb-3">{activeTarget.scope_target}'s Full Attack Surface</Card.Title>
                         <Card.Text className="text-white small fst-italic mb-4">
                           Comprehensive attack surface management and analysis for your company's digital footprint across all discovered assets, domains, and cloud resources.
                         </Card.Text>
@@ -6130,6 +6273,21 @@ function App() {
         handleClose={handleCloseCloudEnumConfigModal}
         activeTarget={activeTarget}
         onSaveConfig={handleCloudEnumConfigSave}
+      />
+
+      <KatanaCompanyConfigModal
+        show={showKatanaCompanyConfigModal}
+        handleClose={handleCloseKatanaCompanyConfigModal}
+        activeTarget={activeTarget}
+        consolidatedCompanyDomains={consolidatedCompanyDomains}
+        onSaveConfig={handleKatanaCompanyConfigSave}
+      />
+
+      <KatanaCompanyResultsModal
+        show={showKatanaCompanyResultsModal}
+        handleClose={handleCloseKatanaCompanyResultsModal}
+        activeTarget={activeTarget}
+        mostRecentKatanaCompanyScan={mostRecentKatanaCompanyScan}
       />
 
     </Container>

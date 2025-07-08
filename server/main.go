@@ -230,6 +230,18 @@ func main() {
 	r.HandleFunc("/dnsx-company/{scan_id}/dns-records", utils.GetDNSxDNSRecords).Methods("GET", "OPTIONS")
 	r.HandleFunc("/dnsx-company/{scan_id}/raw-results", utils.GetDNSxRawResults).Methods("GET", "OPTIONS")
 
+	// Katana Company configuration routes
+	r.HandleFunc("/katana-company-config/{scope_target_id}", getKatanaCompanyConfig).Methods("GET", "OPTIONS")
+	r.HandleFunc("/katana-company-config/{scope_target_id}", saveKatanaCompanyConfig).Methods("POST", "OPTIONS")
+
+	// Katana Company scan routes
+	r.HandleFunc("/katana-company/run/{scope_target_id}", utils.RunKatanaCompanyScan).Methods("POST", "OPTIONS")
+	r.HandleFunc("/katana-company/status/{scan_id}", utils.GetKatanaCompanyScanStatus).Methods("GET", "OPTIONS")
+	r.HandleFunc("/scopetarget/{id}/scans/katana-company", utils.GetKatanaCompanyScansForScopeTarget).Methods("GET", "OPTIONS")
+	r.HandleFunc("/katana-company/{scan_id}/cloud-assets", utils.GetKatanaCompanyCloudAssets).Methods("GET", "OPTIONS")
+	r.HandleFunc("/katana-company/{scan_id}/cloud-findings", utils.GetKatanaCompanyCloudFindings).Methods("GET", "OPTIONS")
+	r.HandleFunc("/katana-company/{scan_id}/raw-results", utils.GetKatanaCompanyRawResults).Methods("GET", "OPTIONS")
+
 	// Live web servers count route
 	r.HandleFunc("/scope-target/{scope_target_id}/live-web-servers-count", getLiveWebServersCount).Methods("GET", "OPTIONS")
 
@@ -2665,4 +2677,134 @@ func isIPv4Address(s string) bool {
 	return strings.Contains(s, ".") &&
 		len(strings.Split(s, ".")) == 4 &&
 		!strings.Contains(s, " ")
+}
+
+func getKatanaCompanyConfig(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	scopeTargetID := vars["scope_target_id"]
+
+	log.Printf("[INFO] Getting Katana Company config for scope target ID: %s", scopeTargetID)
+
+	createTableQuery := `
+		CREATE TABLE IF NOT EXISTS katana_company_configs (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scope_target_id UUID NOT NULL UNIQUE REFERENCES scope_targets(id) ON DELETE CASCADE,
+			selected_domains JSONB NOT NULL DEFAULT '[]',
+			include_wildcard_results BOOLEAN DEFAULT FALSE,
+			selected_wildcard_domains JSONB DEFAULT '[]',
+			selected_live_web_servers JSONB DEFAULT '[]',
+			created_at TIMESTAMP DEFAULT NOW(),
+			updated_at TIMESTAMP DEFAULT NOW()
+		);`
+	_, err := dbPool.Exec(context.Background(), createTableQuery)
+	if err != nil {
+		log.Printf("[ERROR] Failed to create katana_company_configs table: %v", err)
+		http.Error(w, "Failed to create config table.", http.StatusInternalServerError)
+		return
+	}
+
+	var config struct {
+		ID                      string    `json:"id"`
+		ScopeTargetID           string    `json:"scope_target_id"`
+		SelectedDomains         []string  `json:"selected_domains"`
+		IncludeWildcardResults  bool      `json:"include_wildcard_results"`
+		SelectedWildcardDomains []string  `json:"selected_wildcard_domains"`
+		SelectedLiveWebServers  []string  `json:"selected_live_web_servers"`
+		CreatedAt               time.Time `json:"created_at"`
+		UpdatedAt               time.Time `json:"updated_at"`
+	}
+
+	query := `SELECT id, scope_target_id, selected_domains, include_wildcard_results, selected_wildcard_domains, selected_live_web_servers, created_at, updated_at FROM katana_company_configs WHERE scope_target_id = $1`
+
+	var selectedDomainsJSON, selectedWildcardDomainsJSON, selectedLiveWebServersJSON string
+	err = dbPool.QueryRow(context.Background(), query, scopeTargetID).Scan(
+		&config.ID,
+		&config.ScopeTargetID,
+		&selectedDomainsJSON,
+		&config.IncludeWildcardResults,
+		&selectedWildcardDomainsJSON,
+		&selectedLiveWebServersJSON,
+		&config.CreatedAt,
+		&config.UpdatedAt,
+	)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			log.Printf("[INFO] No Katana Company config found for scope target %s, returning empty config", scopeTargetID)
+			config = struct {
+				ID                      string    `json:"id"`
+				ScopeTargetID           string    `json:"scope_target_id"`
+				SelectedDomains         []string  `json:"selected_domains"`
+				IncludeWildcardResults  bool      `json:"include_wildcard_results"`
+				SelectedWildcardDomains []string  `json:"selected_wildcard_domains"`
+				SelectedLiveWebServers  []string  `json:"selected_live_web_servers"`
+				CreatedAt               time.Time `json:"created_at"`
+				UpdatedAt               time.Time `json:"updated_at"`
+			}{
+				ScopeTargetID:           scopeTargetID,
+				SelectedDomains:         []string{},
+				IncludeWildcardResults:  false,
+				SelectedWildcardDomains: []string{},
+				SelectedLiveWebServers:  []string{},
+			}
+		} else {
+			log.Printf("[ERROR] Failed to get Katana Company config: %v", err)
+			http.Error(w, "Failed to get config", http.StatusInternalServerError)
+			return
+		}
+	} else {
+		json.Unmarshal([]byte(selectedDomainsJSON), &config.SelectedDomains)
+		json.Unmarshal([]byte(selectedWildcardDomainsJSON), &config.SelectedWildcardDomains)
+		json.Unmarshal([]byte(selectedLiveWebServersJSON), &config.SelectedLiveWebServers)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(config)
+}
+
+func saveKatanaCompanyConfig(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	scopeTargetID := vars["scope_target_id"]
+
+	log.Printf("[INFO] Saving Katana Company config for scope target ID: %s", scopeTargetID)
+
+	var config struct {
+		SelectedDomains         []string `json:"selected_domains"`
+		IncludeWildcardResults  bool     `json:"include_wildcard_results"`
+		SelectedWildcardDomains []string `json:"selected_wildcard_domains"`
+		SelectedLiveWebServers  []string `json:"selected_live_web_servers"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&config); err != nil {
+		log.Printf("[ERROR] Failed to decode request body: %v", err)
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	selectedDomainsJSON, _ := json.Marshal(config.SelectedDomains)
+	selectedWildcardDomainsJSON, _ := json.Marshal(config.SelectedWildcardDomains)
+	selectedLiveWebServersJSON, _ := json.Marshal(config.SelectedLiveWebServers)
+
+	query := `
+		INSERT INTO katana_company_configs (scope_target_id, selected_domains, include_wildcard_results, selected_wildcard_domains, selected_live_web_servers, updated_at)
+		VALUES ($1, $2, $3, $4, $5, NOW())
+		ON CONFLICT (scope_target_id)
+		DO UPDATE SET
+			selected_domains = $2,
+			include_wildcard_results = $3,
+			selected_wildcard_domains = $4,
+			selected_live_web_servers = $5,
+			updated_at = NOW()
+	`
+
+	_, err := dbPool.Exec(context.Background(), query, scopeTargetID, selectedDomainsJSON, config.IncludeWildcardResults, selectedWildcardDomainsJSON, selectedLiveWebServersJSON)
+	if err != nil {
+		log.Printf("[ERROR] Failed to save Katana Company config: %v", err)
+		http.Error(w, "Failed to save config", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("[INFO] Successfully saved Katana Company config for scope target %s", scopeTargetID)
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 }

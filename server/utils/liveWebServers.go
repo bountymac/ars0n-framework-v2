@@ -907,8 +907,6 @@ func GetTargetURLsForScopeTarget(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("[DEBUG] Getting target URLs for scope target ID: %s", scopeTargetID)
-
 	query := `
 		SELECT 
 			id, 
@@ -1025,13 +1023,6 @@ func GetTargetURLsForScopeTarget(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		log.Printf("[DEBUG] Processing target URL: %s", url)
-		log.Printf("[DEBUG] Status code: %d", statusCode)
-		log.Printf("[DEBUG] Title: %v", title)
-		log.Printf("[DEBUG] Web server: %v", webServer)
-		log.Printf("[DEBUG] Technologies: %v", technologies)
-		log.Printf("[DEBUG] Content length: %d", contentLength)
-
 		targetURL := map[string]interface{}{
 			"id":                     id,
 			"url":                    url,
@@ -1067,8 +1058,6 @@ func GetTargetURLsForScopeTarget(w http.ResponseWriter, r *http.Request) {
 
 		targetURLs = append(targetURLs, targetURL)
 	}
-
-	log.Printf("[DEBUG] Returning %d target URLs", len(targetURLs))
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(targetURLs)
