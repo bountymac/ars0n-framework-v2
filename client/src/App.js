@@ -145,6 +145,7 @@ import { initiateDNSxCompanyScan } from './utils/initiateDNSxCompanyScan.js';
 // Add Katana Company imports
 import KatanaCompanyConfigModal from './modals/KatanaCompanyConfigModal.js';
 import KatanaCompanyResultsModal from './modals/KatanaCompanyResultsModal.js';
+import { KatanaCompanyHistoryModal } from './modals/KatanaCompanyHistoryModal.js';
 import { initiateKatanaCompanyScan } from './utils/initiateKatanaCompanyScan.js';
 
 // Add Cloud Enum imports
@@ -6288,6 +6289,12 @@ function App() {
         handleClose={handleCloseKatanaCompanyResultsModal}
         activeTarget={activeTarget}
         mostRecentKatanaCompanyScan={mostRecentKatanaCompanyScan}
+      />
+
+      <KatanaCompanyHistoryModal
+        show={showKatanaCompanyHistoryModal}
+        handleClose={handleCloseKatanaCompanyHistoryModal}
+        scans={katanaCompanyScans}
       />
 
     </Container>

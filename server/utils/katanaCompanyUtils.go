@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
@@ -126,6 +127,20 @@ func RunKatanaCompanyScan(w http.ResponseWriter, r *http.Request) {
 func ExecuteKatanaCompanyScan(scanID string, domains []string, scopeTargetID string) {
 	log.Printf("[KATANA-COMPANY] [INFO] Starting Katana Company scan execution (scan ID: %s) for %d domains", scanID, len(domains))
 	startTime := time.Now()
+
+	// Ensure scan status is always updated, even if function panics or errors
+	var scanCompleted bool
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("[KATANA-COMPANY] [ERROR] Panic during scan execution: %v", r)
+			execTime := time.Since(startTime).String()
+			UpdateKatanaCompanyScanStatus(scanID, "failed", "", fmt.Sprintf("Panic during execution: %v", r), "", execTime)
+		} else if !scanCompleted {
+			log.Printf("[KATANA-COMPANY] [ERROR] Scan did not complete normally")
+			execTime := time.Since(startTime).String()
+			UpdateKatanaCompanyScanStatus(scanID, "failed", "", "Scan did not complete normally", "", execTime)
+		}
+	}()
 
 	UpdateKatanaCompanyScanStatus(scanID, "running", "", "", "", "")
 
@@ -272,6 +287,7 @@ func ExecuteKatanaCompanyScan(scanID string, domains []string, scopeTargetID str
 	commandsStr := strings.Join(commandsExecuted, "; ")
 
 	UpdateKatanaCompanyScanStatus(scanID, "success", string(resultJSON), "", commandsStr, execTime)
+	scanCompleted = true // Mark scan as completed
 
 	log.Printf("[KATANA-COMPANY] [INFO] Katana Company scan completed (scan ID: %s) in %s", scanID, execTime)
 }
@@ -378,50 +394,137 @@ func analyzeURLForCloudAssets(domain, url, body string) ([]KatanaCloudAsset, []K
 
 	cloudPatterns := map[string]map[string]string{
 		"aws": {
-			"s3":               `([a-zA-Z0-9\-\.]+\.s3[\-\.][a-zA-Z0-9\-]*\.amazonaws\.com|[a-zA-Z0-9\-\.]+\.s3\.amazonaws\.com|s3\.amazonaws\.com\/[a-zA-Z0-9\-\.]+)`,
-			"cloudfront":       `([a-zA-Z0-9\-\.]+\.cloudfront\.net)`,
-			"lambda":           `([a-zA-Z0-9\-\.]+\.lambda\.amazonaws\.com)`,
-			"apigateway":       `([a-zA-Z0-9\-\.]+\.execute-api\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
-			"apigateway_v2":    `([a-zA-Z0-9\-\.]+\.execute-api\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
-			"elasticbeanstalk": `([a-zA-Z0-9\-\.]+\.elasticbeanstalk\.com)`,
-			"elb":              `([a-zA-Z0-9\-\.]+\.elb\.amazonaws\.com)`,
-			"alb_nlb":          `([a-zA-Z0-9\-\.]+\.elb\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
-			"rds":              `([a-zA-Z0-9\-\.]+\.rds\.amazonaws\.com)`,
-			"dynamodb":         `([a-zA-Z0-9\-\.]+\.dynamodb\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
-			"ec2":              `(ec2-[0-9\-]+\.[a-zA-Z0-9\-]+\.compute\.amazonaws\.com)`,
-			"ecs":              `([a-zA-Z0-9\-\.]+\.ecs\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
-			"eks":              `([a-zA-Z0-9\-\.]+\.eks\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
-			"sns":              `([a-zA-Z0-9\-\.]+\.sns\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
-			"sqs":              `([a-zA-Z0-9\-\.]+\.sqs\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
-			"ses":              `([a-zA-Z0-9\-\.]+\.ses\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
-			"redshift":         `([a-zA-Z0-9\-\.]+\.redshift\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
-			"elasticache":      `([a-zA-Z0-9\-\.]+\.cache\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
-			"kinesis":          `([a-zA-Z0-9\-\.]+\.kinesis\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
-			"amplify":          `([a-zA-Z0-9\-\.]+\.amplifyapp\.com)`,
-			"appsync":          `([a-zA-Z0-9\-\.]+\.appsync-api\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"s3":                `([a-zA-Z0-9\-\.]+\.s3[\-\.][a-zA-Z0-9\-]*\.amazonaws\.com|[a-zA-Z0-9\-\.]+\.s3\.amazonaws\.com|s3\.amazonaws\.com\/[a-zA-Z0-9\-\.]+)`,
+			"cloudfront":        `([a-zA-Z0-9\-\.]+\.cloudfront\.net)`,
+			"lambda":            `([a-zA-Z0-9\-\.]+\.lambda\.amazonaws\.com)`,
+			"apigateway":        `([a-zA-Z0-9\-\.]+\.execute-api\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"apigateway_v2":     `([a-zA-Z0-9\-\.]+\.execute-api\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"elasticbeanstalk":  `([a-zA-Z0-9\-\.]+\.elasticbeanstalk\.com)`,
+			"elb":               `([a-zA-Z0-9\-\.]+\.elb\.amazonaws\.com)`,
+			"alb_nlb":           `([a-zA-Z0-9\-\.]+\.elb\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"rds":               `([a-zA-Z0-9\-\.]+\.rds\.amazonaws\.com)`,
+			"dynamodb":          `([a-zA-Z0-9\-\.]+\.dynamodb\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"ec2":               `(ec2-[0-9\-]+\.[a-zA-Z0-9\-]+\.compute\.amazonaws\.com)`,
+			"ecs":               `([a-zA-Z0-9\-\.]+\.ecs\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"eks":               `([a-zA-Z0-9\-\.]+\.eks\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"sns":               `([a-zA-Z0-9\-\.]+\.sns\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"sqs":               `([a-zA-Z0-9\-\.]+\.sqs\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"ses":               `([a-zA-Z0-9\-\.]+\.ses\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"redshift":          `([a-zA-Z0-9\-\.]+\.redshift\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"elasticache":       `([a-zA-Z0-9\-\.]+\.cache\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"kinesis":           `([a-zA-Z0-9\-\.]+\.kinesis\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"amplify":           `([a-zA-Z0-9\-\.]+\.amplifyapp\.com)`,
+			"appsync":           `([a-zA-Z0-9\-\.]+\.appsync-api\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"cloudwatch":        `([a-zA-Z0-9\-\.]+\.cloudwatch\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"cloudformation":    `([a-zA-Z0-9\-\.]+\.cloudformation\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"stepfunctions":     `([a-zA-Z0-9\-\.]+\.states\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"secretsmanager":    `([a-zA-Z0-9\-\.]+\.secretsmanager\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"iot":               `([a-zA-Z0-9\-\.]+\.iot\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"eventbridge":       `([a-zA-Z0-9\-\.]+\.events\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"xray":              `([a-zA-Z0-9\-\.]+\.xray\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"cloudsearch":       `([a-zA-Z0-9\-\.]+\.cloudsearch\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"elastictranscoder": `([a-zA-Z0-9\-\.]+\.elastictranscoder\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"elasticinference":  `([a-zA-Z0-9\-\.]+\.elasticinference\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"neptune":           `([a-zA-Z0-9\-\.]+\.neptune\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"workspaces":        `([a-zA-Z0-9\-\.]+\.workspaces\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"directconnect":     `([a-zA-Z0-9\-\.]+\.directconnect\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"mobilehub":         `([a-zA-Z0-9\-\.]+\.mobilehub\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"macie":             `([a-zA-Z0-9\-\.]+\.macie\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"sagemaker":         `([a-zA-Z0-9\-\.]+\.sagemaker\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"workdocs":          `([a-zA-Z0-9\-\.]+\.workdocs\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"transcribe":        `([a-zA-Z0-9\-\.]+\.transcribe\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"translate":         `([a-zA-Z0-9\-\.]+\.translate\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"appmesh":           `([a-zA-Z0-9\-\.]+\.appmesh\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"inspector":         `([a-zA-Z0-9\-\.]+\.inspector\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"glue":              `([a-zA-Z0-9\-\.]+\.glue\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"connect":           `([a-zA-Z0-9\-\.]+\.awsapps\.com)`,
+			"chime":             `([a-zA-Z0-9\-\.]+\.chime\.aws)`,
+			"efs":               `([a-zA-Z0-9\-\.]+\.efs\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"batch":             `([a-zA-Z0-9\-\.]+\.batch\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"kafka":             `([a-zA-Z0-9\-\.]+\.kafka\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"medialive":         `([a-zA-Z0-9\-\.]+\.medialive\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"snowball":          `([a-zA-Z0-9\-\.]+\.snowball\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"cloudtrail":        `([a-zA-Z0-9\-\.]+\.cloudtrail\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"datasync":          `([a-zA-Z0-9\-\.]+\.datasync\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
 		},
 		"gcp": {
-			"storage":        `([a-zA-Z0-9\-\.]+\.storage\.googleapis\.com|storage\.googleapis\.com\/[a-zA-Z0-9\-\.]+)`,
-			"appengine":      `([a-zA-Z0-9\-\.]+\.appspot\.com)`,
-			"cloudfunctions": `([a-zA-Z0-9\-\.]+\.cloudfunctions\.net)`,
-			"cloudrun":       `([a-zA-Z0-9\-\.]+\.run\.app)`,
-			"firestore":      `([a-zA-Z0-9\-\.]+\.firebaseio\.com)`,
-			"firebase":       `([a-zA-Z0-9\-\.]+\.firebaseapp\.com)`,
-			"gke":            `([a-zA-Z0-9\-\.]+\.container\.googleapis\.com)`,
-			"compute":        `([a-zA-Z0-9\-\.]+\.compute\.googleapis\.com)`,
-			"sql":            `([a-zA-Z0-9\-\.]+\.sql\.googleapis\.com)`,
-			"bigquery":       `([a-zA-Z0-9\-\.]+\.bigquery\.googleapis\.com)`,
+			"storage":             `([a-zA-Z0-9\-\.]+\.storage\.googleapis\.com|storage\.googleapis\.com\/[a-zA-Z0-9\-\.]+)`,
+			"appengine":           `([a-zA-Z0-9\-\.]+\.appspot\.com)`,
+			"cloudfunctions":      `([a-zA-Z0-9\-\.]+\.cloudfunctions\.net)`,
+			"cloudrun":            `([a-zA-Z0-9\-\.]+\.run\.app)`,
+			"firestore":           `([a-zA-Z0-9\-\.]+\.firebaseio\.com)`,
+			"firebase":            `([a-zA-Z0-9\-\.]+\.firebaseapp\.com)`,
+			"gke":                 `([a-zA-Z0-9\-\.]+\.container\.googleapis\.com)`,
+			"compute":             `([a-zA-Z0-9\-\.]+\.compute\.googleapis\.com)`,
+			"sql":                 `([a-zA-Z0-9\-\.]+\.sql\.googleapis\.com)`,
+			"bigquery":            `([a-zA-Z0-9\-\.]+\.bigquery\.googleapis\.com)`,
+			"googleusercontent":   `([a-zA-Z0-9\-\.]+\.googleusercontent\.com)`,
+			"pubsub":              `([a-zA-Z0-9\-\.]+\.pubsub\.googleapis\.com)`,
+			"bigtable":            `([a-zA-Z0-9\-\.]+\.bigtable\.googleapis\.com)`,
+			"spanner":             `([a-zA-Z0-9\-\.]+\.spanner\.googleapis\.com)`,
+			"dataflow":            `([a-zA-Z0-9\-\.]+\.dataflow\.googleapis\.com)`,
+			"identityplatform":    `([a-zA-Z0-9\-\.]+\.identityplatform\.googleapis\.com)`,
+			"firestore_api":       `([a-zA-Z0-9\-\.]+\.firestore\.googleapis\.com)`,
+			"datastore":           `([a-zA-Z0-9\-\.]+\.datastore\.googleapis\.com)`,
+			"monitoring":          `([a-zA-Z0-9\-\.]+\.monitoring\.googleapis\.com)`,
+			"logging":             `([a-zA-Z0-9\-\.]+\.logging\.googleapis\.com)`,
+			"speech":              `([a-zA-Z0-9\-\.]+\.speech\.googleapis\.com)`,
+			"ai":                  `([a-zA-Z0-9\-\.]+\.ai\.googleapis\.com)`,
+			"filestore":           `([a-zA-Z0-9\-\.]+\.filestore\.googleapis\.com)`,
+			"dataproc":            `([a-zA-Z0-9\-\.]+\.dataproc\.googleapis\.com)`,
+			"texttospeech":        `([a-zA-Z0-9\-\.]+\.texttospeech\.googleapis\.com)`,
+			"language":            `([a-zA-Z0-9\-\.]+\.language\.googleapis\.com)`,
+			"vision":              `([a-zA-Z0-9\-\.]+\.vision\.googleapis\.com)`,
+			"automl":              `([a-zA-Z0-9\-\.]+\.automl\.googleapis\.com)`,
+			"memcached":           `([a-zA-Z0-9\-\.]+\.memcached\.googleapis\.com)`,
+			"iap":                 `([a-zA-Z0-9\-\.]+\.iap\.googleapis\.com)`,
+			"networkintelligence": `([a-zA-Z0-9\-\.]+\.networkintelligence\.googleapis\.com)`,
+			"vertexai":            `([a-zA-Z0-9\-\.]+\.vertexai\.googleapis\.com)`,
 		},
 		"azure": {
-			"blob":       `([a-zA-Z0-9\-\.]+\.blob\.core\.windows\.net)`,
-			"webapp":     `([a-zA-Z0-9\-\.]+\.azurewebsites\.net)`,
-			"function":   `([a-zA-Z0-9\-\.]+\.azurewebsites\.net)`,
-			"cosmosdb":   `([a-zA-Z0-9\-\.]+\.documents\.azure\.com)`,
-			"servicebus": `([a-zA-Z0-9\-\.]+\.servicebus\.windows\.net)`,
-			"keyvault":   `([a-zA-Z0-9\-\.]+\.vault\.azure\.net)`,
-			"sql":        `([a-zA-Z0-9\-\.]+\.database\.windows\.net)`,
-			"redis":      `([a-zA-Z0-9\-\.]+\.redis\.cache\.windows\.net)`,
-			"cdn":        `([a-zA-Z0-9\-\.]+\.azureedge\.net)`,
+			"blob":                `([a-zA-Z0-9\-\.]+\.blob\.core\.windows\.net)`,
+			"webapp":              `([a-zA-Z0-9\-\.]+\.azurewebsites\.net)`,
+			"function":            `([a-zA-Z0-9\-\.]+\.azurewebsites\.net)`,
+			"cosmosdb":            `([a-zA-Z0-9\-\.]+\.documents\.azure\.com)`,
+			"servicebus":          `([a-zA-Z0-9\-\.]+\.servicebus\.windows\.net)`,
+			"keyvault":            `([a-zA-Z0-9\-\.]+\.vault\.azure\.net)`,
+			"sql":                 `([a-zA-Z0-9\-\.]+\.database\.windows\.net)`,
+			"redis":               `([a-zA-Z0-9\-\.]+\.redis\.cache\.windows\.net)`,
+			"cdn":                 `([a-zA-Z0-9\-\.]+\.azureedge\.net)`,
+			"activedirectory":     `([a-zA-Z0-9\-\.]+\.microsoftonline\.com|[a-zA-Z0-9\-\.]+\.onmicrosoft\.com)`,
+			"vm":                  `([a-zA-Z0-9\-\.]+\.cloudapp\.azure\.com)`,
+			"virtualnetwork":      `([a-zA-Z0-9\-\.]+\.virtualnetwork\.azure\.com)`,
+			"azurecontainer":      `([a-zA-Z0-9\-\.]+\.azurecontainer\.io)`,
+			"eventgrid":           `([a-zA-Z0-9\-\.]+\.eventgrid\.azure\.net)`,
+			"wvd":                 `([a-zA-Z0-9\-\.]+\.wvd\.microsoft\.com)`,
+			"devops":              `([a-zA-Z0-9\-\.]+\.dev\.azure\.com)`,
+			"logic":               `([a-zA-Z0-9\-\.]+\.logic\.azure\.com)`,
+			"loadbalancer":        `([a-zA-Z0-9\-\.]+\.loadbalancer\.azure\.com)`,
+			"backup":              `([a-zA-Z0-9\-\.]+\.backup\.azure\.com)`,
+			"monitor":             `([a-zA-Z0-9\-\.]+\.monitor\.azure\.com)`,
+			"firewallmanager":     `([a-zA-Z0-9\-\.]+\.firewallmanager\.azure\.net)`,
+			"synapse":             `([a-zA-Z0-9\-\.]+\.synapse\.azure\.com)`,
+			"virtualwan":          `([a-zA-Z0-9\-\.]+\.virtualwan\.azure\.com)`,
+			"b2clogin":            `([a-zA-Z0-9\-\.]+\.b2clogin\.com)`,
+			"applicationinsights": `([a-zA-Z0-9\-\.]+\.applicationinsights\.azure\.com)`,
+			"managedhsm":          `([a-zA-Z0-9\-\.]+\.managedhsm\.azure\.net)`,
+			"purview":             `([a-zA-Z0-9\-\.]+\.purview\.azure\.com)`,
+			"datalake":            `([a-zA-Z0-9\-\.]+\.datalake\.azure\.net)`,
+			"azconfig":            `([a-zA-Z0-9\-\.]+\.azconfig\.io)`,
+			"azureapi":            `([a-zA-Z0-9\-\.]+\.azure-api\.net)`,
+			"firewall":            `([a-zA-Z0-9\-\.]+\.firewall\.azure\.net)`,
+			"sites":               `([a-zA-Z0-9\-\.]+\.sites\.azure\.com)`,
+			"azuremicroservices":  `([a-zA-Z0-9\-\.]+\.azuremicroservices\.io)`,
+			"search":              `([a-zA-Z0-9\-\.]+\.search\.windows\.net)`,
+			"media":               `([a-zA-Z0-9\-\.]+\.media\.azure\.net)`,
+		},
+		"other": {
+			"ibm_cloud":     `([a-zA-Z0-9\-\.]+\.bluemix\.net)`,
+			"ibm_cloud_s3":  `([a-zA-Z0-9\-\.]+\.s3-api\.us-geo\.objectstorage\.softlayer\.net)`,
+			"alibaba_cloud": `([a-zA-Z0-9\-\.]+\.aliyuncs\.com)`,
+			"oracle_cloud":  `([a-zA-Z0-9\-\.]+\.oraclecloud\.com)`,
+			"salesforce":    `([a-zA-Z0-9\-\.]+\.force\.com)`,
+			"tencent_cloud": `([a-zA-Z0-9\-\.]+\.tencentcloudapi\.com)`,
 		},
 	}
 
@@ -634,7 +737,7 @@ func analyzeBodyForCloudFindings(domain, url, body string) []KatanaCloudFinding 
 					continue
 				}
 
-				matchText := matchStrings[i]
+				matchText := sanitizeUTF8(matchStrings[i])
 				startPos := match[0]
 				endPos := match[1]
 
@@ -675,10 +778,10 @@ func analyzeBodyForCloudFindings(domain, url, body string) []KatanaCloudFinding 
 					contextAfter := ""
 
 					if startPos > 0 {
-						contextBefore = body[contextStart:startPos]
+						contextBefore = sanitizeUTF8(body[contextStart:startPos])
 					}
 					if endPos < len(body) {
-						contextAfter = body[endPos:contextEnd]
+						contextAfter = sanitizeUTF8(body[endPos:contextEnd])
 					}
 
 					findings = append(findings, KatanaCloudFinding{
@@ -719,35 +822,124 @@ func analyzeHeadersForCloudAssets(domain, url string, headers map[string]interfa
 
 	cloudPatterns := map[string]map[string]string{
 		"aws": {
-			"s3":               `([a-zA-Z0-9\-\.]+\.s3[\-\.][a-zA-Z0-9\-]*\.amazonaws\.com|[a-zA-Z0-9\-\.]+\.s3\.amazonaws\.com)`,
-			"cloudfront":       `([a-zA-Z0-9\-\.]+\.cloudfront\.net)`,
-			"lambda":           `([a-zA-Z0-9\-\.]+\.lambda\.amazonaws\.com)`,
-			"apigateway":       `([a-zA-Z0-9\-\.]+\.execute-api\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
-			"elasticbeanstalk": `([a-zA-Z0-9\-\.]+\.elasticbeanstalk\.com)`,
-			"elb":              `([a-zA-Z0-9\-\.]+\.elb\.amazonaws\.com)`,
-			"alb_nlb":          `([a-zA-Z0-9\-\.]+\.elb\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
-			"ec2":              `(ec2-[0-9\-]+\.[a-zA-Z0-9\-]+\.compute\.amazonaws\.com)`,
-			"rds":              `([a-zA-Z0-9\-\.]+\.rds\.amazonaws\.com)`,
-			"dynamodb":         `([a-zA-Z0-9\-\.]+\.dynamodb\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
-			"amplify":          `([a-zA-Z0-9\-\.]+\.amplifyapp\.com)`,
-			"appsync":          `([a-zA-Z0-9\-\.]+\.appsync-api\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"s3":                `([a-zA-Z0-9\-\.]+\.s3[\-\.][a-zA-Z0-9\-]*\.amazonaws\.com|[a-zA-Z0-9\-\.]+\.s3\.amazonaws\.com)`,
+			"cloudfront":        `([a-zA-Z0-9\-\.]+\.cloudfront\.net)`,
+			"lambda":            `([a-zA-Z0-9\-\.]+\.lambda\.amazonaws\.com)`,
+			"apigateway":        `([a-zA-Z0-9\-\.]+\.execute-api\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"elasticbeanstalk":  `([a-zA-Z0-9\-\.]+\.elasticbeanstalk\.com)`,
+			"elb":               `([a-zA-Z0-9\-\.]+\.elb\.amazonaws\.com)`,
+			"alb_nlb":           `([a-zA-Z0-9\-\.]+\.elb\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"ec2":               `(ec2-[0-9\-]+\.[a-zA-Z0-9\-]+\.compute\.amazonaws\.com)`,
+			"rds":               `([a-zA-Z0-9\-\.]+\.rds\.amazonaws\.com)`,
+			"dynamodb":          `([a-zA-Z0-9\-\.]+\.dynamodb\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"amplify":           `([a-zA-Z0-9\-\.]+\.amplifyapp\.com)`,
+			"appsync":           `([a-zA-Z0-9\-\.]+\.appsync-api\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"cloudwatch":        `([a-zA-Z0-9\-\.]+\.cloudwatch\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"cloudformation":    `([a-zA-Z0-9\-\.]+\.cloudformation\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"stepfunctions":     `([a-zA-Z0-9\-\.]+\.states\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"secretsmanager":    `([a-zA-Z0-9\-\.]+\.secretsmanager\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"iot":               `([a-zA-Z0-9\-\.]+\.iot\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"eventbridge":       `([a-zA-Z0-9\-\.]+\.events\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"xray":              `([a-zA-Z0-9\-\.]+\.xray\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"cloudsearch":       `([a-zA-Z0-9\-\.]+\.cloudsearch\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"elastictranscoder": `([a-zA-Z0-9\-\.]+\.elastictranscoder\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"elasticinference":  `([a-zA-Z0-9\-\.]+\.elasticinference\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"neptune":           `([a-zA-Z0-9\-\.]+\.neptune\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"workspaces":        `([a-zA-Z0-9\-\.]+\.workspaces\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"directconnect":     `([a-zA-Z0-9\-\.]+\.directconnect\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"mobilehub":         `([a-zA-Z0-9\-\.]+\.mobilehub\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"macie":             `([a-zA-Z0-9\-\.]+\.macie\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"sagemaker":         `([a-zA-Z0-9\-\.]+\.sagemaker\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"workdocs":          `([a-zA-Z0-9\-\.]+\.workdocs\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"transcribe":        `([a-zA-Z0-9\-\.]+\.transcribe\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"translate":         `([a-zA-Z0-9\-\.]+\.translate\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"appmesh":           `([a-zA-Z0-9\-\.]+\.appmesh\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"inspector":         `([a-zA-Z0-9\-\.]+\.inspector\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"glue":              `([a-zA-Z0-9\-\.]+\.glue\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"connect":           `([a-zA-Z0-9\-\.]+\.awsapps\.com)`,
+			"chime":             `([a-zA-Z0-9\-\.]+\.chime\.aws)`,
+			"efs":               `([a-zA-Z0-9\-\.]+\.efs\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"batch":             `([a-zA-Z0-9\-\.]+\.batch\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"kafka":             `([a-zA-Z0-9\-\.]+\.kafka\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"medialive":         `([a-zA-Z0-9\-\.]+\.medialive\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"snowball":          `([a-zA-Z0-9\-\.]+\.snowball\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"cloudtrail":        `([a-zA-Z0-9\-\.]+\.cloudtrail\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
+			"datasync":          `([a-zA-Z0-9\-\.]+\.datasync\.[a-zA-Z0-9\-]+\.amazonaws\.com)`,
 		},
 		"gcp": {
-			"storage":        `([a-zA-Z0-9\-\.]+\.storage\.googleapis\.com)`,
-			"appengine":      `([a-zA-Z0-9\-\.]+\.appspot\.com)`,
-			"cloudfunctions": `([a-zA-Z0-9\-\.]+\.cloudfunctions\.net)`,
-			"cloudrun":       `([a-zA-Z0-9\-\.]+\.run\.app)`,
-			"firebase":       `([a-zA-Z0-9\-\.]+\.firebaseapp\.com)`,
-			"gke":            `([a-zA-Z0-9\-\.]+\.container\.googleapis\.com)`,
-			"compute":        `([a-zA-Z0-9\-\.]+\.compute\.googleapis\.com)`,
+			"storage":             `([a-zA-Z0-9\-\.]+\.storage\.googleapis\.com)`,
+			"appengine":           `([a-zA-Z0-9\-\.]+\.appspot\.com)`,
+			"cloudfunctions":      `([a-zA-Z0-9\-\.]+\.cloudfunctions\.net)`,
+			"cloudrun":            `([a-zA-Z0-9\-\.]+\.run\.app)`,
+			"firebase":            `([a-zA-Z0-9\-\.]+\.firebaseapp\.com)`,
+			"gke":                 `([a-zA-Z0-9\-\.]+\.container\.googleapis\.com)`,
+			"compute":             `([a-zA-Z0-9\-\.]+\.compute\.googleapis\.com)`,
+			"sql":                 `([a-zA-Z0-9\-\.]+\.sql\.googleapis\.com)`,
+			"bigquery":            `([a-zA-Z0-9\-\.]+\.bigquery\.googleapis\.com)`,
+			"googleusercontent":   `([a-zA-Z0-9\-\.]+\.googleusercontent\.com)`,
+			"pubsub":              `([a-zA-Z0-9\-\.]+\.pubsub\.googleapis\.com)`,
+			"bigtable":            `([a-zA-Z0-9\-\.]+\.bigtable\.googleapis\.com)`,
+			"spanner":             `([a-zA-Z0-9\-\.]+\.spanner\.googleapis\.com)`,
+			"dataflow":            `([a-zA-Z0-9\-\.]+\.dataflow\.googleapis\.com)`,
+			"identityplatform":    `([a-zA-Z0-9\-\.]+\.identityplatform\.googleapis\.com)`,
+			"firestore_api":       `([a-zA-Z0-9\-\.]+\.firestore\.googleapis\.com)`,
+			"datastore":           `([a-zA-Z0-9\-\.]+\.datastore\.googleapis\.com)`,
+			"monitoring":          `([a-zA-Z0-9\-\.]+\.monitoring\.googleapis\.com)`,
+			"logging":             `([a-zA-Z0-9\-\.]+\.logging\.googleapis\.com)`,
+			"speech":              `([a-zA-Z0-9\-\.]+\.speech\.googleapis\.com)`,
+			"ai":                  `([a-zA-Z0-9\-\.]+\.ai\.googleapis\.com)`,
+			"filestore":           `([a-zA-Z0-9\-\.]+\.filestore\.googleapis\.com)`,
+			"dataproc":            `([a-zA-Z0-9\-\.]+\.dataproc\.googleapis\.com)`,
+			"texttospeech":        `([a-zA-Z0-9\-\.]+\.texttospeech\.googleapis\.com)`,
+			"language":            `([a-zA-Z0-9\-\.]+\.language\.googleapis\.com)`,
+			"vision":              `([a-zA-Z0-9\-\.]+\.vision\.googleapis\.com)`,
+			"automl":              `([a-zA-Z0-9\-\.]+\.automl\.googleapis\.com)`,
+			"memcached":           `([a-zA-Z0-9\-\.]+\.memcached\.googleapis\.com)`,
+			"iap":                 `([a-zA-Z0-9\-\.]+\.iap\.googleapis\.com)`,
+			"networkintelligence": `([a-zA-Z0-9\-\.]+\.networkintelligence\.googleapis\.com)`,
+			"vertexai":            `([a-zA-Z0-9\-\.]+\.vertexai\.googleapis\.com)`,
 		},
 		"azure": {
-			"blob":     `([a-zA-Z0-9\-\.]+\.blob\.core\.windows\.net)`,
-			"webapp":   `([a-zA-Z0-9\-\.]+\.azurewebsites\.net)`,
-			"cosmosdb": `([a-zA-Z0-9\-\.]+\.documents\.azure\.com)`,
-			"keyvault": `([a-zA-Z0-9\-\.]+\.vault\.azure\.net)`,
-			"sql":      `([a-zA-Z0-9\-\.]+\.database\.windows\.net)`,
-			"cdn":      `([a-zA-Z0-9\-\.]+\.azureedge\.net)`,
+			"blob":                `([a-zA-Z0-9\-\.]+\.blob\.core\.windows\.net)`,
+			"webapp":              `([a-zA-Z0-9\-\.]+\.azurewebsites\.net)`,
+			"cosmosdb":            `([a-zA-Z0-9\-\.]+\.documents\.azure\.com)`,
+			"keyvault":            `([a-zA-Z0-9\-\.]+\.vault\.azure\.net)`,
+			"sql":                 `([a-zA-Z0-9\-\.]+\.database\.windows\.net)`,
+			"cdn":                 `([a-zA-Z0-9\-\.]+\.azureedge\.net)`,
+			"activedirectory":     `([a-zA-Z0-9\-\.]+\.microsoftonline\.com|[a-zA-Z0-9\-\.]+\.onmicrosoft\.com)`,
+			"vm":                  `([a-zA-Z0-9\-\.]+\.cloudapp\.azure\.com)`,
+			"virtualnetwork":      `([a-zA-Z0-9\-\.]+\.virtualnetwork\.azure\.com)`,
+			"azurecontainer":      `([a-zA-Z0-9\-\.]+\.azurecontainer\.io)`,
+			"eventgrid":           `([a-zA-Z0-9\-\.]+\.eventgrid\.azure\.net)`,
+			"wvd":                 `([a-zA-Z0-9\-\.]+\.wvd\.microsoft\.com)`,
+			"devops":              `([a-zA-Z0-9\-\.]+\.dev\.azure\.com)`,
+			"logic":               `([a-zA-Z0-9\-\.]+\.logic\.azure\.com)`,
+			"loadbalancer":        `([a-zA-Z0-9\-\.]+\.loadbalancer\.azure\.com)`,
+			"backup":              `([a-zA-Z0-9\-\.]+\.backup\.azure\.com)`,
+			"monitor":             `([a-zA-Z0-9\-\.]+\.monitor\.azure\.com)`,
+			"firewallmanager":     `([a-zA-Z0-9\-\.]+\.firewallmanager\.azure\.net)`,
+			"synapse":             `([a-zA-Z0-9\-\.]+\.synapse\.azure\.com)`,
+			"virtualwan":          `([a-zA-Z0-9\-\.]+\.virtualwan\.azure\.com)`,
+			"b2clogin":            `([a-zA-Z0-9\-\.]+\.b2clogin\.com)`,
+			"applicationinsights": `([a-zA-Z0-9\-\.]+\.applicationinsights\.azure\.com)`,
+			"managedhsm":          `([a-zA-Z0-9\-\.]+\.managedhsm\.azure\.net)`,
+			"purview":             `([a-zA-Z0-9\-\.]+\.purview\.azure\.com)`,
+			"datalake":            `([a-zA-Z0-9\-\.]+\.datalake\.azure\.net)`,
+			"azconfig":            `([a-zA-Z0-9\-\.]+\.azconfig\.io)`,
+			"azureapi":            `([a-zA-Z0-9\-\.]+\.azure-api\.net)`,
+			"firewall":            `([a-zA-Z0-9\-\.]+\.firewall\.azure\.net)`,
+			"sites":               `([a-zA-Z0-9\-\.]+\.sites\.azure\.com)`,
+			"azuremicroservices":  `([a-zA-Z0-9\-\.]+\.azuremicroservices\.io)`,
+			"search":              `([a-zA-Z0-9\-\.]+\.search\.windows\.net)`,
+			"media":               `([a-zA-Z0-9\-\.]+\.media\.azure\.net)`,
+		},
+		"other": {
+			"ibm_cloud":     `([a-zA-Z0-9\-\.]+\.bluemix\.net)`,
+			"ibm_cloud_s3":  `([a-zA-Z0-9\-\.]+\.s3-api\.us-geo\.objectstorage\.softlayer\.net)`,
+			"alibaba_cloud": `([a-zA-Z0-9\-\.]+\.aliyuncs\.com)`,
+			"oracle_cloud":  `([a-zA-Z0-9\-\.]+\.oraclecloud\.com)`,
+			"salesforce":    `([a-zA-Z0-9\-\.]+\.force\.com)`,
+			"tencent_cloud": `([a-zA-Z0-9\-\.]+\.tencentcloudapi\.com)`,
 		},
 	}
 
@@ -936,7 +1128,7 @@ func InsertKatanaDomainResult(scopeTargetID, domain, scanID, rawOutput string) {
 		 VALUES ($1, $2, $3, $4, NOW(), NOW())
 		 ON CONFLICT (scope_target_id, domain) 
 		 DO UPDATE SET last_scan_id = $3, raw_output = $4, last_scanned_at = NOW(), updated_at = NOW()`,
-		scopeTargetID, domain, scanID, rawOutput)
+		scopeTargetID, domain, scanID, sanitizeUTF8(rawOutput))
 	if err != nil {
 		log.Printf("[KATANA-COMPANY] [ERROR] Failed to insert/update domain result: %v", err)
 	}
@@ -1274,6 +1466,215 @@ func GetKatanaCompanyRawResults(w http.ResponseWriter, r *http.Request) {
 		}
 
 		rawResults = append(rawResults, result)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(rawResults)
+}
+
+func sanitizeUTF8(s string) string {
+	if utf8.ValidString(s) {
+		return s
+	}
+
+	v := make([]rune, 0, len(s))
+	for i, r := range s {
+		if r == utf8.RuneError {
+			_, size := utf8.DecodeRuneInString(s[i:])
+			if size == 1 {
+				continue
+			}
+		}
+		v = append(v, r)
+	}
+	return string(v)
+}
+
+// GetKatanaCompanyCloudAssetsByTarget retrieves all cloud assets for a scope target (all scans)
+func GetKatanaCompanyCloudAssetsByTarget(w http.ResponseWriter, r *http.Request) {
+	scopeTargetID := mux.Vars(r)["scope_target_id"]
+	if scopeTargetID == "" {
+		http.Error(w, "Scope target ID is required", http.StatusBadRequest)
+		return
+	}
+
+	// Fetch all cloud assets for this scope target (across all scans)
+	rows, err := dbPool.Query(context.Background(),
+		`SELECT id, root_domain, asset_domain, asset_url, asset_type, service, description, source_url, last_scanned_at 
+		 FROM katana_company_cloud_assets 
+		 WHERE scope_target_id = $1 
+		 ORDER BY last_scanned_at DESC, asset_url`,
+		scopeTargetID)
+	if err != nil {
+		log.Printf("[KATANA-COMPANY] [ERROR] Failed to fetch cloud assets: %v", err)
+		http.Error(w, "Failed to fetch cloud assets", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var cloudAssets []map[string]interface{}
+	for rows.Next() {
+		var id, rootDomain, assetDomain, assetURL, assetType, service, description string
+		var sourceURL *string
+		var lastScannedAt time.Time
+
+		err := rows.Scan(&id, &rootDomain, &assetDomain, &assetURL, &assetType, &service, &description, &sourceURL, &lastScannedAt)
+		if err != nil {
+			log.Printf("[KATANA-COMPANY] [ERROR] Error scanning cloud asset row: %v", err)
+			continue
+		}
+
+		sourceURLStr := ""
+		if sourceURL != nil {
+			sourceURLStr = *sourceURL
+		}
+
+		cloudAssets = append(cloudAssets, map[string]interface{}{
+			"id":              id,
+			"root_domain":     rootDomain,
+			"domain":          assetDomain,
+			"url":             assetURL,
+			"type":            assetType,
+			"service":         service,
+			"description":     description,
+			"source_url":      sourceURLStr,
+			"created_at":      lastScannedAt,
+			"last_scanned_at": lastScannedAt,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(cloudAssets)
+}
+
+// GetKatanaCompanyCloudFindingsByTarget retrieves all cloud findings for a scope target (all scans)
+func GetKatanaCompanyCloudFindingsByTarget(w http.ResponseWriter, r *http.Request) {
+	scopeTargetID := mux.Vars(r)["scope_target_id"]
+	if scopeTargetID == "" {
+		http.Error(w, "Scope target ID is required", http.StatusBadRequest)
+		return
+	}
+
+	// Fetch all cloud findings for this scope target (across all scans)
+	rows, err := dbPool.Query(context.Background(),
+		`SELECT id, root_domain, finding_domain, finding_url, finding_type, content, description, cloud_service, context_before, context_after, match_position, last_scanned_at 
+		 FROM katana_company_cloud_findings 
+		 WHERE scope_target_id = $1 
+		 ORDER BY last_scanned_at DESC, finding_url`,
+		scopeTargetID)
+	if err != nil {
+		log.Printf("[KATANA-COMPANY] [ERROR] Failed to fetch cloud findings: %v", err)
+		http.Error(w, "Failed to fetch cloud findings", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var cloudFindings []map[string]interface{}
+	for rows.Next() {
+		var id, rootDomain, findingDomain, findingURL, findingType, content, description, cloudService, contextBefore, contextAfter string
+		var matchPosition int
+		var lastScannedAt time.Time
+
+		err := rows.Scan(&id, &rootDomain, &findingDomain, &findingURL, &findingType, &content, &description, &cloudService, &contextBefore, &contextAfter, &matchPosition, &lastScannedAt)
+		if err != nil {
+			log.Printf("[KATANA-COMPANY] [ERROR] Error scanning cloud finding row: %v", err)
+			continue
+		}
+
+		cloudFindings = append(cloudFindings, map[string]interface{}{
+			"id":              id,
+			"root_domain":     rootDomain,
+			"domain":          findingDomain,
+			"url":             findingURL,
+			"type":            findingType,
+			"content":         content,
+			"description":     description,
+			"cloud_service":   cloudService,
+			"context_before":  contextBefore,
+			"context_after":   contextAfter,
+			"match_position":  matchPosition,
+			"created_at":      lastScannedAt,
+			"last_scanned_at": lastScannedAt,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(cloudFindings)
+}
+
+// GetKatanaCompanyRawResultsByTarget retrieves all raw domain results for a scope target (all scans)
+func GetKatanaCompanyRawResultsByTarget(w http.ResponseWriter, r *http.Request) {
+	scopeTargetID := mux.Vars(r)["scope_target_id"]
+	if scopeTargetID == "" {
+		http.Error(w, "Scope target ID is required", http.StatusBadRequest)
+		return
+	}
+
+	// Get domain parameter from query string (optional)
+	domain := r.URL.Query().Get("domain")
+
+	var query string
+	var args []interface{}
+
+	if domain != "" {
+		// Fetch raw results for specific domain
+		query = `SELECT domain, raw_output, last_scanned_at, last_scan_id 
+		         FROM katana_company_domain_results 
+		         WHERE scope_target_id = $1 AND domain = $2`
+		args = []interface{}{scopeTargetID, domain}
+	} else {
+		// Fetch all domains that have ever been scanned for this scope target
+		query = `SELECT domain, '' as raw_output, last_scanned_at, last_scan_id, true as has_been_scanned
+		         FROM katana_company_domain_results 
+		         WHERE scope_target_id = $1
+		         ORDER BY last_scanned_at DESC, domain ASC`
+		args = []interface{}{scopeTargetID}
+	}
+
+	rows, err := dbPool.Query(context.Background(), query, args...)
+	if err != nil {
+		log.Printf("[KATANA-COMPANY] [ERROR] Failed to fetch raw results: %v", err)
+		http.Error(w, "Failed to fetch raw results", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var rawResults []map[string]interface{}
+	for rows.Next() {
+		var domainName, rawOutput string
+		var lastScannedAt time.Time
+		var lastScanID *string
+		var hasBeenScanned bool
+
+		if domain != "" {
+			// Single domain query
+			err := rows.Scan(&domainName, &rawOutput, &lastScannedAt, &lastScanID)
+			if err != nil {
+				log.Printf("[KATANA-COMPANY] [ERROR] Error scanning raw result row: %v", err)
+				continue
+			}
+			hasBeenScanned = true
+		} else {
+			// All domains query
+			err := rows.Scan(&domainName, &rawOutput, &lastScannedAt, &lastScanID, &hasBeenScanned)
+			if err != nil {
+				log.Printf("[KATANA-COMPANY] [ERROR] Error scanning raw result row: %v", err)
+				continue
+			}
+		}
+
+		lastScanIDStr := ""
+		if lastScanID != nil {
+			lastScanIDStr = *lastScanID
+		}
+
+		rawResults = append(rawResults, map[string]interface{}{
+			"domain":           domainName,
+			"raw_output":       rawOutput,
+			"last_scanned_at":  lastScannedAt,
+			"last_scan_id":     lastScanIDStr,
+			"has_been_scanned": hasBeenScanned,
+		})
 	}
 
 	w.Header().Set("Content-Type", "application/json")

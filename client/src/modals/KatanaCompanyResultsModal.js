@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Modal, Table, Badge, Alert, Tabs, Tab, Card, Row, Col, Form, InputGroup, Accordion, Button, Spinner } from 'react-bootstrap';
+import { Modal, Table, Badge, Alert, Tabs, Tab, Card, Row, Col, Accordion, Button, Spinner } from 'react-bootstrap';
 
 const KatanaCompanyResultsModal = ({ show, handleClose, activeTarget, mostRecentKatanaCompanyScan }) => {
   const [cloudAssets, setCloudAssets] = useState([]);
@@ -14,8 +14,7 @@ const KatanaCompanyResultsModal = ({ show, handleClose, activeTarget, mostRecent
   const [copyingDomains, setCopyingDomains] = useState({});
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedService, setSelectedService] = useState('all');
+
   const [activeTab, setActiveTab] = useState('assets');
   const [lastLoadedScanId, setLastLoadedScanId] = useState(null);
 
@@ -91,7 +90,7 @@ const KatanaCompanyResultsModal = ({ show, handleClose, activeTarget, mostRecent
   }, [baseDomains]);
 
   const loadResults = async () => {
-    if (!mostRecentKatanaCompanyScan || !mostRecentKatanaCompanyScan.scan_id) return;
+    if (!activeTarget?.id) return;
 
     setIsLoading(true);
     setError('');
@@ -99,13 +98,13 @@ const KatanaCompanyResultsModal = ({ show, handleClose, activeTarget, mostRecent
     try {
       const [assetsResponse, findingsResponse, rawResponse] = await Promise.all([
         fetch(
-          `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/katana-company/${mostRecentKatanaCompanyScan.scan_id}/cloud-assets`
+          `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/katana-company/target/${activeTarget.id}/cloud-assets`
         ),
         fetch(
-          `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/katana-company/${mostRecentKatanaCompanyScan.scan_id}/cloud-findings`
+          `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/katana-company/target/${activeTarget.id}/cloud-findings`
         ),
         fetch(
-          `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/katana-company/${mostRecentKatanaCompanyScan.scan_id}/raw-results`
+          `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/katana-company/target/${activeTarget.id}/raw-results`
         )
       ]);
 
@@ -314,51 +313,16 @@ const KatanaCompanyResultsModal = ({ show, handleClose, activeTarget, mostRecent
     return service.toUpperCase();
   };
 
-  const getUniqueServices = () => {
-    const services = new Set();
-    cloudAssets.forEach(asset => services.add(asset.service));
-    cloudFindings.forEach(finding => services.add(finding.cloud_service));
-    return Array.from(services).sort();
-  };
 
-  const filterAssets = (assets) => {
-    return assets.filter(asset => {
-      const matchesSearch = !searchTerm || 
-        asset.url.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        asset.domain.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        asset.description.toLowerCase().includes(searchTerm.toLowerCase());
-      
-      const matchesService = selectedService === 'all' || asset.service === selectedService;
-      
-      return matchesSearch && matchesService;
-    });
-  };
-
-  const filterFindings = (findings) => {
-    return findings.filter(finding => {
-      const matchesSearch = !searchTerm || 
-        finding.url.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        finding.domain.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        finding.content.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        finding.description.toLowerCase().includes(searchTerm.toLowerCase());
-      
-      const matchesService = selectedService === 'all' || finding.cloud_service === selectedService;
-      
-      return matchesSearch && matchesService;
-    });
-  };
-
-  const filteredAssets = filterAssets(cloudAssets);
-  const filteredFindings = filterFindings(cloudFindings);
 
   const loadDomainRawResults = async (domain) => {
-    if (!mostRecentKatanaCompanyScan?.scan_id) return;
+    if (!activeTarget?.id) return;
     
     setLoadingDomains(prev => ({ ...prev, [domain]: true }));
     
     try {
       const response = await fetch(
-        `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/katana-company/${mostRecentKatanaCompanyScan.scan_id}/raw-results?domain=${encodeURIComponent(domain)}`
+        `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/katana-company/target/${activeTarget.id}/raw-results?domain=${encodeURIComponent(domain)}`
       );
       
       if (!response.ok) {
@@ -408,8 +372,6 @@ const KatanaCompanyResultsModal = ({ show, handleClose, activeTarget, mostRecent
   };
 
   const handleModalClose = () => {
-    setSearchTerm('');
-    setSelectedService('all');
     setActiveTab('assets');
     setError('');
     setRawResults([]);
@@ -609,62 +571,7 @@ const KatanaCompanyResultsModal = ({ show, handleClose, activeTarget, mostRecent
           </div>
         )}
 
-        <div className="mb-3">
-          <Row>
-            <Col md={6}>
-              <InputGroup>
-                <Form.Control
-                  type="text"
-                  placeholder="Search assets and findings..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="bg-dark border-secondary text-light"
-                  style={{ color: '#fff !important' }}
-                />
-              </InputGroup>
-            </Col>
-            <Col md={4}>
-              <Form.Select
-                value={selectedService}
-                onChange={(e) => setSelectedService(e.target.value)}
-                className="bg-dark border-secondary text-light"
-                style={{ color: '#fff !important' }}
-              >
-                <option value="all">All Services</option>
-                {getUniqueServices().map(service => (
-                  <option key={service} value={service}>
-                    {getServiceName(service)}
-                  </option>
-                ))}
-              </Form.Select>
-            </Col>
-            <Col md={2}>
-              <Button 
-                variant="outline-info" 
-                size="sm" 
-                onClick={() => {
-                  if (mostRecentKatanaCompanyScan?.scan_id) {
-                    loadResults();
-                  }
-                }}
-                disabled={isLoading || !mostRecentKatanaCompanyScan?.scan_id}
-                className="w-100"
-              >
-                {isLoading ? (
-                  <>
-                    <Spinner size="sm" className="me-1" />
-                    Refreshing...
-                  </>
-                ) : (
-                  <>
-                    <i className="bi bi-arrow-clockwise me-1"></i>
-                    Refresh
-                  </>
-                )}
-              </Button>
-            </Col>
-          </Row>
-        </div>
+
 
         <Tabs 
           activeKey={activeTab} 
@@ -672,10 +579,10 @@ const KatanaCompanyResultsModal = ({ show, handleClose, activeTarget, mostRecent
           className="mb-3"
           variant="pills"
         >
-          <Tab eventKey="assets" title={`Cloud Assets (${filteredAssets.length})`}>
+          <Tab eventKey="assets" title={`Cloud Assets (${cloudAssets.length})`}>
             {isLoading ? (
               <div className="text-center py-4 text-light">Loading cloud assets...</div>
-            ) : filteredAssets.length > 0 ? (
+            ) : cloudAssets.length > 0 ? (
               <div style={{ maxHeight: '500px', overflowY: 'auto' }}>
                 <Table responsive size="sm" variant="dark" className="border-secondary">
                   <thead>
@@ -686,7 +593,7 @@ const KatanaCompanyResultsModal = ({ show, handleClose, activeTarget, mostRecent
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredAssets.map((asset, index) => {
+                    {cloudAssets.map((asset, index) => {
                       // The cloud asset FQDN is stored in asset.url, just remove the protocol
                       const cloudAssetFQDN = asset.url.replace(/^https?:\/\//, '');
                       
@@ -716,18 +623,18 @@ const KatanaCompanyResultsModal = ({ show, handleClose, activeTarget, mostRecent
               </div>
             ) : (
               <div className="text-center py-4 text-light" style={{ opacity: 0.7 }}>
-                No cloud assets found matching your criteria.
+                No cloud assets found.
               </div>
             )}
           </Tab>
           
-          <Tab eventKey="findings" title={`Cloud Findings (${filteredFindings.length})`}>
+          <Tab eventKey="findings" title={`Cloud Findings (${cloudFindings.length})`}>
             {isLoading ? (
               <div className="text-center py-4 text-light">Loading cloud findings...</div>
-            ) : filteredFindings.length > 0 ? (
+            ) : cloudFindings.length > 0 ? (
               <div style={{ maxHeight: '500px', overflowY: 'auto' }}>
                 <Accordion>
-                    {filteredFindings.map((finding, index) => (
+                    {cloudFindings.map((finding, index) => (
                     <Accordion.Item 
                       key={index} 
                       eventKey={index.toString()}
@@ -812,7 +719,7 @@ const KatanaCompanyResultsModal = ({ show, handleClose, activeTarget, mostRecent
               </div>
             ) : (
               <div className="text-center py-4 text-light" style={{ opacity: 0.7 }}>
-                No cloud findings found matching your criteria.
+                No cloud findings found.
               </div>
             )}
           </Tab>
