@@ -24,9 +24,9 @@ const monitorInvestigateScanStatus = (
       }
       
       const scans = await response.json();
-      setInvestigateScans(scans);
+      setInvestigateScans(scans || []);
       
-      if (scans.length > 0) {
+      if (scans && Array.isArray(scans) && scans.length > 0) {
         const mostRecent = scans[0];
         setMostRecentInvestigateScan(mostRecent);
         setMostRecentInvestigateScanStatus(mostRecent.status);

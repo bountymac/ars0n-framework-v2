@@ -178,7 +178,7 @@ const KatanaCompanyConfigModal = ({
             console.log(`Live web servers data for ${wildcardTarget.scope_target}:`, liveWebServersData);
             
             // Check if response is directly an array or has a target_urls property
-            const targetUrls = Array.isArray(liveWebServersData) ? liveWebServersData : liveWebServersData.target_urls;
+            const targetUrls = Array.isArray(liveWebServersData) ? liveWebServersData : (liveWebServersData?.target_urls || null);
             
             // Ensure we have valid target_urls data
             if (!targetUrls || !Array.isArray(targetUrls)) {
@@ -238,7 +238,7 @@ const KatanaCompanyConfigModal = ({
     try {
       // Fetch live web servers from IP port scans
       const response = await fetch(
-        `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/ip-port-scans/${activeTarget.id}`
+        `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${activeTarget.id}/scans/ip-port`
       );
       
       if (response.ok) {

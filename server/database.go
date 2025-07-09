@@ -841,6 +841,98 @@ func createTables() {
 			FOREIGN KEY (scope_target_id, root_domain) REFERENCES katana_company_domain_results(scope_target_id, domain) ON DELETE CASCADE,
 			UNIQUE(scope_target_id, root_domain, finding_url, finding_type, content)
 		);`,
+
+		// Consolidated Attack Surface Tables - New Schema
+		`CREATE TABLE IF NOT EXISTS consolidated_attack_surface_assets (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scope_target_id UUID NOT NULL REFERENCES scope_targets(id) ON DELETE CASCADE,
+			asset_type VARCHAR(50) NOT NULL CHECK (asset_type IN ('asn', 'network_range', 'ip_address', 'live_web_server', 'cloud_asset')),
+			asset_identifier TEXT NOT NULL,
+			asset_subtype VARCHAR(50),
+			
+			-- ASN specific fields
+			asn_number TEXT,
+			asn_organization TEXT,
+			asn_description TEXT,
+			asn_country TEXT,
+			
+			-- Network range specific fields
+			cidr_block TEXT,
+			
+			-- IP address specific fields
+			ip_address INET,
+			ip_type VARCHAR(10),
+			
+			-- Live web server specific fields
+			url TEXT,
+			domain TEXT,
+			port INTEGER,
+			protocol VARCHAR(10),
+			status_code INTEGER,
+			title TEXT,
+			web_server TEXT,
+			technologies TEXT[],
+			content_length INTEGER,
+			response_time_ms FLOAT,
+			screenshot_path TEXT,
+			ssl_info JSONB,
+			http_response_headers JSONB,
+			findings_json JSONB,
+			roi_score INTEGER DEFAULT 50,
+			
+			-- Cloud asset specific fields
+			cloud_provider VARCHAR(50),
+			cloud_service_type VARCHAR(100),
+			cloud_region TEXT,
+			
+			-- Common fields
+			last_updated TIMESTAMP DEFAULT NOW(),
+			created_at TIMESTAMP DEFAULT NOW(),
+			
+			UNIQUE(scope_target_id, asset_type, asset_identifier)
+		);`,
+
+		`CREATE TABLE IF NOT EXISTS consolidated_attack_surface_relationships (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			parent_asset_id UUID NOT NULL REFERENCES consolidated_attack_surface_assets(id) ON DELETE CASCADE,
+			child_asset_id UUID NOT NULL REFERENCES consolidated_attack_surface_assets(id) ON DELETE CASCADE,
+			relationship_type VARCHAR(50) NOT NULL,
+			relationship_data JSONB,
+			created_at TIMESTAMP DEFAULT NOW(),
+			UNIQUE(parent_asset_id, child_asset_id, relationship_type)
+		);`,
+
+		`CREATE TABLE IF NOT EXISTS consolidated_attack_surface_dns_records (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			asset_id UUID NOT NULL REFERENCES consolidated_attack_surface_assets(id) ON DELETE CASCADE,
+			record_type VARCHAR(10) NOT NULL,
+			record_value TEXT NOT NULL,
+			ttl INTEGER,
+			created_at TIMESTAMP DEFAULT NOW(),
+			UNIQUE(asset_id, record_type, record_value)
+		);`,
+
+		`CREATE TABLE IF NOT EXISTS consolidated_attack_surface_metadata (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			asset_id UUID NOT NULL REFERENCES consolidated_attack_surface_assets(id) ON DELETE CASCADE,
+			metadata_type VARCHAR(50) NOT NULL,
+			metadata_key TEXT NOT NULL,
+			metadata_value TEXT,
+			metadata_json JSONB,
+			created_at TIMESTAMP DEFAULT NOW(),
+			UNIQUE(asset_id, metadata_type, metadata_key)
+		);`,
+
+		// Add indexes for performance
+		`CREATE INDEX IF NOT EXISTS idx_consolidated_attack_surface_assets_scope_target ON consolidated_attack_surface_assets(scope_target_id);`,
+		`CREATE INDEX IF NOT EXISTS idx_consolidated_attack_surface_assets_asset_type ON consolidated_attack_surface_assets(asset_type);`,
+		`CREATE INDEX IF NOT EXISTS idx_consolidated_attack_surface_assets_asset_identifier ON consolidated_attack_surface_assets(asset_identifier);`,
+		`CREATE INDEX IF NOT EXISTS idx_consolidated_attack_surface_assets_ip_address ON consolidated_attack_surface_assets(ip_address);`,
+		`CREATE INDEX IF NOT EXISTS idx_consolidated_attack_surface_assets_domain ON consolidated_attack_surface_assets(domain);`,
+		`CREATE INDEX IF NOT EXISTS idx_consolidated_attack_surface_relationships_parent ON consolidated_attack_surface_relationships(parent_asset_id);`,
+		`CREATE INDEX IF NOT EXISTS idx_consolidated_attack_surface_relationships_child ON consolidated_attack_surface_relationships(child_asset_id);`,
+		`CREATE INDEX IF NOT EXISTS idx_consolidated_attack_surface_dns_records_asset_id ON consolidated_attack_surface_dns_records(asset_id);`,
+		`CREATE INDEX IF NOT EXISTS idx_consolidated_attack_surface_metadata_asset_id ON consolidated_attack_surface_metadata(asset_id);`,
 	}
 
 	for _, query := range queries {

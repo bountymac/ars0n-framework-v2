@@ -66,6 +66,25 @@ const copyToClipboard = async (text) => {
   }
 };
 
-export const getHttpxResultsCount = (scan) => {  console.log("[DEBUG getHttpxResultsCount] Input scan:", scan);  console.log("[DEBUG getHttpxResultsCount] Input scan type:", typeof scan);    if (!scan) {    console.log("[DEBUG getHttpxResultsCount] Scan is null or undefined");    return 0;  }    if (!scan.result) {    console.log("[DEBUG getHttpxResultsCount] Scan has no result property");    return 0;  }    if (!scan.result.String) {    console.log("[DEBUG getHttpxResultsCount] Scan result has no String property");    if (typeof scan.result === 'string') {      console.log("[DEBUG getHttpxResultsCount] Scan result is a string, trying to use it directly");      const count = scan.result.split('\n').filter(line => line.trim()).length;      console.log("[DEBUG getHttpxResultsCount] Direct string count:", count);      return count;    }    return 0;  }    const count = scan.result.String.split('\n').filter(line => line.trim()).length;  console.log("[DEBUG getHttpxResultsCount] Final count:", count);  return count;};
+export const getHttpxResultsCount = (scan) => {
+  if (!scan) {
+    return 0;
+  }
+  
+  if (!scan.result) {
+    return 0;
+  }
+  
+  if (!scan.result.String) {
+    if (typeof scan.result === 'string') {
+      const count = scan.result.split('\n').filter(line => line.trim()).length;
+      return count;
+    }
+    return 0;
+  }
+  
+  const count = scan.result.String.split('\n').filter(line => line.trim()).length;
+  return count;
+};
 
 export { getTypeIcon, getLastScanDate, getLatestScanStatus, getLatestScanTime, getLatestScanId, getExecutionTime, getResultLength, copyToClipboard };

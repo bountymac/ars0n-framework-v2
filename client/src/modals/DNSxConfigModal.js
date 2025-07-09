@@ -186,7 +186,7 @@ const DNSxConfigModal = ({
             console.log(`Live web servers data for ${wildcardTarget.scope_target}:`, liveWebServersData);
             
             // Check if response is directly an array or has a target_urls property
-            const targetUrls = Array.isArray(liveWebServersData) ? liveWebServersData : liveWebServersData.target_urls;
+            const targetUrls = Array.isArray(liveWebServersData) ? liveWebServersData : (liveWebServersData?.target_urls || null);
             
             // Ensure we have valid target_urls data
             if (!targetUrls || !Array.isArray(targetUrls)) {

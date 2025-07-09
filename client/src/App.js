@@ -65,7 +65,9 @@ import { UniqueSubdomainsModal } from './modals/UniqueSubdomainsModal';
 import consolidateSubdomains from './utils/consolidateSubdomains.js';
 import fetchConsolidatedSubdomains from './utils/fetchConsolidatedSubdomains.js';
 import consolidateCompanyDomains from './utils/consolidateCompanyDomains.js';
+import consolidateAttackSurface from './utils/consolidateAttackSurface.js';
 import fetchConsolidatedCompanyDomains from './utils/fetchConsolidatedCompanyDomains.js';
+import fetchAttackSurfaceAssetCounts from './utils/fetchAttackSurfaceAssetCounts.js';
 import consolidateNetworkRanges from './utils/consolidateNetworkRanges.js';
 import fetchConsolidatedNetworkRanges from './utils/fetchConsolidatedNetworkRanges.js';
 import monitorShuffleDNSScanStatus from './utils/monitorShuffleDNSScanStatus.js';
@@ -385,6 +387,13 @@ function App() {
   const [consolidatedNetworkRanges, setConsolidatedNetworkRanges] = useState([]);
   const [consolidatedNetworkRangesCount, setConsolidatedNetworkRangesCount] = useState(0);
   const [isConsolidatingNetworkRanges, setIsConsolidatingNetworkRanges] = useState(false);
+  const [isConsolidatingAttackSurface, setIsConsolidatingAttackSurface] = useState(false);
+  const [consolidatedAttackSurfaceResult, setConsolidatedAttackSurfaceResult] = useState(null);
+  const [attackSurfaceASNsCount, setAttackSurfaceASNsCount] = useState(0);
+  const [attackSurfaceNetworkRangesCount, setAttackSurfaceNetworkRangesCount] = useState(0);
+  const [attackSurfaceIPAddressesCount, setAttackSurfaceIPAddressesCount] = useState(0);
+  const [attackSurfaceLiveWebServersCount, setAttackSurfaceLiveWebServersCount] = useState(0);
+  const [attackSurfaceCloudAssetsCount, setAttackSurfaceCloudAssetsCount] = useState(0);
   const [showUniqueSubdomainsModal, setShowUniqueSubdomainsModal] = useState(false);
   const [mostRecentCeWLScanStatus, setMostRecentCeWLScanStatus] = useState(null);
   const [mostRecentCeWLScan, setMostRecentCeWLScan] = useState(null);
@@ -1047,6 +1056,7 @@ function App() {
       fetchConsolidatedSubdomains(activeTarget, setConsolidatedSubdomains, setConsolidatedCount);
       fetchConsolidatedCompanyDomains(activeTarget, setConsolidatedCompanyDomains, setConsolidatedCompanyDomainsCount);
       fetchConsolidatedNetworkRanges(activeTarget, setConsolidatedNetworkRanges, setConsolidatedNetworkRangesCount);
+      fetchAttackSurfaceAssetCounts(activeTarget, setAttackSurfaceASNsCount, setAttackSurfaceNetworkRangesCount, setAttackSurfaceIPAddressesCount, setAttackSurfaceLiveWebServersCount, setAttackSurfaceCloudAssetsCount);
       loadAmassEnumConfig();
       loadAmassIntelConfig();
       loadDNSxConfig();
@@ -2464,6 +2474,47 @@ function App() {
     }
   };
 
+  const handleConsolidateAttackSurface = async () => {
+    if (!activeTarget) return;
+    
+    setIsConsolidatingAttackSurface(true);
+    try {
+      const result = await consolidateAttackSurface(activeTarget);
+      if (result) {
+        console.log('Attack surface consolidation result:', result);
+        setConsolidatedAttackSurfaceResult(result);
+        
+        // Fetch updated counts after consolidation
+        try {
+          const response = await fetch(
+            `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/attack-surface-asset-counts/${activeTarget.id}`,
+            {
+              method: 'GET',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+            }
+          );
+          
+          if (response.ok) {
+            const data = await response.json();
+            setAttackSurfaceASNsCount(data.asns || 0);
+            setAttackSurfaceNetworkRangesCount(data.network_ranges || 0);
+            setAttackSurfaceIPAddressesCount(data.ip_addresses || 0);
+            setAttackSurfaceLiveWebServersCount(data.live_web_servers || 0);
+            setAttackSurfaceCloudAssetsCount(data.cloud_assets || 0);
+          }
+        } catch (countError) {
+          console.error('Error fetching attack surface asset counts:', countError);
+        }
+      }
+    } catch (error) {
+      console.error('Error during attack surface consolidation:', error);
+    } finally {
+      setIsConsolidatingAttackSurface(false);
+    }
+  };
+
   const handleOpenUniqueSubdomainsModal = () => setShowUniqueSubdomainsModal(true);
 
   const handleOpenCeWLResultsModal = () => setShowCeWLResultsModal(true);
@@ -2531,7 +2582,8 @@ function App() {
         setMetabigorCompanyScans,
         setMostRecentMetabigorCompanyScan,
         setIsMetabigorCompanyScanning,
-        setMostRecentMetabigorCompanyScanStatus
+        setMostRecentMetabigorCompanyScanStatus,
+        setMetabigorNetworkRanges
       );
     }
   }, [activeTarget]);
@@ -5132,28 +5184,63 @@ function App() {
                 <h4 className="text-secondary mb-3 fs-5">{activeTarget.scope_target}'s Full Attack Surface</h4>
                 <Row className="mb-4">
                   <Col>
-                    <Card className="shadow-sm h-100 text-center" style={{ minHeight: '200px' }}>
-                      <Card.Body className="d-flex flex-column">
-                        <Card.Title className="text-danger fs-4 mb-3">{activeTarget.scope_target}'s Full Attack Surface</Card.Title>
-                        <Card.Text className="text-white small fst-italic mb-4">
-                          Comprehensive attack surface management and analysis for your company's digital footprint across all discovered assets, domains, and cloud resources.
-                        </Card.Text>
-                        <div className="d-flex justify-content-between mt-auto gap-2">
-                          <Button variant="outline-danger" className="flex-fill">Explore</Button>
-                          <Button variant="outline-danger" className="flex-fill">Manage</Button>
-                          <Button variant="outline-danger" className="flex-fill">Visualize</Button>
-                          <Button variant="outline-danger" className="flex-fill">Analyze</Button>
-                          <Button variant="outline-danger" className="flex-fill">Report</Button>
+                  <Card className="shadow-sm h-100 text-center" style={{ minHeight: '200px' }}>
+                    <Card.Body className="d-flex flex-column">
+                      <Card.Title className="text-danger fs-4 mb-3">{activeTarget.scope_target}'s Full Attack Surface</Card.Title>
+                      <Card.Text className="text-white small fst-italic mb-4">
+                        Comprehensive attack surface management and analysis for your company's digital footprint across all discovered assets, domains, and cloud resources.
+                      </Card.Text>
+                      <div className="text-danger mb-4">
+                        <div className="row row-cols-5">
+                          <div className="col">
+                            <h3 className="mb-0">{attackSurfaceASNsCount}</h3>
+                            <small className="text-white-50">ASNs</small>
+                          </div>
+                          <div className="col">
+                            <h3 className="mb-0">{attackSurfaceNetworkRangesCount}</h3>
+                            <small className="text-white-50">Network Ranges</small>
+                          </div>
+                          <div className="col">
+                            <h3 className="mb-0">{attackSurfaceIPAddressesCount}</h3>
+                            <small className="text-white-50">IP Addresses</small>
+                          </div>
+                          <div className="col">
+                            <h3 className="mb-0">{attackSurfaceLiveWebServersCount}</h3>
+                            <small className="text-white-50">Live Web Servers</small>
+                          </div>
+                          <div className="col">
+                            <h3 className="mb-0">{attackSurfaceCloudAssetsCount}</h3>
+                            <small className="text-white-50">Cloud Assets</small>
+                          </div>
                         </div>
-                      </Card.Body>
-                    </Card>
+                      </div>
+                      <div className="d-flex justify-content-between mt-auto gap-2">
+                        <Button 
+                          variant="outline-danger" 
+                          className="flex-fill" 
+                          onClick={handleConsolidateAttackSurface}
+                          disabled={isConsolidatingAttackSurface}
+                        >
+                          {isConsolidatingAttackSurface ? (
+                            <div className="spinner"></div>
+                          ) : (
+                            'Consolidate'
+                          )}
+                        </Button>
+                        <Button variant="outline-danger" className="flex-fill">Explore</Button>
+                        <Button variant="outline-danger" className="flex-fill">Analyze</Button>
+                        <Button variant="outline-danger" className="flex-fill">Visualize</Button>
+                        <Button variant="outline-danger" className="flex-fill">Report</Button>
+                      </div>
+                    </Card.Body>
+                  </Card>
                   </Col>
                 </Row>
 
                 <h4 className="text-secondary mb-3 fs-5">Nuclei Scanning</h4>
                 <Row className="mb-4">
                   <Col>
-                    <Card className="shadow-sm h-100 text-center" style={{ minHeight: '200px' }}>
+                  <Card className="shadow-sm h-100 text-center" style={{ minHeight: '200px' }}>
                       <Card.Body className="d-flex flex-column">
                         <Card.Title className="text-danger fs-4 mb-3">
                           <a href="https://github.com/projectdiscovery/nuclei" className="text-danger text-decoration-none">
