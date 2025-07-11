@@ -7,7 +7,7 @@ RUN apt-get update && \
 
 WORKDIR /app
 
-RUN git clone https://github.com/initstring/cloud_enum.git . && \
+RUN git clone https://github.com/R-s0n/cloud_enum.git . && \
     pip install -r requirements.txt
 
 COPY docker/shuffledns/wordlists/resolvers.txt /app/resolvers.txt

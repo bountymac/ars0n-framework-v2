@@ -24,6 +24,18 @@ const CloudEnumConfigModal = ({
   const [customResolverFile, setCustomResolverFile] = useState(null);
   const [additionalResolvers, setAdditionalResolvers] = useState('');
   
+  // Service and Region Selection
+  const [selectedServices, setSelectedServices] = useState({
+    aws: ['s3'],
+    azure: ['storage-accounts'],
+    gcp: ['gcp-buckets']
+  });
+  const [selectedRegions, setSelectedRegions] = useState({
+    aws: ['us-east-1'],
+    azure: ['eastus'],
+    gcp: ['us-central1']
+  });
+  
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [buildingMutations, setBuildingMutations] = useState(false);
@@ -32,6 +44,54 @@ const CloudEnumConfigModal = ({
   const mutationsFileRef = useRef(null);
   const bruteFileRef = useRef(null);
   const resolverFileRef = useRef(null);
+
+  // Available services and regions
+  const availableServices = {
+    aws: [
+      's3', 'aws-apps', 'rds', 'dynamodb', 'cloudwatch', 'lambda', 'sqs', 'sns', 'iam', 
+      'secrets-manager', 'cloudformation', 'appsync', 'eks', 'efs', 'workspaces', 
+      'elastic-transcoder', 'workdocs', 'emr', 'elastic-beanstalk', 'cognito', 'cloud9', 
+      'lightsail', 'workmail', 'redshift', 'cloudtrail', 'data-pipeline', 'kms', 'iot-core', 
+      'systems-manager', 'xray', 'batch', 'snowball', 'inspector', 'kinesis', 'step-functions', 
+      'sagemaker', 'redshift-spectrum', 'quicksight', 'cloudfront'
+    ],
+    azure: [
+      'storage-accounts', 'blob-storage', 'key-vault', 'app-management', 'databases', 
+      'virtual-machines', 'web-apps', 'cognitive-services', 'active-directory', 'service-bus', 
+      'api-management', 'aks', 'monitor', 'logic-apps', 'redis-cache', 'container-registry', 
+      'virtual-networks', 'cdn', 'event-grid', 'data-lake-storage', 'cognitive-search', 
+      'iot-hub', 'cosmos-db', 'sql-database'
+    ],
+    gcp: [
+      'gcp-buckets', 'firebase', 'app-engine', 'cloud-functions', 'pub-sub', 'bigquery', 
+      'spanner', 'cloud-sql', 'vision-api', 'identity-platform', 'firestore', 'datastore', 
+      'text-to-speech', 'ai-platform', 'compute-engine'
+    ]
+  };
+
+  const availableRegions = {
+    aws: [
+      'us-east-1', 'us-east-2', 'us-west-1', 'us-west-2', 'ca-central-1', 'eu-west-1', 
+      'eu-west-2', 'eu-west-3', 'eu-central-1', 'eu-north-1', 'eu-south-1', 'ap-south-1', 
+      'ap-southeast-1', 'ap-southeast-2', 'ap-northeast-1', 'ap-northeast-2', 'ap-northeast-3', 
+      'sa-east-1', 'af-south-1', 'me-south-1', 'ap-east-1'
+    ],
+    azure: [
+      'eastus', 'eastus2', 'westus', 'westus2', 'centralus', 'northcentralus', 'southcentralus', 
+      'westcentralus', 'canadacentral', 'canadaeast', 'northeurope', 'westeurope', 'uksouth', 
+      'ukwest', 'francecentral', 'germanywestcentral', 'norwayeast', 'switzerlandnorth', 
+      'southeastasia', 'eastasia', 'australiaeast', 'australiasoutheast', 'japaneast', 
+      'japanwest', 'koreacentral', 'southafricanorth', 'uaenorth', 'brazilsouth', 'southindia', 
+      'centralindia', 'westindia'
+    ],
+    gcp: [
+      'us-central1', 'us-east1', 'us-east4', 'us-west1', 'us-west2', 'us-west3', 'us-west4', 
+      'northamerica-northeast1', 'southamerica-east1', 'europe-north1', 'europe-west1', 
+      'europe-west2', 'europe-west3', 'europe-west4', 'europe-west6', 'asia-east1', 
+      'asia-east2', 'asia-northeast1', 'asia-northeast2', 'asia-northeast3', 'asia-south1', 
+      'asia-southeast1', 'asia-southeast2', 'australia-southeast1'
+    ]
+  };
 
   useEffect(() => {
     if (show) {
@@ -56,6 +116,8 @@ const CloudEnumConfigModal = ({
         setDnsResolverMode(config.dns_resolver_mode || 'single');
         setResolverConfig(config.resolver_config || 'default');
         setAdditionalResolvers(config.additional_resolvers || '');
+        setSelectedServices(config.selected_services || { aws: ['s3'], azure: ['storage-accounts'], gcp: ['gcp-buckets'] });
+        setSelectedRegions(config.selected_regions || { aws: ['us-east-1'], azure: ['eastus'], gcp: ['us-central1'] });
       } else {
         // Default to using company name as first keyword
         setKeywords([activeTarget.scope_target || '']);
@@ -140,6 +202,8 @@ const CloudEnumConfigModal = ({
         dns_resolver_mode: dnsResolverMode,
         resolver_config: resolverConfig,
         additional_resolvers: additionalResolvers,
+        selected_services: selectedServices,
+        selected_regions: selectedRegions,
         created_at: new Date().toISOString()
       };
 
@@ -250,6 +314,61 @@ const CloudEnumConfigModal = ({
       return `${getTotalResolverCount()} total resolvers`;
     }
     return 'Unknown';
+  };
+
+  // Helper functions for service and region selection
+  const toggleService = (platform, service) => {
+    setSelectedServices(prev => ({
+      ...prev,
+      [platform]: prev[platform].includes(service) 
+        ? prev[platform].filter(s => s !== service)
+        : [...prev[platform], service]
+    }));
+  };
+
+  const toggleRegion = (platform, region) => {
+    setSelectedRegions(prev => ({
+      ...prev,
+      [platform]: prev[platform].includes(region) 
+        ? prev[platform].filter(r => r !== region)
+        : [...prev[platform], region]
+    }));
+  };
+
+  const selectAllServices = (platform) => {
+    setSelectedServices(prev => ({
+      ...prev,
+      [platform]: availableServices[platform]
+    }));
+  };
+
+  const selectAllRegions = (platform) => {
+    setSelectedRegions(prev => ({
+      ...prev,
+      [platform]: availableRegions[platform]
+    }));
+  };
+
+  const clearAllServices = (platform) => {
+    setSelectedServices(prev => ({
+      ...prev,
+      [platform]: []
+    }));
+  };
+
+  const clearAllRegions = (platform) => {
+    setSelectedRegions(prev => ({
+      ...prev,
+      [platform]: []
+    }));
+  };
+
+  const formatServiceName = (service) => {
+    return service.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+  };
+
+  const formatRegionName = (region) => {
+    return region.charAt(0).toUpperCase() + region.slice(1);
   };
 
   return (
@@ -574,57 +693,6 @@ const CloudEnumConfigModal = ({
                 </div>
               )}
             </div>
-          </Col>
-
-          <Col lg={6}>
-            {/* Performance Settings */}
-            <div className="mb-4">
-              <h6 className="text-danger mb-3">
-                <i className="bi bi-speedometer2 me-2" />
-                Performance Settings
-              </h6>
-              
-              <Form.Group>
-                <Form.Label className="text-white-50 small">Thread Count: {threads}</Form.Label>
-                <Form.Range
-                  min="1"
-                  max="20"
-                  value={threads}
-                  onChange={(e) => setThreads(parseInt(e.target.value))}
-                  className="custom-range"
-                />
-                <div className="d-flex justify-content-between">
-                  <small className="text-white-50">1 (Slow)</small>
-                  <small className="text-white-50">20 (Fast)</small>
-                </div>
-              </Form.Group>
-            </div>
-
-            {/* Platform Selection */}
-            <div className="mb-4">
-              <h6 className="text-danger mb-3">
-                <i className="bi bi-cloud-check me-2" />
-                Target Platforms
-              </h6>
-              
-              <div className="mb-3">
-                {Object.entries(enabledPlatforms).map(([platform, enabled]) => (
-                  <Form.Check
-                    key={platform}
-                    type="switch"
-                    id={`platform-${platform}`}
-                    label={platform === 'aws' ? 'Amazon Web Services' : platform === 'azure' ? 'Microsoft Azure' : 'Google Cloud Platform'}
-                    checked={enabled}
-                    onChange={(e) => setEnabledPlatforms(prev => ({ ...prev, [platform]: e.target.checked }))}
-                    className="text-white mb-2"
-                  />
-                ))}
-              </div>
-              
-              <small className="text-white-50">
-                Disable platforms to speed up scans when you know the target's preferences.
-              </small>
-            </div>
 
             {/* Custom Wordlists */}
             <div className="mb-4">
@@ -733,8 +801,142 @@ const CloudEnumConfigModal = ({
                 </small>
               </div>
             </div>
+          </Col>
 
+          <Col lg={6}>
+            {/* Performance Settings */}
+            <div className="mb-4">
+              <h6 className="text-danger mb-3">
+                <i className="bi bi-speedometer2 me-2" />
+                Performance Settings
+              </h6>
+              
+              <Form.Group>
+                <Form.Label className="text-white-50 small">Thread Count: {threads}</Form.Label>
+                <Form.Range
+                  min="1"
+                  max="20"
+                  value={threads}
+                  onChange={(e) => setThreads(parseInt(e.target.value))}
+                  className="custom-range"
+                />
+                <div className="d-flex justify-content-between">
+                  <small className="text-white-50">1 (Slow)</small>
+                  <small className="text-white-50">20 (Fast)</small>
+                </div>
+              </Form.Group>
+            </div>
 
+            {/* Platform Selection */}
+            <div className="mb-4">
+              <h6 className="text-danger mb-3">
+                <i className="bi bi-cloud-check me-2" />
+                Target Platforms
+              </h6>
+              
+              <div className="mb-3">
+                {Object.entries(enabledPlatforms).map(([platform, enabled]) => (
+                  <Form.Check
+                    key={platform}
+                    type="switch"
+                    id={`platform-${platform}`}
+                    label={platform === 'aws' ? 'Amazon Web Services' : platform === 'azure' ? 'Microsoft Azure' : 'Google Cloud Platform'}
+                    checked={enabled}
+                    onChange={(e) => setEnabledPlatforms(prev => ({ ...prev, [platform]: e.target.checked }))}
+                    className="text-white mb-2"
+                  />
+                ))}
+              </div>
+              
+              <small className="text-white-50">
+                Disable platforms to speed up scans when you know the target's preferences.
+              </small>
+            </div>
+
+            {/* Service and Region Selection */}
+            <div className="mb-4">
+              <h6 className="text-danger mb-3">
+                <i className="bi bi-gear me-2" />
+                Service & Region Selection
+              </h6>
+              
+              {Object.entries(enabledPlatforms).map(([platform, enabled]) => (
+                enabled && (
+                  <div key={platform} className="mb-3">
+                    <h6 className="text-white mb-2">
+                      {platform === 'aws' ? 'Amazon Web Services' : platform === 'azure' ? 'Microsoft Azure' : 'Google Cloud Platform'}
+                    </h6>
+                    
+                    <div className="row">
+                      {/* Services */}
+                      <div className="col-md-6">
+                        <div className="mb-3">
+                          <div className="d-flex justify-content-between align-items-center mb-2">
+                            <small className="text-white-50 fw-bold">Services ({selectedServices[platform].length}/{availableServices[platform].length})</small>
+                            <div>
+                              <Button variant="outline-success" size="sm" onClick={() => selectAllServices(platform)} className="me-1">
+                                All
+                              </Button>
+                              <Button variant="outline-secondary" size="sm" onClick={() => clearAllServices(platform)}>
+                                None
+                              </Button>
+                            </div>
+                          </div>
+                          <div className="border rounded p-2" style={{ maxHeight: '120px', overflowY: 'auto' }}>
+                            {availableServices[platform].map(service => (
+                              <Form.Check
+                                key={service}
+                                type="checkbox"
+                                id={`service-${platform}-${service}`}
+                                label={formatServiceName(service)}
+                                checked={selectedServices[platform].includes(service)}
+                                onChange={() => toggleService(platform, service)}
+                                className="text-white-50 small"
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Regions */}
+                      <div className="col-md-6">
+                        <div className="mb-3">
+                          <div className="d-flex justify-content-between align-items-center mb-2">
+                            <small className="text-white-50 fw-bold">Regions ({selectedRegions[platform].length}/{availableRegions[platform].length})</small>
+                            <div>
+                              <Button variant="outline-success" size="sm" onClick={() => selectAllRegions(platform)} className="me-1">
+                                All
+                              </Button>
+                              <Button variant="outline-secondary" size="sm" onClick={() => clearAllRegions(platform)}>
+                                None
+                              </Button>
+                            </div>
+                          </div>
+                          <div className="border rounded p-2" style={{ maxHeight: '120px', overflowY: 'auto' }}>
+                            {availableRegions[platform].map(region => (
+                              <Form.Check
+                                key={region}
+                                type="checkbox"
+                                id={`region-${platform}-${region}`}
+                                label={formatRegionName(region)}
+                                checked={selectedRegions[platform].includes(region)}
+                                onChange={() => toggleRegion(platform, region)}
+                                className="text-white-50 small"
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              ))}
+              
+              <small className="text-white-50">
+                <i className="bi bi-info-circle me-1" />
+                Leave services/regions empty to scan all available. Specific selections reduce scan time and focus on your target infrastructure.
+              </small>
+            </div>
           </Col>
         </Row>
       </Modal.Body>

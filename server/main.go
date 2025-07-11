@@ -2141,31 +2141,6 @@ func getCloudEnumConfig(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("[CLOUD-ENUM-CONFIG] Getting configuration for scope target: %s", scopeTargetID)
 
-	// Create table if it doesn't exist
-	_, err := dbPool.Exec(context.Background(), `
-		CREATE TABLE IF NOT EXISTS cloud_enum_configs (
-			id SERIAL PRIMARY KEY,
-			scope_target_id UUID NOT NULL UNIQUE,
-			keywords TEXT[],
-			threads INTEGER DEFAULT 5,
-			enabled_platforms JSONB DEFAULT '{"aws": true, "azure": true, "gcp": true}',
-			custom_dns_server TEXT DEFAULT '',
-			dns_resolver_mode TEXT DEFAULT 'multiple',
-			resolver_config TEXT DEFAULT 'default',
-			additional_resolvers TEXT DEFAULT '',
-			mutations_file_path TEXT DEFAULT '',
-			brute_file_path TEXT DEFAULT '',
-			resolver_file_path TEXT DEFAULT '',
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-		)
-	`)
-	if err != nil {
-		log.Printf("[CLOUD-ENUM-CONFIG] Error creating config table: %v", err)
-		http.Error(w, "Database error", http.StatusInternalServerError)
-		return
-	}
-
 	var config struct {
 		Keywords            []string               `json:"keywords"`
 		Threads             int                    `json:"threads"`
@@ -2177,13 +2152,18 @@ func getCloudEnumConfig(w http.ResponseWriter, r *http.Request) {
 		MutationsFilePath   string                 `json:"mutations_file_path"`
 		BruteFilePath       string                 `json:"brute_file_path"`
 		ResolverFilePath    string                 `json:"resolver_file_path"`
+		SelectedServices    map[string][]string    `json:"selected_services"`
+		SelectedRegions     map[string][]string    `json:"selected_regions"`
 	}
 
 	var platformsJSON []byte
-	err = dbPool.QueryRow(context.Background(), `
+	var servicesJSON []byte
+	var regionsJSON []byte
+	err := dbPool.QueryRow(context.Background(), `
 		SELECT keywords, threads, enabled_platforms, custom_dns_server, 
 		       dns_resolver_mode, resolver_config, additional_resolvers,
-		       mutations_file_path, brute_file_path, resolver_file_path
+		       mutations_file_path, brute_file_path, resolver_file_path,
+		       selected_services, selected_regions
 		FROM cloud_enum_configs 
 		WHERE scope_target_id = $1 
 		ORDER BY updated_at DESC 
@@ -2199,6 +2179,8 @@ func getCloudEnumConfig(w http.ResponseWriter, r *http.Request) {
 		&config.MutationsFilePath,
 		&config.BruteFilePath,
 		&config.ResolverFilePath,
+		&servicesJSON,
+		&regionsJSON,
 	)
 
 	if err != nil && err != sql.ErrNoRows {
@@ -2223,9 +2205,21 @@ func getCloudEnumConfig(w http.ResponseWriter, r *http.Request) {
 		config.MutationsFilePath = ""
 		config.BruteFilePath = ""
 		config.ResolverFilePath = ""
+		config.SelectedServices = map[string][]string{
+			"aws":   {"s3"},
+			"azure": {"storage-accounts"},
+			"gcp":   {"gcp-buckets"},
+		}
+		config.SelectedRegions = map[string][]string{
+			"aws":   {"us-east-1"},
+			"azure": {"eastus"},
+			"gcp":   {"us-central1"},
+		}
 	} else {
-		// Parse JSON field for platforms
+		// Parse JSON fields
 		json.Unmarshal(platformsJSON, &config.EnabledPlatforms)
+		json.Unmarshal(servicesJSON, &config.SelectedServices)
+		json.Unmarshal(regionsJSON, &config.SelectedRegions)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -2261,6 +2255,8 @@ func saveCloudEnumConfig(w http.ResponseWriter, r *http.Request) {
 		DNSResolverMode     string                 `json:"dns_resolver_mode"`
 		ResolverConfig      string                 `json:"resolver_config"`
 		AdditionalResolvers string                 `json:"additional_resolvers"`
+		SelectedServices    map[string][]string    `json:"selected_services"`
+		SelectedRegions     map[string][]string    `json:"selected_regions"`
 	}
 
 	err = json.Unmarshal([]byte(configJSON), &config)
@@ -2324,16 +2320,19 @@ func saveCloudEnumConfig(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Convert platforms to JSON for database storage (JSONB column)
+	// Convert to JSON for database storage (JSONB columns)
 	platformsJSON, _ := json.Marshal(config.EnabledPlatforms)
+	servicesJSON, _ := json.Marshal(config.SelectedServices)
+	regionsJSON, _ := json.Marshal(config.SelectedRegions)
 
 	// Insert or update config
 	_, err = dbPool.Exec(context.Background(), `
 		INSERT INTO cloud_enum_configs (
 			scope_target_id, keywords, threads, enabled_platforms, 
 			custom_dns_server, dns_resolver_mode, resolver_config, additional_resolvers,
-			mutations_file_path, brute_file_path, resolver_file_path, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, CURRENT_TIMESTAMP)
+			mutations_file_path, brute_file_path, resolver_file_path, 
+			selected_services, selected_regions, updated_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, CURRENT_TIMESTAMP)
 		ON CONFLICT (scope_target_id) 
 		DO UPDATE SET 
 			keywords = EXCLUDED.keywords,
@@ -2346,10 +2345,12 @@ func saveCloudEnumConfig(w http.ResponseWriter, r *http.Request) {
 			mutations_file_path = COALESCE(NULLIF(EXCLUDED.mutations_file_path, ''), cloud_enum_configs.mutations_file_path),
 			brute_file_path = COALESCE(NULLIF(EXCLUDED.brute_file_path, ''), cloud_enum_configs.brute_file_path),
 			resolver_file_path = COALESCE(NULLIF(EXCLUDED.resolver_file_path, ''), cloud_enum_configs.resolver_file_path),
+			selected_services = EXCLUDED.selected_services,
+			selected_regions = EXCLUDED.selected_regions,
 			updated_at = CURRENT_TIMESTAMP
 	`, scopeTargetID, config.Keywords, config.Threads, platformsJSON,
 		config.CustomDNSServer, config.DNSResolverMode, config.ResolverConfig, config.AdditionalResolvers,
-		mutationsFilePath, bruteFilePath, resolverFilePath)
+		mutationsFilePath, bruteFilePath, resolverFilePath, servicesJSON, regionsJSON)
 
 	if err != nil {
 		log.Printf("[CLOUD-ENUM-CONFIG] Error saving config: %v", err)

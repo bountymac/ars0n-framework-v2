@@ -794,6 +794,25 @@ func createTables() {
 			updated_at TIMESTAMP DEFAULT NOW()
 		);`,
 
+		`CREATE TABLE IF NOT EXISTS cloud_enum_configs (
+			id SERIAL PRIMARY KEY,
+			scope_target_id UUID NOT NULL UNIQUE REFERENCES scope_targets(id) ON DELETE CASCADE,
+			keywords TEXT[],
+			threads INTEGER DEFAULT 5,
+			enabled_platforms JSONB DEFAULT '{"aws": true, "azure": true, "gcp": true}',
+			custom_dns_server TEXT DEFAULT '',
+			dns_resolver_mode TEXT DEFAULT 'multiple',
+			resolver_config TEXT DEFAULT 'default',
+			additional_resolvers TEXT DEFAULT '',
+			mutations_file_path TEXT DEFAULT '',
+			brute_file_path TEXT DEFAULT '',
+			resolver_file_path TEXT DEFAULT '',
+			selected_services JSONB DEFAULT '{"aws": ["s3"], "azure": ["storage-accounts"], "gcp": ["gcp-buckets"]}',
+			selected_regions JSONB DEFAULT '{"aws": ["us-east-1"], "azure": ["eastus"], "gcp": ["us-central1"]}',
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		);`,
+
 		// Domain-centric results tables for Katana Company scans
 		`CREATE TABLE IF NOT EXISTS katana_company_domain_results (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -963,7 +982,8 @@ func createTables() {
 		DELETE FROM nuclei_screenshots WHERE status = 'pending';
 		DELETE FROM metadata_scans WHERE status = 'pending';
 		DELETE FROM ip_port_scans WHERE status = 'pending';
-		DELETE FROM katana_company_scans WHERE status = 'pending';`
+		DELETE FROM katana_company_scans WHERE status = 'pending' OR status = 'running';
+		DELETE FROM amass_enum_company_scans WHERE status = 'pending' OR status = 'running';`
 	_, err := dbPool.Exec(context.Background(), deletePendingScansQuery)
 	if err != nil {
 		log.Fatalf("[ERROR] Failed to delete pending scans: %v", err)

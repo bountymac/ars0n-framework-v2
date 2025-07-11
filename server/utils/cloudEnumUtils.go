@@ -51,6 +51,8 @@ type CloudEnumConfig struct {
 	MutationsFilePath   string                 `json:"mutations_file_path"`
 	BruteFilePath       string                 `json:"brute_file_path"`
 	ResolverFilePath    string                 `json:"resolver_file_path"`
+	SelectedServices    map[string][]string    `json:"selected_services"`
+	SelectedRegions     map[string][]string    `json:"selected_regions"`
 }
 
 func RunCloudEnumScan(w http.ResponseWriter, r *http.Request) {
@@ -187,17 +189,18 @@ func ExecuteAndParseCloudEnumScan(scanID, companyName string) {
 		command = append(command, "-ns", config.CustomDNSServer)
 	}
 
-	// Add platform filters
+	// Add platform disable flags (new cloud_enum uses --disable-* instead of -p)
 	if len(config.EnabledPlatforms) > 0 {
-		platforms := []string{}
 		for platform, enabled := range config.EnabledPlatforms {
-			if enabled.(bool) {
-				platforms = append(platforms, platform)
-			}
-		}
-		if len(platforms) < 3 { // Only add if not all platforms are enabled
-			for _, platform := range platforms {
-				command = append(command, "-p", platform)
+			if !enabled.(bool) {
+				switch platform {
+				case "aws":
+					command = append(command, "--disable-aws")
+				case "azure":
+					command = append(command, "--disable-azure")
+				case "gcp":
+					command = append(command, "--disable-gcp")
+				}
 			}
 		}
 	}
@@ -217,6 +220,38 @@ func ExecuteAndParseCloudEnumScan(scanID, companyName string) {
 	if config.BruteFilePath != "" {
 		copyBruteFile(containerName, config.BruteFilePath, scanID)
 		command = append(command, "-b", fmt.Sprintf("/tmp/custom_brute_%s.txt", scanID))
+	}
+
+	// Add service selection flags
+	if config.SelectedServices != nil {
+		for platform, services := range config.SelectedServices {
+			if len(services) > 0 {
+				switch platform {
+				case "aws":
+					command = append(command, "--aws-services", strings.Join(services, ","))
+				case "azure":
+					command = append(command, "--azure-services", strings.Join(services, ","))
+				case "gcp":
+					command = append(command, "--gcp-services", strings.Join(services, ","))
+				}
+			}
+		}
+	}
+
+	// Add region selection flags
+	if config.SelectedRegions != nil {
+		for platform, regions := range config.SelectedRegions {
+			if len(regions) > 0 {
+				switch platform {
+				case "aws":
+					command = append(command, "--aws-regions", strings.Join(regions, ","))
+				case "azure":
+					command = append(command, "--azure-regions", strings.Join(regions, ","))
+				case "gcp":
+					command = append(command, "--gcp-regions", strings.Join(regions, ","))
+				}
+			}
+		}
 	}
 
 	log.Printf("[CLOUD-ENUM] [DEBUG] Executing command: %v", command)
@@ -351,7 +386,6 @@ func GetCloudEnumScanStatus(w http.ResponseWriter, r *http.Request) {
 func GetCloudEnumScansForScopeTarget(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	scopeTargetID := vars["id"]
-	log.Printf("[CLOUD-ENUM] [INFO] Fetching Cloud Enum scans for scope target ID: %s", scopeTargetID)
 
 	if scopeTargetID == "" {
 		log.Printf("[CLOUD-ENUM] [ERROR] No scope target ID provided")
@@ -432,13 +466,9 @@ func GetCloudEnumScansForScopeTarget(w http.ResponseWriter, r *http.Request) {
 		scans = append(scans, scanMap)
 	}
 
-	log.Printf("[CLOUD-ENUM] [INFO] Successfully retrieved %d Cloud Enum scans for scope target %s", len(scans), scopeTargetID)
-
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(scans); err != nil {
 		log.Printf("[CLOUD-ENUM] [ERROR] Failed to encode scans response: %v", err)
-	} else {
-		log.Printf("[CLOUD-ENUM] [INFO] Successfully sent Cloud Enum scans response")
 	}
 }
 
@@ -461,12 +491,25 @@ func loadCloudEnumConfig(scopeTargetID string) CloudEnumConfig {
 	config.MutationsFilePath = ""
 	config.BruteFilePath = ""
 	config.ResolverFilePath = ""
+	config.SelectedServices = map[string][]string{
+		"aws":   {"s3"},
+		"azure": {"storage-accounts"},
+		"gcp":   {"gcp-buckets"},
+	}
+	config.SelectedRegions = map[string][]string{
+		"aws":   {"us-east-1"},
+		"azure": {"eastus"},
+		"gcp":   {"us-central1"},
+	}
 
 	var platformsJSON []byte
+	var servicesJSON []byte
+	var regionsJSON []byte
 	err := dbPool.QueryRow(context.Background(), `
 		SELECT keywords, threads, enabled_platforms, custom_dns_server, 
 		       dns_resolver_mode, resolver_config, additional_resolvers,
-		       mutations_file_path, brute_file_path, resolver_file_path
+		       mutations_file_path, brute_file_path, resolver_file_path,
+		       selected_services, selected_regions
 		FROM cloud_enum_configs 
 		WHERE scope_target_id = $1 
 		ORDER BY updated_at DESC 
@@ -482,6 +525,8 @@ func loadCloudEnumConfig(scopeTargetID string) CloudEnumConfig {
 		&config.MutationsFilePath,
 		&config.BruteFilePath,
 		&config.ResolverFilePath,
+		&servicesJSON,
+		&regionsJSON,
 	)
 
 	if err != nil && err != sql.ErrNoRows {
@@ -490,8 +535,10 @@ func loadCloudEnumConfig(scopeTargetID string) CloudEnumConfig {
 	}
 
 	if err != sql.ErrNoRows {
-		// Parse JSON field for platforms
+		// Parse JSON fields
 		json.Unmarshal(platformsJSON, &config.EnabledPlatforms)
+		json.Unmarshal(servicesJSON, &config.SelectedServices)
+		json.Unmarshal(regionsJSON, &config.SelectedRegions)
 	}
 
 	return config
