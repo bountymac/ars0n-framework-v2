@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Modal, Button, Form, Table, Badge, Row, Col, Alert, Nav } from 'react-bootstrap';
+import { Modal, Button, Form, Table, Badge, Row, Col, Alert, Nav, InputGroup } from 'react-bootstrap';
 import fetchAttackSurfaceAssets from '../utils/fetchAttackSurfaceAssets';
 
 const ExploreAttackSurfaceModal = ({ 
@@ -14,9 +14,7 @@ const ExploreAttackSurfaceModal = ({
   const [sortColumn, setSortColumn] = useState('asset_type');
   const [sortDirection, setSortDirection] = useState('asc');
   const [activeTab, setActiveTab] = useState('asn');
-  const [filters, setFilters] = useState({
-    searchTerm: ''
-  });
+  const [filters, setFilters] = useState([{ searchTerm: '', isNegative: false }]);
 
   const assetTypes = [
     { key: 'asn', label: 'Autonomous System Numbers (ASNs)', count: 0 },
@@ -67,8 +65,9 @@ const ExploreAttackSurfaceModal = ({
 
     filtered = filtered.filter(asset => asset.asset_type === activeTab);
 
-    if (filters.searchTerm) {
-      const searchTerm = filters.searchTerm.toLowerCase();
+    const activeFilters = filters.filter(filter => filter.searchTerm.trim() !== '');
+    
+    if (activeFilters.length > 0) {
       filtered = filtered.filter(asset => {
         const searchableFields = [
           asset.asset_identifier,
@@ -119,7 +118,10 @@ const ExploreAttackSurfaceModal = ({
           asset.technologies?.join(' ')
         ].filter(Boolean).join(' ').toLowerCase();
         
-        return searchableFields.includes(searchTerm);
+        return activeFilters.every(filter => {
+          const assetContainsSearch = searchableFields.includes(filter.searchTerm.toLowerCase());
+          return filter.isNegative ? !assetContainsSearch : assetContainsSearch;
+        });
       });
     }
 
@@ -141,6 +143,23 @@ const ExploreAttackSurfaceModal = ({
     setFilteredAssets(filtered);
   };
 
+  const addSearchFilter = () => {
+    setFilters([...filters, { searchTerm: '', isNegative: false }]);
+  };
+
+  const removeSearchFilter = (index) => {
+    if (filters.length > 1) {
+      const newFilters = filters.filter((_, i) => i !== index);
+      setFilters(newFilters);
+    }
+  };
+
+  const updateSearchFilter = (index, field, value) => {
+    const newFilters = [...filters];
+    newFilters[index][field] = value;
+    setFilters(newFilters);
+  };
+
   const handleFilterChange = (filterKey, value) => {
     setFilters(prev => ({
       ...prev,
@@ -149,9 +168,7 @@ const ExploreAttackSurfaceModal = ({
   };
 
   const clearFilters = () => {
-    setFilters({
-      searchTerm: ''
-    });
+    setFilters([{ searchTerm: '', isNegative: false }]);
   };
 
   const handleSort = (column) => {
@@ -296,37 +313,70 @@ const ExploreAttackSurfaceModal = ({
     return (
       <Row className="g-3">
         <Col>
-          <Form.Group>
-            <Form.Label className="text-white-50 small">Search Assets</Form.Label>
-            <div className="position-relative">
-              <Form.Control
-                type="text"
-                placeholder="Search across all data points (ASN, IP, domain, organization, etc.)..."
-                value={filters.searchTerm}
-                onChange={(e) => handleFilterChange('searchTerm', e.target.value)}
-                data-bs-theme="dark"
-                style={{ paddingRight: '40px' }}
-              />
-              {filters.searchTerm && (
-                <Button
-                  variant="link"
-                  size="sm"
-                  onClick={clearFilters}
-                  className="position-absolute"
-                  style={{
-                    top: '50%',
-                    right: '8px',
-                    transform: 'translateY(-50%)',
-                    padding: '0',
-                    color: '#6c757d',
-                    textDecoration: 'none'
-                  }}
+          <div className="mb-3">
+            <div className="d-flex justify-content-between align-items-center mb-2">
+              <Form.Label className="text-white small mb-0">Search Filters</Form.Label>
+              <div>
+                <Button 
+                  variant="outline-success" 
+                  size="sm" 
+                  onClick={addSearchFilter}
+                  className="me-2"
                 >
-                  <i className="bi bi-x-lg"></i>
+                  Add Filter
                 </Button>
-              )}
+                <Button 
+                  variant="outline-danger" 
+                  size="sm" 
+                  onClick={clearFilters}
+                >
+                  Clear Filters
+                </Button>
+              </div>
             </div>
-          </Form.Group>
+            {filters.map((filter, index) => (
+              <div key={index} className={index > 0 ? "mt-2" : ""}>
+                <InputGroup>
+                  <Form.Control
+                    type="text"
+                    placeholder="Search across all data points (ASN, IP, domain, organization, etc.)..."
+                    value={filter.searchTerm}
+                    onChange={(e) => updateSearchFilter(index, 'searchTerm', e.target.value)}
+                    data-bs-theme="dark"
+                  />
+                  <InputGroup.Text className="bg-dark border-secondary">
+                    <Form.Check
+                      type="checkbox"
+                      id={`negative-search-checkbox-${index}`}
+                      label="Negative Search"
+                      checked={filter.isNegative}
+                      onChange={(e) => updateSearchFilter(index, 'isNegative', e.target.checked)}
+                      className="text-white-50 small m-0"
+                      disabled={!filter.searchTerm}
+                    />
+                  </InputGroup.Text>
+                  {filter.searchTerm && (
+                    <Button 
+                      variant="outline-secondary" 
+                      onClick={() => updateSearchFilter(index, 'searchTerm', '')}
+                      title="Clear this search"
+                    >
+                      ×
+                    </Button>
+                  )}
+                  {filters.length > 1 && (
+                    <Button 
+                      variant="outline-danger" 
+                      onClick={() => removeSearchFilter(index)}
+                      title="Remove this filter"
+                    >
+                      🗑️
+                    </Button>
+                  )}
+                </InputGroup>
+              </div>
+            ))}
+          </div>
         </Col>
       </Row>
     );
@@ -445,23 +495,30 @@ const ExploreAttackSurfaceModal = ({
               </Nav>
 
               <div className="mb-4 p-3 bg-dark rounded border">
-                <h6 className="text-white mb-3">
-                  <i className="bi bi-funnel me-2"></i>
-                  Filter Results
-                </h6>
-                {renderFiltersForTab()}
-                <div className="mt-3 d-flex justify-content-end">
+                <div className="d-flex justify-content-between align-items-center mb-3">
+                  <h6 className="text-white mb-0">
+                    <i className="bi bi-funnel me-2"></i>
+                    Filter Results
+                  </h6>
                   <small className="text-white-50">
                     Showing {filteredAssets.length} of {counts[activeTab] || 0} assets
+                    {(() => {
+                      const activeFilters = filters.filter(filter => filter.searchTerm.trim() !== '');
+                      if (activeFilters.length > 0) {
+                        const filterDescriptions = activeFilters.map(filter => 
+                          `${filter.isNegative ? 'excluding' : 'including'} "${filter.searchTerm}"`
+                        );
+                        return (
+                          <span className="text-warning">
+                            {' '}({filterDescriptions.join(', ')})
+                          </span>
+                        );
+                      }
+                      return null;
+                    })()}
                   </small>
                 </div>
-              </div>
-
-              <div className="mb-3">
-                <div className="text-white">
-                  <strong>Total Assets:</strong> {attackSurfaceAssets.length} | 
-                  <strong> {getAssetTypeDisplayName(activeTab)}:</strong> {filteredAssets.length}
-                </div>
+                {renderFiltersForTab()}
               </div>
 
               <div className="table-responsive" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
