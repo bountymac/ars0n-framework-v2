@@ -26,6 +26,8 @@ const KatanaCompanyConfigModal = ({
   const [liveWebServers, setLiveWebServers] = useState([]);
   const [loadingWildcardDomains, setLoadingWildcardDomains] = useState(false);
   const [loadingLiveWebServers, setLoadingLiveWebServers] = useState(false);
+  const [scannedDomains, setScannedDomains] = useState(new Set());
+  const [loadingScanStatus, setLoadingScanStatus] = useState(false);
   const tableRef = useRef(null);
 
   // Use consolidated domains from props, or fallback to locally fetched ones
@@ -89,6 +91,7 @@ const KatanaCompanyConfigModal = ({
     if (baseDomains.length > 0) {
       fetchWildcardDomains();
       fetchLiveWebServers();
+      fetchScanStatus();
     }
   }, [baseDomains]);
 
@@ -285,6 +288,35 @@ const KatanaCompanyConfigModal = ({
     }
   };
 
+  const fetchScanStatus = async () => {
+    if (!activeTarget?.id) return;
+
+    setLoadingScanStatus(true);
+    try {
+      const response = await fetch(
+        `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${activeTarget.id}/scans/katana-company`
+      );
+      
+      if (response.ok) {
+        const scans = await response.json();
+        const scannedSet = new Set();
+        
+        // Extract domains from successful scans
+        scans.forEach(scan => {
+          if (scan.status === 'success' && scan.domains && Array.isArray(scan.domains)) {
+            scan.domains.forEach(domain => scannedSet.add(domain));
+          }
+        });
+        
+        setScannedDomains(scannedSet);
+      }
+    } catch (error) {
+      console.error('Error fetching Katana Company scan status:', error);
+    } finally {
+      setLoadingScanStatus(false);
+    }
+  };
+
   const loadSavedConfig = async () => {
     if (!activeTarget?.id) return;
 
@@ -442,6 +474,32 @@ const KatanaCompanyConfigModal = ({
     setSelectedDomains(newSelected);
   };
 
+  const handleSelectScanned = () => {
+    const filteredDomains = getFilteredAndSortedDomains();
+    const newSelected = new Set();
+    
+    filteredDomains.forEach(item => {
+      if (scannedDomains.has(item.domain)) {
+        newSelected.add(item.domain);
+      }
+    });
+    
+    setSelectedDomains(newSelected);
+  };
+
+  const handleSelectUnscanned = () => {
+    const filteredDomains = getFilteredAndSortedDomains();
+    const newSelected = new Set();
+    
+    filteredDomains.forEach(item => {
+      if (!scannedDomains.has(item.domain)) {
+        newSelected.add(item.domain);
+      }
+    });
+    
+    setSelectedDomains(newSelected);
+  };
+
   const handleDomainSelect = (domain, index) => {
     setSelectedDomains(prev => {
       const newSet = new Set(prev);
@@ -560,34 +618,53 @@ const KatanaCompanyConfigModal = ({
               </Col>
             </Row>
 
-            <div className="d-flex align-items-center mb-3" style={{ gap: '12px' }}>
-              <div className="d-flex" style={{ gap: '8px' }}>
+            <div className="d-flex align-items-center mb-3" style={{ gap: '8px' }}>
+              <div className="d-flex w-100" style={{ gap: '8px' }}>
                 <Button
-                  variant="success"
+                  variant="danger"
                   size="sm"
                   onClick={handleSelectAll}
                   disabled={filteredDomains.length === 0}
+                  className="flex-fill"
                 >
                   <FaCheck className="me-1" />
                   Select All
                 </Button>
                 <Button
-                  variant="danger"
+                  variant="outline-danger"
                   size="sm"
                   onClick={handleDeselectAll}
                   disabled={selectedDomains.size === 0}
+                  className="flex-fill"
                 >
                   <FaTimes className="me-1" />
                   Deselect All
                 </Button>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={handleSelectScanned}
+                  disabled={filteredDomains.length === 0 || loadingScanStatus}
+                  className="flex-fill"
+                >
+                  <i className="bi bi-check-circle me-1" />
+                  Select Scanned
+                </Button>
+                <Button
+                  variant="outline-danger"
+                  size="sm"
+                  onClick={handleSelectUnscanned}
+                  disabled={filteredDomains.length === 0 || loadingScanStatus}
+                  className="flex-fill"
+                >
+                  <i className="bi bi-question-circle me-1" />
+                  Select Unscanned
+                </Button>
               </div>
               
-              <div className="d-flex align-items-center">
-                <span className="text-white">Wildcard and live web server results are automatically included</span>
-                {(loadingWildcardDomains || loadingLiveWebServers) && (
-                  <Spinner size="sm" animation="border" variant="light" className="ms-2" />
-                )}
-              </div>
+              {loadingScanStatus && (
+                <Spinner size="sm" animation="border" variant="light" />
+              )}
             </div>
 
             <div className="mb-3">
@@ -721,6 +798,14 @@ const KatanaCompanyConfigModal = ({
                         </td>
                         <td>
                           {getSource()}
+                          {scannedDomains.has(item.domain) && (
+                            <div className="mt-1">
+                              <span className="badge bg-success text-dark" style={{ fontSize: '0.7rem' }}>
+                                <i className="bi bi-check-circle me-1" />
+                                Scanned
+                              </span>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     );

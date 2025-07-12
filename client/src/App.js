@@ -17,19 +17,19 @@ import Ars0nFrameworkHeader from './components/ars0nFrameworkHeader.js';
 import ManageScopeTargets from './components/manageScopeTargets.js';
 import fetchAmassScans from './utils/fetchAmassScans.js';
 import {
-  Container,
-  Fade,
-  Card,
-  Row,
-  Col,
-  Button,
-  ListGroup,
-  Accordion,
-  Modal,
-  Table,
-  Toast,
-  ToastContainer,
-  Spinner,
+    Container,
+    Fade,
+    Card,
+    Row,
+    Col,
+    Button,
+    ListGroup,
+    Accordion,
+    Modal,
+    Table,
+    Toast,
+    ToastContainer,
+    Spinner,
 } from 'react-bootstrap';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'bootstrap-icons/font/bootstrap-icons.css';
@@ -37,20 +37,20 @@ import initiateAmassScan from './utils/initiateAmassScan';
 import monitorScanStatus from './utils/monitorScanStatus';
 import validateInput from './utils/validateInput.js';
 import {
-  getTypeIcon,
-  getLastScanDate,
-  getLatestScanStatus,
-  getLatestScanTime,
-  getLatestScanId,
-  getExecutionTime,
-  getResultLength,
-  copyToClipboard,
+    getTypeIcon,
+    getLastScanDate,
+    getLatestScanStatus,
+    getLatestScanTime,
+    getLatestScanId,
+    getExecutionTime,
+    getResultLength,
+    copyToClipboard,
 } from './utils/miscUtils.js';
 import { MdCopyAll, MdCheckCircle } from 'react-icons/md';
 import initiateHttpxScan from './utils/initiateHttpxScan';
 import monitorHttpxScanStatus from './utils/monitorHttpxScanStatus';
 import initiateGauScan from './utils/initiateGauScan.js';
-import monitorGauScanStatus from './utils/monitorGauScanStatus.js';
+import monitorGauScanStatus from './utils/monitorGauScanStatus';
 import initiateSublist3rScan from './utils/initiateSublist3rScan';
 import monitorSublist3rScanStatus from './utils/monitorSublist3rScanStatus';
 import initiateAssetfinderScan from './utils/initiateAssetfinderScan';
@@ -90,9 +90,9 @@ import fetchHttpxScans from './utils/fetchHttpxScans';
 import ROIReport from './components/ROIReport';
 import HelpMeLearn from './components/HelpMeLearn';
 import {
-  AUTO_SCAN_STEPS,
-  resumeAutoScan as resumeAutoScanUtil,
-  startAutoScan as startAutoScanUtil
+    AUTO_SCAN_STEPS,
+    resumeAutoScan as resumeAutoScanUtil,
+    startAutoScan as startAutoScanUtil
 } from './utils/wildcardAutoScan';
 import getAutoScanSteps from './utils/autoScanSteps';
 import fetchAmassIntelScans from './utils/fetchAmassIntelScans';
@@ -121,6 +121,7 @@ import { ShodanCompanyResultsModal, ShodanCompanyHistoryModal } from './modals/S
 import monitorShodanCompanyScanStatus from './utils/monitorShodanCompanyScanStatus.js';
 import initiateShodanCompanyScan from './utils/initiateShodanCompanyScan';
 import AddWildcardTargetsModal from './modals/AddWildcardTargetsModal.js';
+import ExploreAttackSurfaceModal from './modals/ExploreAttackSurfaceModal.js';
 import initiateInvestigateScan from './utils/initiateInvestigateScan';
 import monitorInvestigateScanStatus from './utils/monitorInvestigateScanStatus';
 import TrimRootDomainsModal from './modals/TrimRootDomainsModal.js';
@@ -394,6 +395,7 @@ function App() {
   const [attackSurfaceIPAddressesCount, setAttackSurfaceIPAddressesCount] = useState(0);
   const [attackSurfaceLiveWebServersCount, setAttackSurfaceLiveWebServersCount] = useState(0);
   const [attackSurfaceCloudAssetsCount, setAttackSurfaceCloudAssetsCount] = useState(0);
+  const [attackSurfaceFQDNsCount, setAttackSurfaceFQDNsCount] = useState(0);
   const [showUniqueSubdomainsModal, setShowUniqueSubdomainsModal] = useState(false);
   const [mostRecentCeWLScanStatus, setMostRecentCeWLScanStatus] = useState(null);
   const [mostRecentCeWLScan, setMostRecentCeWLScan] = useState(null);
@@ -559,6 +561,7 @@ function App() {
   const [showKatanaCompanyResultsModal, setShowKatanaCompanyResultsModal] = useState(false);
   const [showKatanaCompanyHistoryModal, setShowKatanaCompanyHistoryModal] = useState(false);
   const [showKatanaCompanyConfigModal, setShowKatanaCompanyConfigModal] = useState(false);
+  const [showExploreAttackSurfaceModal, setShowExploreAttackSurfaceModal] = useState(false);
   const [katanaCompanyCloudAssets, setKatanaCompanyCloudAssets] = useState([]);
   
   const handleCloseSubdomainsModal = () => setShowSubdomainsModal(false);
@@ -1056,7 +1059,7 @@ function App() {
       fetchConsolidatedSubdomains(activeTarget, setConsolidatedSubdomains, setConsolidatedCount);
       fetchConsolidatedCompanyDomains(activeTarget, setConsolidatedCompanyDomains, setConsolidatedCompanyDomainsCount);
       fetchConsolidatedNetworkRanges(activeTarget, setConsolidatedNetworkRanges, setConsolidatedNetworkRangesCount);
-      fetchAttackSurfaceAssetCounts(activeTarget, setAttackSurfaceASNsCount, setAttackSurfaceNetworkRangesCount, setAttackSurfaceIPAddressesCount, setAttackSurfaceLiveWebServersCount, setAttackSurfaceCloudAssetsCount);
+      fetchAttackSurfaceAssetCounts(activeTarget, setAttackSurfaceASNsCount, setAttackSurfaceNetworkRangesCount, setAttackSurfaceIPAddressesCount, setAttackSurfaceLiveWebServersCount, setAttackSurfaceCloudAssetsCount, setAttackSurfaceFQDNsCount);
       loadAmassEnumConfig();
       loadAmassIntelConfig();
       loadDNSxConfig();
@@ -2267,6 +2270,8 @@ function App() {
   const handleOpenKatanaCompanyHistoryModal = () => setShowKatanaCompanyHistoryModal(true);
 
   const handleCloseKatanaCompanyConfigModal = () => setShowKatanaCompanyConfigModal(false);
+  const handleCloseExploreAttackSurfaceModal = () => setShowExploreAttackSurfaceModal(false);
+  const handleOpenExploreAttackSurfaceModal = () => setShowExploreAttackSurfaceModal(true);
   const handleOpenKatanaCompanyConfigModal = () => setShowKatanaCompanyConfigModal(true);
 
   const handleKatanaCompanyConfigSave = async (config) => {
@@ -2503,6 +2508,7 @@ function App() {
             setAttackSurfaceIPAddressesCount(data.ip_addresses || 0);
             setAttackSurfaceLiveWebServersCount(data.live_web_servers || 0);
             setAttackSurfaceCloudAssetsCount(data.cloud_assets || 0);
+            setAttackSurfaceFQDNsCount(data.fqdns || 0);
           }
         } catch (countError) {
           console.error('Error fetching attack surface asset counts:', countError);
@@ -5191,26 +5197,30 @@ function App() {
                         Comprehensive attack surface management and analysis for your company's digital footprint across all discovered assets, domains, and cloud resources.
                       </Card.Text>
                       <div className="text-danger mb-4">
-                        <div className="row row-cols-5">
+                        <div className="row row-cols-6">
                           <div className="col">
                             <h3 className="mb-0">{attackSurfaceASNsCount}</h3>
-                            <small className="text-white-50">ASNs</small>
+                            <small className="text-white-50">Autonomous System<br/>Numbers (ASNs)</small>
                           </div>
                           <div className="col">
                             <h3 className="mb-0">{attackSurfaceNetworkRangesCount}</h3>
-                            <small className="text-white-50">Network Ranges</small>
+                            <small className="text-white-50">Network<br/>Ranges</small>
                           </div>
                           <div className="col">
                             <h3 className="mb-0">{attackSurfaceIPAddressesCount}</h3>
-                            <small className="text-white-50">IP Addresses</small>
+                            <small className="text-white-50">IP<br/>Addresses</small>
                           </div>
                           <div className="col">
-                            <h3 className="mb-0">{attackSurfaceLiveWebServersCount}</h3>
-                            <small className="text-white-50">Live Web Servers</small>
+                            <h3 className="mb-0">{attackSurfaceFQDNsCount}</h3>
+                            <small className="text-white-50">Domain<br/>Names</small>
                           </div>
                           <div className="col">
                             <h3 className="mb-0">{attackSurfaceCloudAssetsCount}</h3>
-                            <small className="text-white-50">Cloud Assets</small>
+                            <small className="text-white-50">Cloud Asset<br/>Domains</small>
+                          </div>
+                          <div className="col">
+                            <h3 className="mb-0">{attackSurfaceLiveWebServersCount}</h3>
+                            <small className="text-white-50">Live Web<br/>Servers</small>
                           </div>
                         </div>
                       </div>
@@ -5227,7 +5237,7 @@ function App() {
                             'Consolidate'
                           )}
                         </Button>
-                        <Button variant="outline-danger" className="flex-fill">Explore</Button>
+                        <Button variant="outline-danger" className="flex-fill" onClick={handleOpenExploreAttackSurfaceModal}>Explore</Button>
                         <Button variant="outline-danger" className="flex-fill">Analyze</Button>
                         <Button variant="outline-danger" className="flex-fill">Visualize</Button>
                         <Button variant="outline-danger" className="flex-fill">Report</Button>
@@ -6383,6 +6393,12 @@ function App() {
         handleClose={handleCloseKatanaCompanyHistoryModal}
         scans={katanaCompanyScans}
       />
+
+             <ExploreAttackSurfaceModal
+         show={showExploreAttackSurfaceModal}
+         handleClose={handleCloseExploreAttackSurfaceModal}
+         activeTarget={activeTarget}
+       />
 
     </Container>
   );
