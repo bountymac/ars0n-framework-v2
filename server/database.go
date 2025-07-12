@@ -836,6 +836,7 @@ func createTables() {
 			service TEXT NOT NULL,
 			description TEXT,
 			source_url TEXT,
+			region TEXT,
 			last_scanned_at TIMESTAMP DEFAULT NOW(),
 			created_at TIMESTAMP DEFAULT NOW(),
 			FOREIGN KEY (scope_target_id, root_domain) REFERENCES katana_company_domain_results(scope_target_id, domain) ON DELETE CASCADE,
@@ -875,11 +876,14 @@ func createTables() {
 			asn_description TEXT,
 			asn_country TEXT,
 			
-			-- Network range specific fields
-			cidr_block TEXT,
+			    -- Network range specific fields
+    cidr_block TEXT,
+    subnet_size INTEGER,
+    responsive_ip_count INTEGER,
+    responsive_port_count INTEGER,
 			
 			-- IP address specific fields
-			ip_address INET,
+			ip_address TEXT,
 			ip_type VARCHAR(10),
 			
 			-- Live web server specific fields

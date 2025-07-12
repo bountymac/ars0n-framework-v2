@@ -209,105 +209,187 @@ const ExploreAttackSurfaceModal = ({
     }
   };
 
-  const renderAssetDetails = (asset) => {
-    switch (asset.asset_type) {
-      case 'asn':
-        return (
-          <div>
-            <div className="mb-1"><span className="text-danger fw-bold">ASN:</span> {asset.asn_number}</div>
-            <div className="mb-1"><span className="text-danger fw-bold">Organization:</span> {asset.asn_organization}</div>
-            <div className="mb-1"><span className="text-danger fw-bold">Country:</span> {asset.asn_country}</div>
-            {asset.asn_description && <div className="mb-1"><span className="text-danger fw-bold">Description:</span> {asset.asn_description}</div>}
-          </div>
-        );
-      
-      case 'network_range':
-        return (
-          <div>
-            <div className="mb-1"><span className="text-danger fw-bold">CIDR:</span> {asset.cidr_block}</div>
-          </div>
-        );
-      
+  const renderTableCell = (asset, key) => {
+    switch (key) {
+      case 'asn_number':
+        return asset.asn_number ? <code>AS{asset.asn_number}</code> : <span className="text-white-50">-</span>;
+      case 'asn_organization':
+        return asset.asn_organization || <span className="text-white-50">-</span>;
+      case 'asn_country':
+        return asset.asn_country || <span className="text-white-50">-</span>;
+      case 'asn_description':
+        return asset.asn_description || <span className="text-white-50">-</span>;
+      case 'cidr_block':
+        return <code>{asset.cidr_block}</code>;
+      case 'subnet_size':
+        return asset.subnet_size ? asset.subnet_size.toLocaleString() : <span className="text-white-50">-</span>;
       case 'ip_address':
+        return <code>{asset.ip_address}</code>;
+      case 'resolved_ips':
+        const allDNSRecords = [];
+        
+        if (asset.resolved_ips && asset.resolved_ips.length > 0) {
+          asset.resolved_ips.forEach(record => {
+            allDNSRecords.push({ type: 'Hostname', value: record, color: 'text-info' });
+          });
+        }
+        
+        if (asset.ptr_records && asset.ptr_records.length > 0) {
+          asset.ptr_records.forEach(record => {
+            allDNSRecords.push({ type: 'PTR', value: record, color: 'text-warning' });
+          });
+        }
+        
+        if (asset.a_records && asset.a_records.length > 0) {
+          asset.a_records.forEach(record => {
+            allDNSRecords.push({ type: 'A', value: record, color: 'text-success' });
+          });
+        }
+        
+        if (asset.aaaa_records && asset.aaaa_records.length > 0) {
+          asset.aaaa_records.forEach(record => {
+            allDNSRecords.push({ type: 'AAAA', value: record, color: 'text-danger' });
+          });
+        }
+        
+        if (allDNSRecords.length > 0) {
+          return (
+            <div style={{ maxWidth: '250px' }}>
+              {allDNSRecords.map((record, index) => (
+                <div key={index} className={`small ${record.color}`}>
+                  <strong>{record.type}:</strong> {record.value}
+                </div>
+              ))}
+            </div>
+          );
+        }
+        return <span className="text-white-50">-</span>;
+      case 'url':
         return (
-          <div>
-            <div className="mb-1"><span className="text-danger fw-bold">IP:</span> {asset.ip_address}</div>
-            <div className="mb-1"><span className="text-danger fw-bold">Type:</span> {asset.ip_type}</div>
+          <div style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <a href={asset.url} target="_blank" rel="noopener noreferrer" className="text-info">
+              {asset.url}
+            </a>
           </div>
         );
-      
-      case 'live_web_server':
-        return (
-          <div>
-            <div className="mb-1"><span className="text-danger fw-bold">URL:</span> {asset.url}</div>
-            <div className="mb-1"><span className="text-danger fw-bold">Domain:</span> {asset.domain}</div>
-            <div className="mb-1"><span className="text-danger fw-bold">Port:</span> {asset.port}</div>
-            <div className="mb-1"><span className="text-danger fw-bold">Protocol:</span> {asset.protocol}</div>
-            <div className="mb-1"><span className="text-danger fw-bold">Status:</span> {asset.status_code}</div>
-            <div className="mb-1"><span className="text-danger fw-bold">Title:</span> {asset.title}</div>
-            <div className="mb-1"><span className="text-danger fw-bold">Web Server:</span> {asset.web_server}</div>
-            {asset.technologies && asset.technologies.length > 0 && (
-              <div className="mb-1"><span className="text-danger fw-bold">Technologies:</span> {asset.technologies.join(', ')}</div>
-            )}
-          </div>
-        );
-      
-      case 'cloud_asset':
-        return (
-          <div>
-            <div className="mb-1"><span className="text-danger fw-bold">Provider:</span> {asset.cloud_provider}</div>
-            <div className="mb-1"><span className="text-danger fw-bold">Service:</span> {asset.cloud_service_type}</div>
-            <div className="mb-1"><span className="text-danger fw-bold">Region:</span> {asset.cloud_region}</div>
-            <div className="mb-1"><span className="text-danger fw-bold">Identifier:</span> {asset.asset_identifier}</div>
-          </div>
-        );
-      
-      case 'fqdn':
-        return (
-          <div>
-            <div className="mb-1"><span className="text-danger fw-bold">FQDN:</span> {asset.fqdn}</div>
-            {asset.root_domain && <div className="mb-1"><span className="text-danger fw-bold">Root Domain:</span> {asset.root_domain}</div>}
-            {asset.subdomain && <div className="mb-1"><span className="text-danger fw-bold">Subdomain:</span> {asset.subdomain}</div>}
-            {asset.registrar && <div className="mb-1"><span className="text-danger fw-bold">Registrar:</span> {asset.registrar}</div>}
-            {asset.creation_date && <div className="mb-1"><span className="text-danger fw-bold">Creation Date:</span> {asset.creation_date}</div>}
-            {asset.expiration_date && <div className="mb-1"><span className="text-danger fw-bold">Expiration Date:</span> {asset.expiration_date}</div>}
-            {asset.ssl_expiry_date && <div className="mb-1"><span className="text-danger fw-bold">SSL Expiry:</span> {asset.ssl_expiry_date}</div>}
-            {asset.ssl_issuer && <div className="mb-1"><span className="text-danger fw-bold">SSL Issuer:</span> {asset.ssl_issuer}</div>}
-            {asset.resolved_ips && asset.resolved_ips.length > 0 && (
-              <div className="mb-1"><span className="text-danger fw-bold">Resolved IPs:</span> {asset.resolved_ips.join(', ')}</div>
-            )}
-            {asset.name_servers && asset.name_servers.length > 0 && (
-              <div className="mb-1"><span className="text-danger fw-bold">Name Servers:</span> {asset.name_servers.join(', ')}</div>
-            )}
-            {asset.mail_servers && asset.mail_servers.length > 0 && (
-              <div className="mb-1"><span className="text-danger fw-bold">Mail Servers:</span> {asset.mail_servers.join(', ')}</div>
-            )}
-            {asset.spf_record && <div className="mb-1"><span className="text-danger fw-bold">SPF:</span> {asset.spf_record}</div>}
-            {asset.dkim_record && <div className="mb-1"><span className="text-danger fw-bold">DKIM:</span> {asset.dkim_record}</div>}
-            {asset.dmarc_record && <div className="mb-1"><span className="text-danger fw-bold">DMARC:</span> {asset.dmarc_record}</div>}
-          </div>
-        );
-      
-      default:
-        return <div className="mb-1"><span className="text-danger fw-bold">Identifier:</span> {asset.asset_identifier}</div>;
-    }
-  };
-
-  const renderRelationships = (asset) => {
-    if (!asset.relationships || asset.relationships.length === 0) {
-      return <span className="text-white-50">None</span>;
-    }
-
-    return (
-      <div>
-        {asset.relationships.map((rel, index) => (
-          <Badge key={index} variant="outline-info" className="me-1">
-            {rel.relationship_type}
+      case 'domain':
+        return asset.domain || <span className="text-white-50">-</span>;
+      case 'port':
+        return asset.port || <span className="text-white-50">-</span>;
+      case 'protocol':
+        return asset.protocol || <span className="text-white-50">-</span>;
+      case 'status_code':
+        return asset.status_code ? (
+          <Badge variant={asset.status_code >= 200 && asset.status_code < 300 ? "success" : "warning"}>
+            {asset.status_code}
           </Badge>
-        ))}
-      </div>
-    );
+        ) : <span className="text-white-50">-</span>;
+      case 'title':
+        return (
+          <div style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {asset.title || <span className="text-white-50">-</span>}
+          </div>
+        );
+      case 'cloud_provider':
+        return asset.cloud_provider || <span className="text-white-50">-</span>;
+      case 'cloud_service_type':
+        return asset.cloud_service_type || <span className="text-white-50">-</span>;
+      case 'cloud_region':
+        return asset.cloud_region || <span className="text-white-50">-</span>;
+      case 'asset_identifier':
+        if (asset.asset_type === 'cloud_asset') {
+          return <code className="text-info">{asset.asset_identifier}</code>;
+        }
+        return <code>{asset.asset_identifier}</code>;
+      case 'fqdn':
+        return <code>{asset.fqdn}</code>;
+      case 'root_domain':
+        return asset.root_domain || <span className="text-white-50">-</span>;
+      case 'subdomain':
+        return asset.subdomain || <span className="text-white-50">-</span>;
+      case 'registrar':
+        return asset.registrar || <span className="text-white-50">-</span>;
+      case 'dns_records':
+        const dnsRecords = [];
+        
+        if (asset.a_records && asset.a_records.length > 0) {
+          asset.a_records.forEach(record => {
+            dnsRecords.push({ type: 'A', value: record, color: 'text-success' });
+          });
+        }
+        
+        if (asset.aaaa_records && asset.aaaa_records.length > 0) {
+          asset.aaaa_records.forEach(record => {
+            dnsRecords.push({ type: 'AAAA', value: record, color: 'text-info' });
+          });
+        }
+        
+        if (asset.cname_records && asset.cname_records.length > 0) {
+          asset.cname_records.forEach(record => {
+            dnsRecords.push({ type: 'CNAME', value: record, color: 'text-warning' });
+          });
+        }
+        
+        if (asset.mx_records && asset.mx_records.length > 0) {
+          asset.mx_records.forEach(record => {
+            dnsRecords.push({ type: 'MX', value: record, color: 'text-danger' });
+          });
+        }
+        
+        if (asset.ns_records && asset.ns_records.length > 0) {
+          asset.ns_records.forEach(record => {
+            dnsRecords.push({ type: 'NS', value: record, color: 'text-primary' });
+          });
+        }
+        
+        if (asset.txt_records && asset.txt_records.length > 0) {
+          asset.txt_records.forEach(record => {
+            dnsRecords.push({ type: 'TXT', value: record, color: 'text-secondary' });
+          });
+        }
+        
+        if (asset.ptr_records && asset.ptr_records.length > 0) {
+          asset.ptr_records.forEach(record => {
+            dnsRecords.push({ type: 'PTR', value: record, color: 'text-light' });
+          });
+        }
+        
+        if (asset.srv_records && asset.srv_records.length > 0) {
+          asset.srv_records.forEach(record => {
+            dnsRecords.push({ type: 'SRV', value: record, color: 'text-muted' });
+          });
+        }
+        
+        if (dnsRecords.length > 0) {
+          const maxWidth = asset.asset_type === 'cloud_asset' ? '350px' : '300px';
+          const maxRecords = asset.asset_type === 'cloud_asset' ? 3 : 5;
+          
+          return (
+            <div style={{ maxWidth }}>
+              {dnsRecords.slice(0, maxRecords).map((record, index) => (
+                <div key={index} className={`small ${record.color}`}>
+                  <strong>{record.type}:</strong> {record.value}
+                </div>
+              ))}
+              {dnsRecords.length > maxRecords && (
+                <div className="small text-muted">
+                  +{dnsRecords.length - maxRecords} more records
+                </div>
+              )}
+            </div>
+          );
+        }
+        return <span className="text-white-50">-</span>;
+      case 'asset_identifier':
+        return <code>{asset.asset_identifier}</code>;
+      case 'last_updated':
+        return new Date(asset.last_updated).toLocaleDateString();
+      default:
+        return <span className="text-white-50">-</span>;
+    }
   };
+
+
 
   const renderFiltersForTab = () => {
     return (
@@ -383,28 +465,224 @@ const ExploreAttackSurfaceModal = ({
   };
 
   const renderTableHeaders = () => {
-    return [
-      {
-        key: 'asset_identifier',
-        label: 'Identifier',
-        sortable: true
-      },
-      {
-        key: 'details',
-        label: 'Details',
-        sortable: false
-      },
-      {
-        key: 'relationships',
-        label: 'Relationships',
-        sortable: false
-      },
-      {
-        key: 'last_updated',
-        label: 'Last Updated',
-        sortable: true
-      }
-    ];
+    switch (activeTab) {
+      case 'asn':
+        return [
+          {
+            key: 'asn_number',
+            label: 'ASN Number',
+            sortable: true
+          },
+          {
+            key: 'asn_organization',
+            label: 'Organization',
+            sortable: true
+          },
+          {
+            key: 'asn_country',
+            label: 'Country',
+            sortable: true
+          },
+          {
+            key: 'asn_description',
+            label: 'Description',
+            sortable: true
+          },
+          {
+            key: 'last_updated',
+            label: 'Last Updated',
+            sortable: true
+          }
+        ];
+      case 'network_range':
+        return [
+          {
+            key: 'cidr_block',
+            label: 'CIDR Block',
+            sortable: true
+          },
+          {
+            key: 'asn_number',
+            label: 'ASN',
+            sortable: true
+          },
+          {
+            key: 'asn_organization',
+            label: 'Organization',
+            sortable: true
+          },
+          {
+            key: 'asn_country',
+            label: 'Country',
+            sortable: true
+          },
+          {
+            key: 'asn_description',
+            label: 'Description',
+            sortable: true
+          },
+          {
+            key: 'subnet_size',
+            label: 'Subnet Size',
+            sortable: true
+          },
+          {
+            key: 'last_updated',
+            label: 'Last Updated',
+            sortable: true
+          }
+        ];
+      case 'ip_address':
+        return [
+          {
+            key: 'ip_address',
+            label: 'IP Address',
+            sortable: true
+          },
+          {
+            key: 'asn_number',
+            label: 'ASN',
+            sortable: true
+          },
+          {
+            key: 'asn_organization',
+            label: 'Organization',
+            sortable: true
+          },
+          {
+            key: 'asn_country',
+            label: 'Country',
+            sortable: true
+          },
+          {
+            key: 'resolved_ips',
+            label: 'DNS Records',
+            sortable: false
+          },
+          {
+            key: 'last_updated',
+            label: 'Last Updated',
+            sortable: true
+          }
+        ];
+      case 'live_web_server':
+        return [
+          {
+            key: 'url',
+            label: 'URL',
+            sortable: true
+          },
+          {
+            key: 'domain',
+            label: 'Domain',
+            sortable: true
+          },
+          {
+            key: 'port',
+            label: 'Port',
+            sortable: true
+          },
+          {
+            key: 'protocol',
+            label: 'Protocol',
+            sortable: true
+          },
+          {
+            key: 'status_code',
+            label: 'Status',
+            sortable: true
+          },
+          {
+            key: 'title',
+            label: 'Title',
+            sortable: true
+          },
+          {
+            key: 'last_updated',
+            label: 'Last Updated',
+            sortable: true
+          }
+        ];
+      case 'cloud_asset':
+        return [
+          {
+            key: 'asset_identifier',
+            label: 'Cloud Domain',
+            sortable: true
+          },
+          {
+            key: 'cloud_provider',
+            label: 'Provider',
+            sortable: true
+          },
+          {
+            key: 'cloud_service_type',
+            label: 'Service',
+            sortable: true
+          },
+          {
+            key: 'cloud_region',
+            label: 'Region',
+            sortable: true
+          },
+          {
+            key: 'dns_records',
+            label: 'DNS Records',
+            sortable: false
+          },
+          {
+            key: 'last_updated',
+            label: 'Last Updated',
+            sortable: true
+          }
+        ];
+      case 'fqdn':
+        return [
+          {
+            key: 'fqdn',
+            label: 'FQDN',
+            sortable: true
+          },
+          {
+            key: 'root_domain',
+            label: 'Root Domain',
+            sortable: true
+          },
+          {
+            key: 'subdomain',
+            label: 'Subdomain',
+            sortable: true
+          },
+          {
+            key: 'dns_records',
+            label: 'DNS Records',
+            sortable: false
+          },
+          {
+            key: 'registrar',
+            label: 'Registrar',
+            sortable: true
+          },
+          {
+            key: 'last_updated',
+            label: 'Last Updated',
+            sortable: true
+          }
+        ];
+      default:
+        return [
+          {
+            key: 'asset_identifier',
+            label: 'Identifier',
+            sortable: true
+          },
+          {
+            key: 'last_updated',
+            label: 'Last Updated',
+            sortable: true
+          }
+        ];
+    }
   };
 
   const counts = getAssetTypeCounts();
@@ -539,20 +817,11 @@ const ExploreAttackSurfaceModal = ({
                   <tbody>
                     {filteredAssets.map((asset) => (
                       <tr key={asset.id}>
-                        <td>
-                          <code>{asset.asset_identifier}</code>
-                        </td>
-                        <td>
-                          <div style={{ maxWidth: '300px', fontSize: '0.875rem' }}>
-                            {renderAssetDetails(asset)}
-                          </div>
-                        </td>
-                        <td>
-                          {renderRelationships(asset)}
-                        </td>
-                        <td>
-                          {new Date(asset.last_updated).toLocaleString()}
-                        </td>
+                        {renderTableHeaders().map((header) => (
+                          <td key={header.key}>
+                            {renderTableCell(asset, header.key)}
+                          </td>
+                        ))}
                       </tr>
                     ))}
                   </tbody>
