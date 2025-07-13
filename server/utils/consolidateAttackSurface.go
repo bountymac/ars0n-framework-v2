@@ -2,9 +2,11 @@ package utils
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -212,9 +214,19 @@ func ConsolidateAttackSurface(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Printf("[ATTACK SURFACE] Consolidated %d FQDNs", fqdns)
 
-	// Create relationships between assets
-	log.Printf("[ATTACK SURFACE] Creating asset relationships...")
-	relationshipCount, err := createAssetRelationships(scopeTargetID)
+	// Enrich FQDNs with investigate data (optimized mode with 5-7s timeouts)
+	log.Printf("[ATTACK SURFACE] Enriching FQDNs with investigate data (optimized mode)...")
+	enrichedFqdns, err := enrichFQDNsWithInvestigateData(scopeTargetID)
+	if err != nil {
+		log.Printf("Error enriching FQDNs with investigate data: %v", err)
+		http.Error(w, "Failed to enrich FQDNs with investigate data", http.StatusInternalServerError)
+		return
+	}
+	log.Printf("[ATTACK SURFACE] Enriched %d FQDNs with investigate data", enrichedFqdns)
+
+	// Create comprehensive relationships between assets
+	log.Printf("[ATTACK SURFACE] Creating comprehensive asset relationships...")
+	relationshipCount, err := createComprehensiveAssetRelationships(scopeTargetID)
 	if err != nil {
 		log.Printf("Error creating asset relationships: %v", err)
 		http.Error(w, "Failed to create asset relationships", http.StatusInternalServerError)
@@ -2440,6 +2452,241 @@ func createAssetRelationships(scopeTargetID string) (int, error) {
 	return totalRelationships, nil
 }
 
+func createComprehensiveAssetRelationships(scopeTargetID string) (int, error) {
+	log.Printf("[RELATIONSHIP MAPPING] Starting comprehensive relationship mapping for scope target: %s", scopeTargetID)
+	totalRelationships := 0
+
+	// Clear existing relationships first
+	log.Printf("[RELATIONSHIP MAPPING] Clearing existing relationships...")
+	clearQuery := `DELETE FROM consolidated_attack_surface_relationships 
+		WHERE parent_asset_id IN (SELECT id FROM consolidated_attack_surface_assets WHERE scope_target_id = $1::uuid)
+		OR child_asset_id IN (SELECT id FROM consolidated_attack_surface_assets WHERE scope_target_id = $1::uuid)`
+
+	_, err := dbPool.Exec(context.Background(), clearQuery, scopeTargetID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to clear existing relationships: %v", err)
+	}
+
+	// 1. Network Ranges -> ASNs
+	log.Printf("[RELATIONSHIP MAPPING] Creating Network Range -> ASN relationships...")
+	networkToASNQuery := `
+		INSERT INTO consolidated_attack_surface_relationships (
+			parent_asset_id, child_asset_id, relationship_type
+		)
+		SELECT DISTINCT 
+			asn.id, nr.id, 'contains'
+		FROM consolidated_attack_surface_assets asn
+		JOIN consolidated_attack_surface_assets nr ON asn.scope_target_id = nr.scope_target_id
+		WHERE asn.scope_target_id = $1::uuid 
+			AND asn.asset_type = 'asn'
+			AND nr.asset_type = 'network_range'
+			AND asn.asn_number IS NOT NULL
+			AND nr.asn_number IS NOT NULL
+			AND asn.asn_number = nr.asn_number
+		ON CONFLICT (parent_asset_id, child_asset_id, relationship_type) DO NOTHING
+	`
+
+	networkToASNResult, err := dbPool.Exec(context.Background(), networkToASNQuery, scopeTargetID)
+	if err != nil {
+		log.Printf("[RELATIONSHIP MAPPING] Error creating Network Range -> ASN relationships: %v", err)
+		return totalRelationships, err
+	}
+	networkToASNCount := int(networkToASNResult.RowsAffected())
+	totalRelationships += networkToASNCount
+	log.Printf("[RELATIONSHIP MAPPING] Created %d Network Range -> ASN relationships", networkToASNCount)
+
+	// 2. IP Addresses -> Network Ranges
+	log.Printf("[RELATIONSHIP MAPPING] Creating IP Address -> Network Range relationships...")
+	ipToNetworkQuery := `
+		INSERT INTO consolidated_attack_surface_relationships (
+			parent_asset_id, child_asset_id, relationship_type
+		)
+		SELECT DISTINCT 
+			nr.id, ip.id, 'contains'
+		FROM consolidated_attack_surface_assets nr
+		JOIN consolidated_attack_surface_assets ip ON nr.scope_target_id = ip.scope_target_id
+		WHERE nr.scope_target_id = $1::uuid 
+			AND nr.asset_type = 'network_range'
+			AND ip.asset_type = 'ip_address'
+			AND nr.cidr_block IS NOT NULL 
+			AND ip.ip_address IS NOT NULL
+			AND nr.cidr_block ~ '^(\d{1,3}\.){3}\d{1,3}/\d{1,2}$'
+			AND ip.ip_address ~ '^(\d{1,3}\.){3}\d{1,3}$'
+			AND ip.ip_address::inet <<= nr.cidr_block::cidr
+		ON CONFLICT (parent_asset_id, child_asset_id, relationship_type) DO NOTHING
+	`
+
+	ipToNetworkResult, err := dbPool.Exec(context.Background(), ipToNetworkQuery, scopeTargetID)
+	if err != nil {
+		log.Printf("[RELATIONSHIP MAPPING] Error creating IP Address -> Network Range relationships: %v", err)
+		return totalRelationships, err
+	}
+	ipToNetworkCount := int(ipToNetworkResult.RowsAffected())
+	totalRelationships += ipToNetworkCount
+	log.Printf("[RELATIONSHIP MAPPING] Created %d IP Address -> Network Range relationships", ipToNetworkCount)
+
+	// 3. FQDNs -> IP Addresses (via resolved IPs)
+	log.Printf("[RELATIONSHIP MAPPING] Creating FQDN -> IP Address relationships...")
+	fqdnToIPQuery := `
+		INSERT INTO consolidated_attack_surface_relationships (
+			parent_asset_id, child_asset_id, relationship_type
+		)
+		SELECT DISTINCT 
+			fqdn.id, ip.id, 'resolves_to'
+		FROM consolidated_attack_surface_assets fqdn
+		JOIN consolidated_attack_surface_assets ip ON fqdn.scope_target_id = ip.scope_target_id
+		WHERE fqdn.scope_target_id = $1::uuid 
+			AND fqdn.asset_type = 'fqdn'
+			AND ip.asset_type = 'ip_address'
+			AND fqdn.resolved_ips IS NOT NULL
+			AND ip.ip_address IS NOT NULL
+			AND ip.ip_address = ANY(fqdn.resolved_ips)
+		ON CONFLICT (parent_asset_id, child_asset_id, relationship_type) DO NOTHING
+	`
+
+	fqdnToIPResult, err := dbPool.Exec(context.Background(), fqdnToIPQuery, scopeTargetID)
+	if err != nil {
+		log.Printf("[RELATIONSHIP MAPPING] Error creating FQDN -> IP Address relationships: %v", err)
+		return totalRelationships, err
+	}
+	fqdnToIPCount := int(fqdnToIPResult.RowsAffected())
+	totalRelationships += fqdnToIPCount
+	log.Printf("[RELATIONSHIP MAPPING] Created %d FQDN -> IP Address relationships", fqdnToIPCount)
+
+	// 4. Cloud Assets -> FQDNs (via domain matching)
+	log.Printf("[RELATIONSHIP MAPPING] Creating Cloud Asset -> FQDN relationships...")
+	cloudToFQDNQuery := `
+		INSERT INTO consolidated_attack_surface_relationships (
+			parent_asset_id, child_asset_id, relationship_type
+		)
+		SELECT DISTINCT 
+			fqdn.id, cloud.id, 'cloud_service'
+		FROM consolidated_attack_surface_assets fqdn
+		JOIN consolidated_attack_surface_assets cloud ON fqdn.scope_target_id = cloud.scope_target_id
+		WHERE fqdn.scope_target_id = $1::uuid 
+			AND fqdn.asset_type = 'fqdn'
+			AND cloud.asset_type = 'cloud_asset'
+			AND fqdn.fqdn IS NOT NULL
+			AND cloud.domain IS NOT NULL
+			AND (
+				cloud.domain LIKE '%' || fqdn.fqdn || '%'
+				OR fqdn.fqdn LIKE '%' || cloud.domain || '%'
+			)
+		ON CONFLICT (parent_asset_id, child_asset_id, relationship_type) DO NOTHING
+	`
+
+	cloudToFQDNResult, err := dbPool.Exec(context.Background(), cloudToFQDNQuery, scopeTargetID)
+	if err != nil {
+		log.Printf("[RELATIONSHIP MAPPING] Error creating Cloud Asset -> FQDN relationships: %v", err)
+		return totalRelationships, err
+	}
+	cloudToFQDNCount := int(cloudToFQDNResult.RowsAffected())
+	totalRelationships += cloudToFQDNCount
+	log.Printf("[RELATIONSHIP MAPPING] Created %d Cloud Asset -> FQDN relationships", cloudToFQDNCount)
+
+	// 5. Live Web Servers -> FQDNs (via domain matching)
+	log.Printf("[RELATIONSHIP MAPPING] Creating Live Web Server -> FQDN relationships...")
+	liveWebServerToFQDNQuery := `
+		INSERT INTO consolidated_attack_surface_relationships (
+			parent_asset_id, child_asset_id, relationship_type
+		)
+		SELECT DISTINCT 
+			fqdn.id, lws.id, 'hosts'
+		FROM consolidated_attack_surface_assets fqdn
+		JOIN consolidated_attack_surface_assets lws ON fqdn.scope_target_id = lws.scope_target_id
+		WHERE fqdn.scope_target_id = $1::uuid 
+			AND fqdn.asset_type = 'fqdn'
+			AND lws.asset_type = 'live_web_server'
+			AND fqdn.fqdn IS NOT NULL
+			AND lws.domain IS NOT NULL
+			AND fqdn.fqdn = lws.domain
+		ON CONFLICT (parent_asset_id, child_asset_id, relationship_type) DO NOTHING
+	`
+
+	liveWebServerToFQDNResult, err := dbPool.Exec(context.Background(), liveWebServerToFQDNQuery, scopeTargetID)
+	if err != nil {
+		log.Printf("[RELATIONSHIP MAPPING] Error creating Live Web Server -> FQDN relationships: %v", err)
+		return totalRelationships, err
+	}
+	liveWebServerToFQDNCount := int(liveWebServerToFQDNResult.RowsAffected())
+	totalRelationships += liveWebServerToFQDNCount
+	log.Printf("[RELATIONSHIP MAPPING] Created %d Live Web Server -> FQDN relationships", liveWebServerToFQDNCount)
+
+	// 6. Live Web Servers -> IP Addresses (via IP matching)
+	log.Printf("[RELATIONSHIP MAPPING] Creating Live Web Server -> IP Address relationships...")
+	liveWebServerToIPQuery := `
+		INSERT INTO consolidated_attack_surface_relationships (
+			parent_asset_id, child_asset_id, relationship_type
+		)
+		SELECT DISTINCT 
+			ip.id, lws.id, 'hosts'
+		FROM consolidated_attack_surface_assets ip
+		JOIN consolidated_attack_surface_assets lws ON ip.scope_target_id = lws.scope_target_id
+		WHERE ip.scope_target_id = $1::uuid 
+			AND ip.asset_type = 'ip_address'
+			AND lws.asset_type = 'live_web_server'
+			AND ip.ip_address IS NOT NULL
+			AND lws.ip_address IS NOT NULL
+			AND ip.ip_address = lws.ip_address
+		ON CONFLICT (parent_asset_id, child_asset_id, relationship_type) DO NOTHING
+	`
+
+	liveWebServerToIPResult, err := dbPool.Exec(context.Background(), liveWebServerToIPQuery, scopeTargetID)
+	if err != nil {
+		log.Printf("[RELATIONSHIP MAPPING] Error creating Live Web Server -> IP Address relationships: %v", err)
+		return totalRelationships, err
+	}
+	liveWebServerToIPCount := int(liveWebServerToIPResult.RowsAffected())
+	totalRelationships += liveWebServerToIPCount
+	log.Printf("[RELATIONSHIP MAPPING] Created %d Live Web Server -> IP Address relationships", liveWebServerToIPCount)
+
+	// 7. Live Web Servers -> Cloud Assets (via domain/URL matching)
+	log.Printf("[RELATIONSHIP MAPPING] Creating Live Web Server -> Cloud Asset relationships...")
+	liveWebServerToCloudQuery := `
+		INSERT INTO consolidated_attack_surface_relationships (
+			parent_asset_id, child_asset_id, relationship_type
+		)
+		SELECT DISTINCT 
+			cloud.id, lws.id, 'cloud_hosted'
+		FROM consolidated_attack_surface_assets cloud
+		JOIN consolidated_attack_surface_assets lws ON cloud.scope_target_id = lws.scope_target_id
+		WHERE cloud.scope_target_id = $1::uuid 
+			AND cloud.asset_type = 'cloud_asset'
+			AND lws.asset_type = 'live_web_server'
+			AND cloud.domain IS NOT NULL
+			AND lws.domain IS NOT NULL
+			AND (
+				lws.domain LIKE '%' || cloud.domain || '%'
+				OR cloud.domain LIKE '%' || lws.domain || '%'
+				OR (cloud.url IS NOT NULL AND lws.url IS NOT NULL AND cloud.url = lws.url)
+			)
+		ON CONFLICT (parent_asset_id, child_asset_id, relationship_type) DO NOTHING
+	`
+
+	liveWebServerToCloudResult, err := dbPool.Exec(context.Background(), liveWebServerToCloudQuery, scopeTargetID)
+	if err != nil {
+		log.Printf("[RELATIONSHIP MAPPING] Error creating Live Web Server -> Cloud Asset relationships: %v", err)
+		return totalRelationships, err
+	}
+	liveWebServerToCloudCount := int(liveWebServerToCloudResult.RowsAffected())
+	totalRelationships += liveWebServerToCloudCount
+	log.Printf("[RELATIONSHIP MAPPING] Created %d Live Web Server -> Cloud Asset relationships", liveWebServerToCloudCount)
+
+	// Log final summary
+	log.Printf("[RELATIONSHIP MAPPING] ✅ RELATIONSHIP MAPPING COMPLETE!")
+	log.Printf("[RELATIONSHIP MAPPING] Summary for scope target %s:", scopeTargetID)
+	log.Printf("[RELATIONSHIP MAPPING]   • Network Range -> ASN: %d", networkToASNCount)
+	log.Printf("[RELATIONSHIP MAPPING]   • IP Address -> Network Range: %d", ipToNetworkCount)
+	log.Printf("[RELATIONSHIP MAPPING]   • FQDN -> IP Address: %d", fqdnToIPCount)
+	log.Printf("[RELATIONSHIP MAPPING]   • Cloud Asset -> FQDN: %d", cloudToFQDNCount)
+	log.Printf("[RELATIONSHIP MAPPING]   • Live Web Server -> FQDN: %d", liveWebServerToFQDNCount)
+	log.Printf("[RELATIONSHIP MAPPING]   • Live Web Server -> IP Address: %d", liveWebServerToIPCount)
+	log.Printf("[RELATIONSHIP MAPPING]   • Live Web Server -> Cloud Asset: %d", liveWebServerToCloudCount)
+	log.Printf("[RELATIONSHIP MAPPING]   • Total Relationships: %d", totalRelationships)
+
+	return totalRelationships, nil
+}
+
 func fetchConsolidatedAssets(scopeTargetID string) ([]AttackSurfaceAsset, error) {
 	query := `
 		SELECT 
@@ -2740,4 +2987,461 @@ func GetAttackSurfaceAssets(w http.ResponseWriter, r *http.Request) {
 		"assets": assets,
 		"total":  len(assets),
 	})
+}
+
+func enrichFQDNsWithInvestigateData(scopeTargetID string) (int, error) {
+	log.Printf("[FQDN ENRICHMENT] Starting FQDN enrichment with investigate data for scope target: %s", scopeTargetID)
+	startTime := time.Now()
+
+	// Get all consolidated FQDNs for this scope target
+	query := `
+		SELECT id, fqdn 
+		FROM consolidated_attack_surface_assets 
+		WHERE scope_target_id = $1 
+		AND asset_type = 'fqdn' 
+		AND fqdn IS NOT NULL
+		ORDER BY fqdn
+	`
+
+	rows, err := dbPool.Query(context.Background(), query, scopeTargetID)
+	if err != nil {
+		log.Printf("[FQDN ENRICHMENT] Error querying FQDNs: %v", err)
+		return 0, err
+	}
+	defer rows.Close()
+
+	var fqdnsToEnrich []struct {
+		ID   string
+		FQDN string
+	}
+
+	for rows.Next() {
+		var fqdn struct {
+			ID   string
+			FQDN string
+		}
+		if err := rows.Scan(&fqdn.ID, &fqdn.FQDN); err != nil {
+			log.Printf("[FQDN ENRICHMENT] Error scanning FQDN: %v", err)
+			continue
+		}
+		fqdnsToEnrich = append(fqdnsToEnrich, fqdn)
+	}
+
+	if len(fqdnsToEnrich) == 0 {
+		log.Printf("[FQDN ENRICHMENT] No FQDNs found for enrichment")
+		return 0, nil
+	}
+
+	log.Printf("[FQDN ENRICHMENT] Found %d FQDNs to enrich", len(fqdnsToEnrich))
+
+	// Get company name for HTTP info matching
+	var companyName string
+	err = dbPool.QueryRow(context.Background(), `
+		SELECT scope_target FROM scope_targets 
+		WHERE id = $1`, scopeTargetID).Scan(&companyName)
+	if err != nil {
+		log.Printf("[FQDN ENRICHMENT] Failed to get company name: %v", err)
+		companyName = ""
+	}
+
+	enrichedCount := 0
+
+	// Process each FQDN with optimized timeouts (5-7s per operation)
+	for i, fqdn := range fqdnsToEnrich {
+		log.Printf("[FQDN ENRICHMENT] Processing domain %d/%d: %s", i+1, len(fqdnsToEnrich), fqdn.FQDN)
+
+		// Get enriched data
+		var resolvedIPs []string
+		var sslInfo map[string]interface{}
+		var asnNumber, asnOrganization string
+		var sslExpiryDate *time.Time
+		var sslIssuer, sslSubject, sslVersion string
+		var sslCipherSuite *string
+		var sslProtocols []string
+		var statusCode *int
+		var title, webServer string
+		var lastSSLScan, lastDNSScan time.Time
+		var dnsRecordData map[string]interface{}
+
+		// Get comprehensive DNS information (fast version with 5s timeout)
+		if ips, dnsInfo := getDNSInfoFast(fqdn.FQDN); len(ips) > 0 || len(dnsInfo) > 0 {
+			resolvedIPs = ips
+			dnsRecordData = dnsInfo
+			lastDNSScan = time.Now()
+		}
+
+		// Get SSL information (optimized version with 5s timeout)
+		if sslInfoFast := getSSLInfoFast(fqdn.FQDN); sslInfoFast != nil {
+			lastSSLScan = time.Now()
+			sslInfo = sslInfoFast
+
+			if expDate, ok := sslInfoFast["expiration"].(time.Time); ok {
+				sslExpiryDate = &expDate
+			}
+			if issuer, ok := sslInfoFast["issuer"].(string); ok {
+				sslIssuer = issuer
+			}
+			if domain, ok := sslInfoFast["domain"].(string); ok {
+				sslSubject = domain
+			}
+			sslVersion = "TLS"
+		}
+
+		// Get ASN information (optimized version with 5s timeout)
+		if asn, org := getASNInfoFast(fqdn.FQDN); asn != "" {
+			asnNumber = asn
+			asnOrganization = org
+		}
+
+		// Get HTTP information (optimized version with 7s timeout)
+		if status, titleStr, server := getHTTPInfoFast(fqdn.FQDN); status > 0 {
+			statusCode = &status
+			title = titleStr
+			webServer = server
+		}
+
+		if lastDNSScan.IsZero() {
+			lastDNSScan = time.Now()
+		}
+
+		// Extract DNS record fields from the DNS data
+		var aRecords, aaaaRecords, cnameRecords, mxRecords, txtRecords, nsRecords []string
+		var spfRecord, dmarcRecord, dkimRecord string
+		var mailServers, nameServers []string
+
+		if dnsRecordData != nil {
+			if records, ok := dnsRecordData["a_records"].([]string); ok {
+				aRecords = records
+			}
+			if records, ok := dnsRecordData["aaaa_records"].([]string); ok {
+				aaaaRecords = records
+			}
+			if records, ok := dnsRecordData["cname_records"].([]string); ok {
+				cnameRecords = records
+			}
+			if records, ok := dnsRecordData["mx_records"].([]string); ok {
+				mxRecords = records
+			}
+			if records, ok := dnsRecordData["txt_records"].([]string); ok {
+				txtRecords = records
+			}
+			if records, ok := dnsRecordData["ns_records"].([]string); ok {
+				nsRecords = records
+			}
+			if record, ok := dnsRecordData["spf_record"].(string); ok {
+				spfRecord = record
+			}
+			if record, ok := dnsRecordData["dmarc_record"].(string); ok {
+				dmarcRecord = record
+			}
+			if record, ok := dnsRecordData["dkim_record"].(string); ok {
+				dkimRecord = record
+			}
+			if servers, ok := dnsRecordData["mail_servers"].([]string); ok {
+				mailServers = servers
+			}
+			if servers, ok := dnsRecordData["name_servers"].([]string); ok {
+				nameServers = servers
+			}
+		}
+
+		// Update the database record with enriched data
+		updateQuery := `
+			UPDATE consolidated_attack_surface_assets 
+			SET 
+				resolved_ips = $2,
+				ssl_info = $3,
+				asn_number = $4,
+				asn_organization = $5,
+				ssl_expiry_date = $6,
+				ssl_issuer = $7,
+				ssl_subject = $8,
+				ssl_version = $9,
+				ssl_cipher_suite = $10,
+				ssl_protocols = $11,
+				status_code = $12,
+				title = $13,
+				web_server = $14,
+				a_records = $15,
+				aaaa_records = $16,
+				cname_records = $17,
+				mx_records = $18,
+				txt_records = $19,
+				ns_records = $20,
+				spf_record = $21,
+				dmarc_record = $22,
+				dkim_record = $23,
+				mail_servers = $24,
+				name_servers = $25,
+				last_ssl_scan = $26,
+				last_dns_scan = $27,
+				last_updated = NOW()
+			WHERE id = $1
+		`
+
+		// Convert arrays to PostgreSQL arrays
+		resolvedIPsArray := "{" + strings.Join(resolvedIPs, ",") + "}"
+		sslProtocolsArray := "{" + strings.Join(sslProtocols, ",") + "}"
+		aRecordsArray := "{" + strings.Join(aRecords, ",") + "}"
+		aaaaRecordsArray := "{" + strings.Join(aaaaRecords, ",") + "}"
+		cnameRecordsArray := "{" + strings.Join(cnameRecords, ",") + "}"
+		mxRecordsArray := "{" + strings.Join(mxRecords, ",") + "}"
+		txtRecordsArray := "{" + strings.Join(txtRecords, ",") + "}"
+		nsRecordsArray := "{" + strings.Join(nsRecords, ",") + "}"
+		mailServersArray := "{" + strings.Join(mailServers, ",") + "}"
+		nameServersArray := "{" + strings.Join(nameServers, ",") + "}"
+
+		var sslInfoJSON []byte
+		if sslInfo != nil {
+			sslInfoJSON, _ = json.Marshal(sslInfo)
+		}
+
+		_, err = dbPool.Exec(context.Background(), updateQuery,
+			fqdn.ID,
+			resolvedIPsArray,
+			sslInfoJSON,
+			asnNumber,
+			asnOrganization,
+			sslExpiryDate,
+			sslIssuer,
+			sslSubject,
+			sslVersion,
+			sslCipherSuite,
+			sslProtocolsArray,
+			statusCode,
+			title,
+			webServer,
+			aRecordsArray,
+			aaaaRecordsArray,
+			cnameRecordsArray,
+			mxRecordsArray,
+			txtRecordsArray,
+			nsRecordsArray,
+			spfRecord,
+			dmarcRecord,
+			dkimRecord,
+			mailServersArray,
+			nameServersArray,
+			lastSSLScan,
+			lastDNSScan,
+		)
+
+		if err != nil {
+			log.Printf("[FQDN ENRICHMENT] Error updating FQDN %s: %v", fqdn.FQDN, err)
+			continue
+		}
+
+		enrichedCount++
+		log.Printf("[FQDN ENRICHMENT] ✓ Successfully enriched domain %d/%d: %s", i+1, len(fqdnsToEnrich), fqdn.FQDN)
+	}
+
+	duration := time.Since(startTime)
+	log.Printf("[FQDN ENRICHMENT] ✅ Successfully enriched %d FQDNs out of %d in %v (avg: %v per domain)",
+		enrichedCount, len(fqdnsToEnrich), duration, duration/time.Duration(len(fqdnsToEnrich)))
+	return enrichedCount, nil
+}
+
+// Optimized enrichment functions with reasonable timeouts for attack surface consolidation
+
+func getSSLInfoFast(domain string) map[string]interface{} {
+	// Skip obviously non-SSL domains to save time
+	if strings.Contains(domain, "_") || strings.HasPrefix(domain, "*.") {
+		return nil
+	}
+
+	// 5 second timeout for SSL connections (more reasonable)
+	dialer := &net.Dialer{Timeout: 5 * time.Second}
+	conn, err := tls.DialWithDialer(dialer, "tcp", domain+":443", &tls.Config{
+		InsecureSkipVerify: true,
+	})
+	if err != nil {
+		return nil
+	}
+	defer conn.Close()
+
+	certs := conn.ConnectionState().PeerCertificates
+	if len(certs) == 0 {
+		return nil
+	}
+
+	cert := certs[0]
+	isExpired := time.Now().After(cert.NotAfter)
+	isSelfSigned := cert.Issuer.String() == cert.Subject.String()
+
+	// Check for domain mismatch
+	isMismatched := true
+	for _, name := range cert.DNSNames {
+		if name == domain || (strings.HasPrefix(name, "*.") && strings.HasSuffix(domain, name[1:])) {
+			isMismatched = false
+			break
+		}
+	}
+
+	return map[string]interface{}{
+		"domain":         domain,
+		"issuer":         cert.Issuer.String(),
+		"expiration":     cert.NotAfter,
+		"is_expired":     isExpired,
+		"is_self_signed": isSelfSigned,
+		"is_mismatched":  isMismatched,
+	}
+}
+
+func getASNInfoFast(domain string) (string, string) {
+	// 5 second timeout for DNS resolution
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	resolver := &net.Resolver{}
+	ips, err := resolver.LookupIPAddr(ctx, domain)
+	if err != nil || len(ips) == 0 {
+		return "", ""
+	}
+
+	ip := ips[0].IP.String()
+
+	// 5 second timeout for HTTP client
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	// Try ipapi.co first (faster and more reliable)
+	resp, err := client.Get(fmt.Sprintf("https://ipapi.co/%s/json/", ip))
+	if err == nil && resp.StatusCode == 200 {
+		defer resp.Body.Close()
+		var result struct {
+			ASN string `json:"asn"`
+			Org string `json:"org"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&result); err == nil && result.Org != "" {
+			return result.ASN, result.Org
+		}
+	}
+	if resp != nil {
+		resp.Body.Close()
+	}
+
+	return "", ""
+}
+
+func getHTTPInfoFast(domain string) (int, string, string) {
+	// Skip obviously non-HTTP domains to save time
+	if strings.Contains(domain, "_") || strings.HasPrefix(domain, "*.") {
+		return 0, "", ""
+	}
+
+	// 7 second timeout for HTTP requests (more reasonable)
+	client := &http.Client{
+		Timeout: 7 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			// Don't follow redirects to save time
+			return http.ErrUseLastResponse
+		},
+	}
+
+	// Try HTTPS first, then HTTP
+	urls := []string{
+		fmt.Sprintf("https://%s", domain),
+		fmt.Sprintf("http://%s", domain),
+	}
+
+	for _, url := range urls {
+		resp, err := client.Get(url)
+		if err != nil {
+			continue
+		}
+		defer resp.Body.Close()
+
+		// Extract title quickly (read only first 1KB)
+		title := ""
+		if resp.Header.Get("Content-Type") != "" && strings.Contains(resp.Header.Get("Content-Type"), "text/html") {
+			buf := make([]byte, 1024)
+			n, _ := resp.Body.Read(buf)
+			content := string(buf[:n])
+
+			if start := strings.Index(strings.ToLower(content), "<title>"); start != -1 {
+				start += 7
+				if end := strings.Index(strings.ToLower(content[start:]), "</title>"); end != -1 {
+					title = strings.TrimSpace(content[start : start+end])
+				}
+			}
+		}
+
+		server := resp.Header.Get("Server")
+		return resp.StatusCode, title, server
+	}
+
+	return 0, "", ""
+}
+
+func getDNSInfoFast(domain string) ([]string, map[string]interface{}) {
+	// 5 second timeout for DNS lookups
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	resolver := &net.Resolver{}
+	var resolvedIPs []string
+	dnsInfo := make(map[string]interface{})
+
+	// A Records (IPv4) and AAAA Records (IPv6)
+	if ips, err := resolver.LookupIPAddr(ctx, domain); err == nil {
+		var aRecords, aaaaRecords []string
+		for _, ip := range ips {
+			ipStr := ip.IP.String()
+			resolvedIPs = append(resolvedIPs, ipStr)
+			if ip.IP.To4() != nil {
+				aRecords = append(aRecords, ipStr)
+			} else {
+				aaaaRecords = append(aaaaRecords, ipStr)
+			}
+		}
+		if len(aRecords) > 0 {
+			dnsInfo["a_records"] = aRecords
+		}
+		if len(aaaaRecords) > 0 {
+			dnsInfo["aaaa_records"] = aaaaRecords
+		}
+	}
+
+	// CNAME Records
+	if cname, err := resolver.LookupCNAME(ctx, domain); err == nil && cname != domain+"." {
+		dnsInfo["cname_records"] = []string{strings.TrimSuffix(cname, ".")}
+	}
+
+	// MX Records
+	if mxRecords, err := resolver.LookupMX(ctx, domain); err == nil && len(mxRecords) > 0 {
+		var mxHosts []string
+		for _, mx := range mxRecords {
+			mxHosts = append(mxHosts, strings.TrimSuffix(mx.Host, "."))
+		}
+		dnsInfo["mx_records"] = mxHosts
+		dnsInfo["mail_servers"] = mxHosts // Also populate mail_servers field
+	}
+
+	// TXT Records
+	if txtRecords, err := resolver.LookupTXT(ctx, domain); err == nil && len(txtRecords) > 0 {
+		dnsInfo["txt_records"] = txtRecords
+
+		// Extract specific TXT record types
+		for _, txt := range txtRecords {
+			lower := strings.ToLower(txt)
+			if strings.HasPrefix(lower, "v=spf1") {
+				dnsInfo["spf_record"] = txt
+			} else if strings.HasPrefix(lower, "v=dmarc1") {
+				dnsInfo["dmarc_record"] = txt
+			} else if strings.Contains(lower, "dkim") {
+				dnsInfo["dkim_record"] = txt
+			}
+		}
+	}
+
+	// NS Records
+	if nsRecords, err := resolver.LookupNS(ctx, domain); err == nil && len(nsRecords) > 0 {
+		var nsHosts []string
+		for _, ns := range nsRecords {
+			nsHosts = append(nsHosts, strings.TrimSuffix(ns.Host, "."))
+		}
+		dnsInfo["ns_records"] = nsHosts
+		dnsInfo["name_servers"] = nsHosts // Also populate name_servers field
+	}
+
+	return resolvedIPs, dnsInfo
 }

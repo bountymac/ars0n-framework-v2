@@ -155,6 +155,9 @@ import { initiateKatanaCompanyScan } from './utils/initiateKatanaCompanyScan.js'
 import initiateCloudEnumScan from './utils/initiateCloudEnumScan';
 import monitorCloudEnumScanStatus from './utils/monitorCloudEnumScanStatus';
 
+// Add Attack Surface Visualization import
+import AttackSurfaceVisualizationModal from './modals/AttackSurfaceVisualizationModal.js';
+
 // Add helper function
 const getHttpxResultsCount = (scan) => {
   if (!scan?.result?.String) return 0;
@@ -562,6 +565,7 @@ function App() {
   const [showKatanaCompanyHistoryModal, setShowKatanaCompanyHistoryModal] = useState(false);
   const [showKatanaCompanyConfigModal, setShowKatanaCompanyConfigModal] = useState(false);
   const [showExploreAttackSurfaceModal, setShowExploreAttackSurfaceModal] = useState(false);
+  const [showAttackSurfaceVisualizationModal, setShowAttackSurfaceVisualizationModal] = useState(false);
   const [katanaCompanyCloudAssets, setKatanaCompanyCloudAssets] = useState([]);
   
   const handleCloseSubdomainsModal = () => setShowSubdomainsModal(false);
@@ -2272,6 +2276,8 @@ function App() {
   const handleCloseKatanaCompanyConfigModal = () => setShowKatanaCompanyConfigModal(false);
   const handleCloseExploreAttackSurfaceModal = () => setShowExploreAttackSurfaceModal(false);
   const handleOpenExploreAttackSurfaceModal = () => setShowExploreAttackSurfaceModal(true);
+  const handleCloseAttackSurfaceVisualizationModal = () => setShowAttackSurfaceVisualizationModal(false);
+  const handleOpenAttackSurfaceVisualizationModal = () => setShowAttackSurfaceVisualizationModal(true);
   const handleOpenKatanaCompanyConfigModal = () => setShowKatanaCompanyConfigModal(true);
 
   const handleKatanaCompanyConfigSave = async (config) => {
@@ -5238,9 +5244,7 @@ function App() {
                           )}
                         </Button>
                         <Button variant="outline-danger" className="flex-fill" onClick={handleOpenExploreAttackSurfaceModal}>Explore</Button>
-                        <Button variant="outline-danger" className="flex-fill">Analyze</Button>
-                        <Button variant="outline-danger" className="flex-fill">Visualize</Button>
-                        <Button variant="outline-danger" className="flex-fill">Report</Button>
+                        <Button variant="outline-danger" className="flex-fill" onClick={handleOpenAttackSurfaceVisualizationModal}>Visualize</Button>
                       </div>
                     </Card.Body>
                   </Card>
@@ -6394,12 +6398,18 @@ function App() {
         scans={katanaCompanyScans}
       />
 
-             <ExploreAttackSurfaceModal
-         show={showExploreAttackSurfaceModal}
-         handleClose={handleCloseExploreAttackSurfaceModal}
-         activeTarget={activeTarget}
-       />
+      <ExploreAttackSurfaceModal
+        show={showExploreAttackSurfaceModal}
+        handleClose={handleCloseExploreAttackSurfaceModal}
+        activeTarget={activeTarget}
+      />
 
+             <AttackSurfaceVisualizationModal
+         show={showAttackSurfaceVisualizationModal}
+         onHide={handleCloseAttackSurfaceVisualizationModal}
+         scopeTargetId={activeTarget?.id}
+         scopeTargetName={activeTarget?.scope_target}
+       />
     </Container>
   );
 }

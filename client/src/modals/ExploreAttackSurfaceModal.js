@@ -115,7 +115,15 @@ const ExploreAttackSurfaceModal = ({
           asset.srv_records?.join(' '),
           asset.ssl_protocols?.join(' '),
           asset.status?.join(' '),
-          asset.technologies?.join(' ')
+          asset.technologies?.join(' '),
+          // Add new searchable fields for FQDN security assessment
+          asset.a_records?.join(' '),
+          asset.aaaa_records?.join(' '),
+          asset.url,
+          asset.status_code?.toString(),
+          asset.title,
+          asset.ssl_expiry_date,
+          asset.ssl_issuer
         ].filter(Boolean).join(' ').toLowerCase();
         
         return activeFilters.every(filter => {
@@ -303,12 +311,132 @@ const ExploreAttackSurfaceModal = ({
         return <code>{asset.asset_identifier}</code>;
       case 'fqdn':
         return <code>{asset.fqdn}</code>;
-      case 'root_domain':
-        return asset.root_domain || <span className="text-white-50">-</span>;
-      case 'subdomain':
-        return asset.subdomain || <span className="text-white-50">-</span>;
-      case 'registrar':
-        return asset.registrar || <span className="text-white-50">-</span>;
+      case 'ip_address':
+        // Check for A records (IPv4) first
+        if (asset.a_records && asset.a_records.length > 0) {
+          return (
+            <div>
+              {asset.a_records.map((ip, index) => (
+                <div key={index} className="text-success">
+                  <code>{ip}</code>
+                </div>
+              ))}
+            </div>
+          );
+        }
+        // Check for AAAA records (IPv6)
+        if (asset.aaaa_records && asset.aaaa_records.length > 0) {
+          return (
+            <div>
+              {asset.aaaa_records.map((ip, index) => (
+                <div key={index} className="text-info">
+                  <code>{ip}</code>
+                </div>
+              ))}
+            </div>
+          );
+        }
+        // Fallback to resolved_ips array if available
+        if (asset.resolved_ips && asset.resolved_ips.length > 0) {
+          return (
+            <div>
+              {asset.resolved_ips.map((ip, index) => (
+                <div key={index} className="text-primary">
+                  <code>{ip}</code>
+                </div>
+              ))}
+            </div>
+          );
+        }
+        // Final fallback to individual ip_address field
+        if (asset.ip_address) {
+          return <code>{asset.ip_address}</code>;
+        }
+        return <span className="text-white-50">-</span>;
+      case 'http_response':
+        if (asset.url) {
+          return (
+            <div>
+              <div className="text-info">
+                <a href={asset.url} target="_blank" rel="noopener noreferrer" className="text-info">
+                  {asset.url}
+                </a>
+              </div>
+              {asset.status_code && (
+                <Badge variant={asset.status_code >= 200 && asset.status_code < 300 ? "success" : "warning"}>
+                  {asset.status_code}
+                </Badge>
+              )}
+              {asset.title && (
+                <div className="small text-white-50 mt-1" style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {asset.title}
+                </div>
+              )}
+            </div>
+          );
+        }
+        return <span className="text-white-50">-</span>;
+      case 'ssl_status':
+        if (asset.ssl_expiry_date) {
+          const expiryDate = new Date(asset.ssl_expiry_date);
+          const now = new Date();
+          const daysUntilExpiry = Math.ceil((expiryDate - now) / (1000 * 60 * 60 * 24));
+          
+          let variant = "success";
+          let status = "Valid";
+          
+          if (daysUntilExpiry < 0) {
+            variant = "danger";
+            status = "Expired";
+          } else if (daysUntilExpiry < 30) {
+            variant = "warning";
+            status = "Expires Soon";
+          }
+          
+          return (
+            <div>
+              <Badge variant={variant}>{status}</Badge>
+              <div className="small text-white-50">
+                {asset.ssl_issuer && <div>{asset.ssl_issuer}</div>}
+                <div>Expires: {expiryDate.toLocaleDateString()}</div>
+                {daysUntilExpiry >= 0 && <div>({daysUntilExpiry} days)</div>}
+              </div>
+            </div>
+          );
+        }
+        return <span className="text-white-50">No SSL</span>;
+      case 'http_status':
+        if (asset.status_code) {
+          const statusCode = asset.status_code;
+          let variant = "secondary";
+          
+          if (statusCode >= 200 && statusCode < 300) {
+            variant = "success";
+          } else if (statusCode >= 300 && statusCode < 400) {
+            variant = "info";
+          } else if (statusCode >= 400 && statusCode < 500) {
+            variant = "warning";
+          } else if (statusCode >= 500) {
+            variant = "danger";
+          }
+          
+          return (
+            <div>
+              <Badge variant={variant}>{statusCode}</Badge>
+              {asset.title && (
+                <div className="small text-white-50 mt-1" style={{ maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {asset.title}
+                </div>
+              )}
+              {asset.web_server && (
+                <div className="small text-muted">
+                  {asset.web_server}
+                </div>
+              )}
+            </div>
+          );
+        }
+        return <span className="text-white-50">No HTTP</span>;
       case 'dns_records':
         const dnsRecords = [];
         
@@ -354,23 +482,44 @@ const ExploreAttackSurfaceModal = ({
           });
         }
         
-        if (asset.srv_records && asset.srv_records.length > 0) {
+                if (asset.srv_records && asset.srv_records.length > 0) {
           asset.srv_records.forEach(record => {
             dnsRecords.push({ type: 'SRV', value: record, color: 'text-muted' });
           });
         }
+
+        // Add special DNS records (SPF, DMARC, DKIM)
+        if (asset.spf_record) {
+          dnsRecords.push({ type: 'SPF', value: asset.spf_record, color: 'text-success' });
+        }
         
+        if (asset.dmarc_record) {
+          dnsRecords.push({ type: 'DMARC', value: asset.dmarc_record, color: 'text-info' });
+        }
+        
+        if (asset.dkim_record) {
+          dnsRecords.push({ type: 'DKIM', value: asset.dkim_record, color: 'text-warning' });
+        }
+
         if (dnsRecords.length > 0) {
-          const maxWidth = asset.asset_type === 'cloud_asset' ? '350px' : '300px';
-          const maxRecords = asset.asset_type === 'cloud_asset' ? 3 : 5;
+          const maxWidth = asset.asset_type === 'fqdn' ? '400px' : (asset.asset_type === 'cloud_asset' ? '350px' : '300px');
+          const maxRecords = asset.asset_type === 'fqdn' ? 8 : (asset.asset_type === 'cloud_asset' ? 3 : 5);
           
           return (
             <div style={{ maxWidth }}>
-              {dnsRecords.slice(0, maxRecords).map((record, index) => (
-                <div key={index} className={`small ${record.color}`}>
-                  <strong>{record.type}:</strong> {record.value}
-                </div>
-              ))}
+              {dnsRecords.slice(0, maxRecords).map((record, index) => {
+                // Truncate long values (especially for SPF, DMARC, DKIM)
+                const isLongRecord = ['SPF', 'DMARC', 'DKIM', 'TXT'].includes(record.type);
+                const displayValue = isLongRecord && record.value.length > 50 
+                  ? record.value.substring(0, 50) + '...' 
+                  : record.value;
+                
+                return (
+                  <div key={index} className={`small ${record.color}`} title={record.value}>
+                    <strong>{record.type}:</strong> {displayValue}
+                  </div>
+                );
+              })}
               {dnsRecords.length > maxRecords && (
                 <div className="small text-muted">
                   +{dnsRecords.length - maxRecords} more records
@@ -644,13 +793,8 @@ const ExploreAttackSurfaceModal = ({
             sortable: true
           },
           {
-            key: 'root_domain',
-            label: 'Root Domain',
-            sortable: true
-          },
-          {
-            key: 'subdomain',
-            label: 'Subdomain',
+            key: 'ip_address',
+            label: 'IP Address',
             sortable: true
           },
           {
@@ -659,8 +803,23 @@ const ExploreAttackSurfaceModal = ({
             sortable: false
           },
           {
-            key: 'registrar',
-            label: 'Registrar',
+            key: 'asn_number',
+            label: 'ASN',
+            sortable: true
+          },
+          {
+            key: 'asn_organization',
+            label: 'Organization',
+            sortable: true
+          },
+          {
+            key: 'ssl_status',
+            label: 'SSL Status',
+            sortable: true
+          },
+          {
+            key: 'http_status',
+            label: 'HTTP Status',
             sortable: true
           },
           {
