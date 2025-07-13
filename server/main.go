@@ -236,6 +236,9 @@ func main() {
 	// Katana Company configuration routes
 	r.HandleFunc("/katana-company-config/{scope_target_id}", getKatanaCompanyConfig).Methods("GET", "OPTIONS")
 	r.HandleFunc("/katana-company-config/{scope_target_id}", saveKatanaCompanyConfig).Methods("POST", "OPTIONS")
+	r.HandleFunc("/nuclei-config/{scope_target_id}", getNucleiConfig).Methods("GET", "OPTIONS")
+	r.HandleFunc("/nuclei-config/{scope_target_id}", saveNucleiConfig).Methods("POST", "OPTIONS")
+	r.HandleFunc("/scopetarget/{id}/scans/nuclei", getNucleiScansForScopeTarget).Methods("GET", "OPTIONS")
 
 	// Katana Company scan routes
 	r.HandleFunc("/katana-company/run/{scope_target_id}", utils.RunKatanaCompanyScan).Methods("POST", "OPTIONS")
@@ -2816,4 +2819,166 @@ func saveKatanaCompanyConfig(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[INFO] Successfully saved Katana Company config for scope target %s", scopeTargetID)
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+}
+
+// Nuclei Configuration handlers
+func getNucleiConfig(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	vars := mux.Vars(r)
+	scopeTargetID := vars["scope_target_id"]
+
+	if scopeTargetID == "" {
+		http.Error(w, "Missing scope_target_id", http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("[INFO] Getting Nuclei config for scope target: %s", scopeTargetID)
+
+	var targets, templates []string
+	var uploadedTemplates []byte
+	var createdAt time.Time
+
+	err := dbPool.QueryRow(context.Background(),
+		`SELECT targets, templates, uploaded_templates, created_at FROM nuclei_configs WHERE scope_target_id = $1::uuid ORDER BY created_at DESC LIMIT 1`,
+		scopeTargetID).Scan(&targets, &templates, &uploadedTemplates, &createdAt)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			log.Printf("[INFO] No Nuclei config found for scope target %s", scopeTargetID)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"targets":            []string{},
+				"templates":          []string{},
+				"uploaded_templates": []interface{}{},
+				"created_at":         nil,
+			})
+			return
+		}
+		log.Printf("[ERROR] Failed to get Nuclei config: %v", err)
+		http.Error(w, "Failed to get config", http.StatusInternalServerError)
+		return
+	}
+
+	var uploadedTemplatesData []interface{}
+	if len(uploadedTemplates) > 0 {
+		if err := json.Unmarshal(uploadedTemplates, &uploadedTemplatesData); err != nil {
+			log.Printf("[WARN] Failed to unmarshal uploaded templates: %v", err)
+			uploadedTemplatesData = []interface{}{}
+		}
+	}
+
+	response := map[string]interface{}{
+		"targets":            targets,
+		"templates":          templates,
+		"uploaded_templates": uploadedTemplatesData,
+		"created_at":         createdAt,
+	}
+
+	log.Printf("[INFO] Successfully retrieved Nuclei config for scope target %s", scopeTargetID)
+	json.NewEncoder(w).Encode(response)
+}
+
+func saveNucleiConfig(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	vars := mux.Vars(r)
+	scopeTargetID := vars["scope_target_id"]
+
+	if scopeTargetID == "" {
+		http.Error(w, "Missing scope_target_id", http.StatusBadRequest)
+		return
+	}
+
+	var config struct {
+		Targets           []string      `json:"targets"`
+		Templates         []string      `json:"templates"`
+		UploadedTemplates []interface{} `json:"uploaded_templates"`
+		CreatedAt         string        `json:"created_at"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&config); err != nil {
+		log.Printf("[ERROR] Failed to decode Nuclei config: %v", err)
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("[INFO] Saving Nuclei config for scope target %s", scopeTargetID)
+	log.Printf("[INFO] Targets: %d, Templates: %d, Uploaded Templates: %d", len(config.Targets), len(config.Templates), len(config.UploadedTemplates))
+
+	uploadedTemplatesJSON, _ := json.Marshal(config.UploadedTemplates)
+
+	_, err := dbPool.Exec(context.Background(), `
+		INSERT INTO nuclei_configs (scope_target_id, targets, templates, uploaded_templates, created_at) 
+		VALUES ($1::uuid, $2, $3, $4, NOW())
+		ON CONFLICT (scope_target_id) DO UPDATE SET
+			targets = EXCLUDED.targets,
+			templates = EXCLUDED.templates,
+			uploaded_templates = EXCLUDED.uploaded_templates,
+			created_at = NOW()
+	`, scopeTargetID, config.Targets, config.Templates, uploadedTemplatesJSON)
+
+	if err != nil {
+		log.Printf("[ERROR] Failed to save Nuclei config: %v", err)
+		http.Error(w, "Failed to save config", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("[INFO] Successfully saved Nuclei config for scope target %s", scopeTargetID)
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+}
+
+func getNucleiScansForScopeTarget(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	vars := mux.Vars(r)
+	scopeTargetID := vars["id"]
+
+	if scopeTargetID == "" {
+		http.Error(w, "Missing id parameter", http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("[INFO] Getting Nuclei scans for scope target: %s", scopeTargetID)
+
+	query := `
+		SELECT scan_id, status, targets, templates, result, error, created_at, execution_time
+		FROM nuclei_scans 
+		WHERE scope_target_id = $1::uuid 
+		ORDER BY created_at DESC
+	`
+
+	rows, err := dbPool.Query(context.Background(), query, scopeTargetID)
+	if err != nil {
+		log.Printf("[ERROR] Failed to get Nuclei scans: %v", err)
+		http.Error(w, "Failed to get scans", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var scans []map[string]interface{}
+	for rows.Next() {
+		var scanID, status, result, error, executionTime sql.NullString
+		var targets, templates []string
+		var createdAt time.Time
+
+		err := rows.Scan(&scanID, &status, &targets, &templates, &result, &error, &createdAt, &executionTime)
+		if err != nil {
+			log.Printf("[ERROR] Failed to scan Nuclei scan row: %v", err)
+			continue
+		}
+
+		scan := map[string]interface{}{
+			"scan_id":        scanID.String,
+			"status":         status.String,
+			"targets":        targets,
+			"templates":      templates,
+			"result":         result.String,
+			"error":          error.String,
+			"created_at":     createdAt,
+			"execution_time": executionTime.String,
+		}
+
+		scans = append(scans, scan)
+	}
+
+	log.Printf("[INFO] Found %d Nuclei scans for scope target %s", len(scans), scopeTargetID)
+	json.NewEncoder(w).Encode(scans)
 }

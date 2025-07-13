@@ -70,8 +70,8 @@ import fetchConsolidatedCompanyDomains from './utils/fetchConsolidatedCompanyDom
 import fetchAttackSurfaceAssetCounts from './utils/fetchAttackSurfaceAssetCounts.js';
 import consolidateNetworkRanges from './utils/consolidateNetworkRanges.js';
 import fetchConsolidatedNetworkRanges from './utils/fetchConsolidatedNetworkRanges.js';
-import monitorShuffleDNSScanStatus from './utils/monitorShuffleDNSScanStatus.js';
-import initiateShuffleDNSScan from './utils/initiateShuffleDNSScan.js';
+import monitorShuffleDNSScanStatus from './utils/monitorShuffleDNSScanStatus';
+import initiateShuffleDNSScan from './utils/initiateShuffleDNSScan';
 import initiateCeWLScan from './utils/initiateCeWLScan';
 import monitorCeWLScanStatus from './utils/monitorCeWLScanStatus';
 import { CeWLResultsModal } from './modals/cewlModals';
@@ -103,6 +103,7 @@ import monitorCTLCompanyScanStatus from './utils/monitorCTLCompanyScanStatus';
 import { CTLCompanyResultsModal, CTLCompanyHistoryModal } from './modals/CTLCompanyResultsModal';
 import { CloudEnumResultsModal, CloudEnumHistoryModal } from './modals/CloudEnumResultsModal';
 import CloudEnumConfigModal from './modals/CloudEnumConfigModal';
+import NucleiConfigModal from './modals/NucleiConfigModal';
 import monitorMetabigorCompanyScanStatus from './utils/monitorMetabigorCompanyScanStatus';
 import initiateMetabigorCompanyScan from './utils/initiateMetabigorCompanyScan';
 import { MetabigorCompanyResultsModal, MetabigorCompanyHistoryModal } from './modals/MetabigorCompanyResultsModal';
@@ -553,8 +554,7 @@ function App() {
   const [showCloudEnumResultsModal, setShowCloudEnumResultsModal] = useState(false);
   const [showCloudEnumHistoryModal, setShowCloudEnumHistoryModal] = useState(false);
   const [showCloudEnumConfigModal, setShowCloudEnumConfigModal] = useState(false);
-
-
+  const [showNucleiConfigModal, setShowNucleiConfigModal] = useState(false);
 
   // Katana Company state variables
   const [katanaCompanyScans, setKatanaCompanyScans] = useState([]);
@@ -2010,7 +2010,7 @@ function App() {
           setMostRecentAssetfinderScan,
           setMostRecentGauScan,
           setMostRecentCTLScan,
-          setMostRecentSubfinderScan,
+          setMostRecentSublist3rScan,
           setMostRecentHttpxScan,
           setMostRecentShuffleDNSScan,
           setMostRecentCeWLScan,
@@ -2264,9 +2264,9 @@ function App() {
     setShowCloudEnumConfigModal(false);
   };
 
-  
+  const handleCloseNucleiConfigModal = () => setShowNucleiConfigModal(false);
+  const handleOpenNucleiConfigModal = () => setShowNucleiConfigModal(true);
 
-  // Katana Company handlers
   const handleCloseKatanaCompanyResultsModal = () => setShowKatanaCompanyResultsModal(false);
   const handleOpenKatanaCompanyResultsModal = () => setShowKatanaCompanyResultsModal(true);
 
@@ -5266,7 +5266,7 @@ function App() {
                         </Card.Text>
                         <div className="d-flex justify-content-between mt-auto gap-2">
                           <Button variant="outline-danger" className="flex-fill">History</Button>
-                          <Button variant="outline-danger" className="flex-fill">Configure</Button>
+                          <Button variant="outline-danger" className="flex-fill" onClick={handleOpenNucleiConfigModal}>Configure</Button>
                           <Button variant="outline-danger" className="flex-fill">Scan</Button>
                           <Button variant="outline-danger" className="flex-fill">Results</Button>
                         </div>
@@ -6375,6 +6375,13 @@ function App() {
         handleClose={handleCloseCloudEnumConfigModal}
         activeTarget={activeTarget}
         onSaveConfig={handleCloudEnumConfigSave}
+      />
+
+      <NucleiConfigModal
+        show={showNucleiConfigModal}
+        handleClose={handleCloseNucleiConfigModal}
+        activeTarget={activeTarget}
+        onSaveConfig={() => setShowNucleiConfigModal(false)}
       />
 
       <KatanaCompanyConfigModal

@@ -1102,6 +1102,31 @@ func createTables() {
 				ALTER TABLE consolidated_attack_surface_assets ALTER COLUMN asn_number TYPE TEXT;
 			END IF;
 		END $$;`,
+		`CREATE TABLE IF NOT EXISTS nuclei_configs (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scope_target_id UUID NOT NULL REFERENCES scope_targets(id) ON DELETE CASCADE,
+			targets TEXT[] NOT NULL DEFAULT '{}',
+			templates TEXT[] NOT NULL DEFAULT '{}',
+			uploaded_templates JSONB DEFAULT '[]',
+			created_at TIMESTAMP DEFAULT NOW(),
+			UNIQUE(scope_target_id)
+		);`,
+		`CREATE TABLE IF NOT EXISTS nuclei_scans (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scan_id UUID NOT NULL UNIQUE DEFAULT gen_random_uuid(),
+			scope_target_id UUID NOT NULL REFERENCES scope_targets(id) ON DELETE CASCADE,
+			targets TEXT[] NOT NULL DEFAULT '{}',
+			templates TEXT[] NOT NULL DEFAULT '{}',
+			status VARCHAR(50) NOT NULL DEFAULT 'pending',
+			result TEXT,
+			error TEXT,
+			stdout TEXT,
+			stderr TEXT,
+			command TEXT,
+			execution_time TEXT,
+			created_at TIMESTAMP DEFAULT NOW(),
+			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
+		);`,
 	}
 
 	for _, query := range queries {
