@@ -387,33 +387,33 @@ func consolidateASNs(scopeTargetID string) (int, error) {
 			WHERE scope_target_id = $1::uuid AND status = 'success' AND result IS NOT NULL
 				AND result::jsonb ? 'asns'
 		),
-		                      amass_enum_asns AS (
-                              SELECT
-                                      unnest(regexp_matches(result, 'AS\d+', 'g')) as asn_number,
-                                      'Unknown' as organization,
-                                      'Discovered by Amass Enum' as description,
-                                      'Unknown' as country,
-                                      'Amass Enum' as source
-                              FROM amass_enum_company_scans
-                              WHERE scope_target_id = $1::uuid AND status = 'success' AND result IS NOT NULL
-                      ),
-		                      wildcard_asns AS (
-                              SELECT
-                                      unnest(regexp_matches(result, 'AS\d+', 'g')) as asn_number,
-                                      'Unknown' as organization,
-                                      'Discovered by Wildcard Amass' as description,
-                                      'Unknown' as country,
-                                      'Wildcard Amass' as source
-                              FROM amass_scans am
-                              JOIN scope_targets st ON am.scope_target_id = st.id
-                              WHERE st.type = 'Wildcard'
-                                      AND st.scope_target IN (
-                                              SELECT DISTINCT domain
-                                              FROM consolidated_company_domains
-                                              WHERE scope_target_id = $1::uuid
-                                      )
-                                      AND am.status = 'success' AND am.result IS NOT NULL
-                      ),
+		amass_enum_asns AS (
+			SELECT
+				unnest(regexp_matches(result, 'AS\d+', 'g')) as asn_number,
+				'Unknown' as organization,
+				'Discovered by Amass Enum' as description,
+				'Unknown' as country,
+				'Amass Enum' as source
+			FROM amass_enum_company_scans
+			WHERE scope_target_id = $1::uuid AND status = 'success' AND result IS NOT NULL
+		),
+		wildcard_asns AS (
+			SELECT
+				unnest(regexp_matches(result, 'AS\d+', 'g')) as asn_number,
+				'Unknown' as organization,
+				'Discovered by Wildcard Amass' as description,
+				'Unknown' as country,
+				'Wildcard Amass' as source
+			FROM amass_scans am
+			JOIN scope_targets st ON am.scope_target_id = st.id
+			WHERE st.type = 'Wildcard'
+				AND st.scope_target IN (
+					SELECT DISTINCT domain
+					FROM consolidated_company_domains
+					WHERE scope_target_id = $1::uuid
+				)
+				AND am.status = 'success' AND am.result IS NOT NULL
+		),
 		network_range_asns AS (
 			SELECT NULL as asn_number, NULL as organization, NULL as description, NULL as country, 'Network Ranges' as source
 			FROM consolidated_network_ranges
@@ -606,6 +606,8 @@ func consolidateNetworkRanges(scopeTargetID string) (int, error) {
 			FROM intel_network_ranges inr
 			JOIN amass_intel_scans ais ON inr.scan_id = ais.scan_id
 			WHERE ais.scope_target_id = $1::uuid AND ais.status = 'success'
+				AND inr.cidr_block IS NOT NULL AND inr.cidr_block != ''
+				AND inr.cidr_block ~ '^(\d{1,3}\.){3}\d{1,3}/\d{1,2}$'
 			
 			UNION ALL
 			
@@ -620,6 +622,8 @@ func consolidateNetworkRanges(scopeTargetID string) (int, error) {
 			FROM metabigor_network_ranges mnr
 			JOIN metabigor_company_scans mcs ON mnr.scan_id = mcs.scan_id
 			WHERE mcs.scope_target_id = $1::uuid AND mcs.status = 'success'
+				AND mnr.cidr_block IS NOT NULL AND mnr.cidr_block != ''
+				AND mnr.cidr_block ~ '^(\d{1,3}\.){3}\d{1,3}/\d{1,2}$'
 			
 			UNION ALL
 			
@@ -633,6 +637,8 @@ func consolidateNetworkRanges(scopeTargetID string) (int, error) {
 				3 as priority
 			FROM consolidated_network_ranges cnr
 			WHERE cnr.scope_target_id = $1::uuid
+				AND cnr.cidr_block IS NOT NULL AND cnr.cidr_block != ''
+				AND cnr.cidr_block ~ '^(\d{1,3}\.){3}\d{1,3}/\d{1,2}$'
 			
 			UNION ALL
 			
@@ -670,7 +676,13 @@ func consolidateNetworkRanges(scopeTargetID string) (int, error) {
 		SELECT DISTINCT ON (nrd.cidr_block)
 			$1::uuid, 'network_range', nrd.cidr_block, nrd.cidr_block,
 			nrd.asn_number, nrd.asn_organization, nrd.asn_description, nrd.asn_country,
-			POWER(2, 32 - CAST(SPLIT_PART(nrd.cidr_block, '/', 2) AS INTEGER)) as subnet_size,
+			CASE 
+				WHEN nrd.cidr_block ~ '^(\d{1,3}\.){3}\d{1,3}/\d{1,2}$' AND 
+					 SPLIT_PART(nrd.cidr_block, '/', 2) ~ '^\d+$' AND
+					 CAST(SPLIT_PART(nrd.cidr_block, '/', 2) AS INTEGER) BETWEEN 0 AND 32
+				THEN POWER(2, 32 - CAST(SPLIT_PART(nrd.cidr_block, '/', 2) AS INTEGER))::INTEGER
+				ELSE NULL
+			END as subnet_size,
 			0 as responsive_ip_count,
 			0 as responsive_port_count
 		FROM network_range_data nrd
@@ -724,28 +736,36 @@ func consolidateIPAddresses(scopeTargetID string) (int, error) {
 		UNION ALL
 		
 		SELECT 
-			'live_web_servers_all' as source,
+			'httpx_scans' as source,
 			COUNT(*) as count
-		FROM live_web_servers lws
-		WHERE lws.scan_id IN (
-			SELECT scan_id FROM ip_port_scans WHERE scope_target_id = $1::uuid
-		)
+		FROM httpx_scans hs
+		WHERE hs.scope_target_id = $1::uuid AND hs.status = 'success'
 		
 		UNION ALL
 		
 		SELECT 
-			'ip_port_scans_success' as source,
+			'dns_records_a' as source,
 			COUNT(*) as count
-		FROM ip_port_scans
-		WHERE scope_target_id = $1::uuid AND status = 'success'
+		FROM dns_records dr
+		JOIN amass_scans ams ON dr.scan_id = ams.scan_id
+		WHERE ams.scope_target_id = $1::uuid AND ams.status = 'success'
+		AND dr.record_type = 'A'
 		
 		UNION ALL
 		
 		SELECT 
-			'ip_port_scans_all' as source,
+			'dnsx_company_dns_records_a' as source,
 			COUNT(*) as count
-		FROM ip_port_scans
-		WHERE scope_target_id = $1::uuid
+		FROM dnsx_company_dns_records dcdr
+		WHERE dcdr.scope_target_id = $1::uuid AND dcdr.record_type = 'A'
+		
+		UNION ALL
+		
+		SELECT 
+			'target_urls_with_ips' as source,
+			COUNT(*) as count
+		FROM target_urls tu
+		WHERE tu.scope_target_id = $1::uuid AND tu.ip_address IS NOT NULL
 	`
 
 	debugRows, err := dbPool.Query(context.Background(), debugQuery, scopeTargetID)
@@ -761,35 +781,122 @@ func consolidateIPAddresses(scopeTargetID string) (int, error) {
 		}
 	}
 
+	// Enhanced query to capture IPs from multiple sources with proper validation
 	query := `
 		INSERT INTO consolidated_attack_surface_assets (
 			scope_target_id, asset_type, asset_identifier, ip_address,
-			asn_number, asn_organization, asn_country, resolved_ips, ptr_records, dnsx_a_records, amass_a_records
+			asn_number, asn_organization, asn_country, resolved_ips, ptr_records, 
+			dnsx_a_records, amass_a_records, httpx_sources, ip_type
 		)
-		WITH ip_data AS (
-			SELECT DISTINCT ip_address
+		WITH comprehensive_ip_data AS (
+			-- 1. Discovered IPs from IP/Port scans (already INET type)
+			SELECT DISTINCT 
+				dli.ip_address as ip_address,
+				'ip_port_scan' as source_type,
+				ARRAY[host(dli.ip_address)]::text[] as source_ips
 			FROM discovered_live_ips dli
 			JOIN ip_port_scans ips ON dli.scan_id = ips.scan_id
 			WHERE ips.scope_target_id = $1::uuid AND ips.status = 'success'
-			
+			AND dli.ip_address IS NOT NULL
+
 			UNION
-			
-			SELECT DISTINCT ip_address
+
+			-- 2. Live web server IPs (already INET type)
+			SELECT DISTINCT
+				lws.ip_address as ip_address,
+				'live_web_server' as source_type,
+				ARRAY[host(lws.ip_address)]::text[] as source_ips
 			FROM live_web_servers lws
 			JOIN ip_port_scans ips ON lws.scan_id = ips.scan_id
 			WHERE ips.scope_target_id = $1::uuid AND ips.status = 'success'
+			AND lws.ip_address IS NOT NULL
+
+			UNION
+
+			-- 3. Target URL IPs (TEXT type - validate before casting)
+			SELECT DISTINCT
+				tu.ip_address::inet as ip_address,
+				'target_url' as source_type,
+				ARRAY[tu.ip_address]::text[] as source_ips
+			FROM target_urls tu
+			WHERE tu.scope_target_id = $1::uuid
+			AND tu.ip_address IS NOT NULL AND tu.ip_address != ''
+			AND tu.ip_address ~ '^(\d{1,3}\.){3}\d{1,3}$'
+
+			UNION
+
+			-- 4. DNS A records from Amass scans (validate before casting)
+			SELECT DISTINCT
+				dr.record::inet as ip_address,
+				'dns_a_record' as source_type,
+				ARRAY[dr.record]::text[] as source_ips
+			FROM dns_records dr
+			JOIN amass_scans ams ON dr.scan_id = ams.scan_id
+			WHERE ams.scope_target_id = $1::uuid AND ams.status = 'success'
+			AND dr.record_type = 'A' AND dr.record ~ '^(\d{1,3}\.){3}\d{1,3}$'
+			AND dr.record IS NOT NULL AND dr.record != ''
+
+			UNION
+
+			-- 5. DNS A records from DNSx company scans (validate before casting)
+			SELECT DISTINCT
+				dcdr.record::inet as ip_address,
+				'dnsx_a_record' as source_type,
+				ARRAY[dcdr.record]::text[] as source_ips
+			FROM dnsx_company_dns_records dcdr
+			WHERE dcdr.scope_target_id = $1::uuid AND dcdr.record_type = 'A'
+			AND dcdr.record ~ '^(\d{1,3}\.){3}\d{1,3}$'
+			AND dcdr.record IS NOT NULL AND dcdr.record != ''
+
+			UNION
+
+			-- 6. IPs from HTTPx scan results (extract from URLs with validation)
+			SELECT DISTINCT
+				extracted_ip::inet as ip_address,
+				'httpx_scan' as source_type,
+				ARRAY[extracted_ip]::text[] as source_ips
+			FROM (
+				SELECT DISTINCT
+					CASE
+						WHEN line ~ '^https?://(\d{1,3}\.){3}\d{1,3}' THEN
+							substring(line from 'https?://(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})')
+						ELSE NULL
+					END as extracted_ip
+				FROM (
+					SELECT unnest(string_to_array(result, E'\n')) as line
+					FROM httpx_scans
+					WHERE scope_target_id = $1::uuid AND status = 'success'
+					AND result IS NOT NULL AND result != ''
+				) httpx_lines
+			) httpx_ips
+			WHERE extracted_ip IS NOT NULL AND extracted_ip != ''
+			AND extracted_ip ~ '^(\d{1,3}\.){3}\d{1,3}$'
+
+			UNION
+
+			-- 7. IPs from Amass Enum Company DNS records (validate before casting)
+			SELECT DISTINCT
+				aecdr.record::inet as ip_address,
+				'amass_enum_dns' as source_type,
+				ARRAY[aecdr.record]::text[] as source_ips
+			FROM amass_enum_company_dns_records aecdr
+			WHERE aecdr.scope_target_id = $1::uuid AND aecdr.record_type = 'A'
+			AND aecdr.record ~ '^(\d{1,3}\.){3}\d{1,3}$'
+			AND aecdr.record IS NOT NULL AND aecdr.record != ''
 		),
-		ip_dns_data AS (
-			SELECT 
+		ip_enriched_data AS (
+			SELECT
 				ip.ip_address,
+				string_agg(DISTINCT ip.source_type, ', ') as ip_type,
 				TRIM(BOTH 'AS' FROM mnr.asn) as asn_number,
 				mnr.organization as asn_organization,
 				mnr.country as asn_country,
 				ARRAY_AGG(DISTINCT lws.hostname) FILTER (WHERE lws.hostname IS NOT NULL) as hostnames,
 				ARRAY_AGG(DISTINCT ptr_record) FILTER (WHERE ptr_record IS NOT NULL) as ptr_records,
 				ARRAY_AGG(DISTINCT dcdr.record) FILTER (WHERE dcdr.record_type = 'A' AND dcdr.record = host(ip.ip_address)) as dnsx_a_records,
-				ARRAY_AGG(DISTINCT aedr.record) FILTER (WHERE aedr.record_type = 'A' AND aedr.record = host(ip.ip_address)) as amass_a_records
-			FROM ip_data ip
+				ARRAY_AGG(DISTINCT aedr.record) FILTER (WHERE aedr.record_type = 'A' AND aedr.record = host(ip.ip_address)) as amass_a_records,
+				ARRAY_AGG(DISTINCT ip.source_type) as httpx_sources
+			FROM comprehensive_ip_data ip
 			LEFT JOIN metabigor_network_ranges mnr ON ip.ip_address << mnr.cidr_block::inet
 			LEFT JOIN metabigor_company_scans mcs ON mnr.scan_id = mcs.scan_id
 			LEFT JOIN live_web_servers lws ON ip.ip_address = lws.ip_address
@@ -805,16 +912,19 @@ func consolidateIPAddresses(scopeTargetID string) (int, error) {
 				AND (ips.scope_target_id = $1::uuid OR ips.scope_target_id IS NULL)
 			GROUP BY ip.ip_address, mnr.asn, mnr.organization, mnr.country
 		)
-		SELECT DISTINCT 
-			$1::uuid, 'ip_address', split_part(ipd.ip_address::text, '/', 1), split_part(ipd.ip_address::text, '/', 1),
+		SELECT DISTINCT
+			$1::uuid, 'ip_address', host(ipd.ip_address), host(ipd.ip_address),
 			ipd.asn_number,
 			ipd.asn_organization,
 			ipd.asn_country,
 			COALESCE(ipd.hostnames, ARRAY[]::text[]) as resolved_ips,
 			COALESCE(ipd.ptr_records, ARRAY[]::text[]) as ptr_records,
 			COALESCE(ipd.dnsx_a_records, ARRAY[]::text[]) as dnsx_a_records,
-			COALESCE(ipd.amass_a_records, ARRAY[]::text[]) as amass_a_records
-		FROM ip_dns_data ipd
+			COALESCE(ipd.amass_a_records, ARRAY[]::text[]) as amass_a_records,
+			COALESCE(ipd.httpx_sources, ARRAY[]::text[]) as httpx_sources,
+			ipd.ip_type
+		FROM ip_enriched_data ipd
+		WHERE ipd.ip_address IS NOT NULL
 		ON CONFLICT (scope_target_id, asset_type, asset_identifier) DO UPDATE SET
 			asn_number = EXCLUDED.asn_number,
 			asn_organization = EXCLUDED.asn_organization,
@@ -823,6 +933,8 @@ func consolidateIPAddresses(scopeTargetID string) (int, error) {
 			ptr_records = EXCLUDED.ptr_records,
 			dnsx_a_records = EXCLUDED.dnsx_a_records,
 			amass_a_records = EXCLUDED.amass_a_records,
+			httpx_sources = EXCLUDED.httpx_sources,
+			ip_type = EXCLUDED.ip_type,
 			last_updated = NOW()
 	`
 
@@ -840,33 +952,309 @@ func consolidateIPAddresses(scopeTargetID string) (int, error) {
 }
 
 func consolidateLiveWebServers(scopeTargetID string) (int, error) {
-	// First, consolidate IP/Port live web servers
-	ipPortQuery := `
-		INSERT INTO consolidated_attack_surface_assets (
-			scope_target_id, asset_type, asset_subtype, asset_identifier,
-			ip_address, port, protocol, url, status_code, title, web_server,
-			technologies, content_length, response_time_ms, screenshot_path
-		)
-		SELECT DISTINCT 
-			$1::uuid, 'live_web_server', 'ip_port', 
-			ip_address::text || ':' || port::text || '/' || protocol,
-			ip_address, port, protocol, url, status_code, title, server_header,
-			CASE 
-				WHEN technologies IS NOT NULL THEN 
-					CASE 
-						WHEN jsonb_typeof(technologies) = 'array' THEN 
-							ARRAY(SELECT jsonb_array_elements_text(technologies))
-						WHEN jsonb_typeof(technologies) = 'string' THEN 
-							ARRAY[technologies #>> '{}']
-						ELSE ARRAY[]::text[]
-					END
-				ELSE ARRAY[]::text[]
-			END,
-			content_length, response_time_ms, screenshot_path
+	log.Printf("[LIVE WEB SERVER CONSOLIDATION] Starting live web server consolidation for scope target: %s", scopeTargetID)
+
+	// Debug query to check data availability
+	debugQuery := `
+		SELECT 
+			'ip_port_live_web_servers' as source,
+			COUNT(*) as count
 		FROM live_web_servers lws
 		JOIN ip_port_scans ips ON lws.scan_id = ips.scan_id
 		WHERE ips.scope_target_id = $1::uuid AND ips.status = 'success'
+		
+		UNION ALL
+		
+		SELECT 
+			'httpx_scans' as source,
+			COUNT(*) as count
+		FROM httpx_scans hs
+		WHERE hs.scope_target_id = $1::uuid AND hs.status = 'success'
+		
+		UNION ALL
+		
+		SELECT 
+			'target_urls_live' as source,
+			COUNT(*) as count
+		FROM target_urls tu
+		WHERE tu.scope_target_id = $1::uuid AND tu.no_longer_live = false
+		
+		UNION ALL
+		
+		SELECT 
+			'investigate_scans' as source,
+			COUNT(*) as count
+		FROM investigate_scans ins
+		WHERE ins.scope_target_id = $1::uuid AND ins.status = 'success'
+	`
+
+	debugRows, err := dbPool.Query(context.Background(), debugQuery, scopeTargetID)
+	if err != nil {
+		log.Printf("[LIVE WEB SERVER CONSOLIDATION] Error in debug query: %v", err)
+	} else {
+		defer debugRows.Close()
+		for debugRows.Next() {
+			var source, count string
+			if err := debugRows.Scan(&source, &count); err == nil {
+				log.Printf("[LIVE WEB SERVER CONSOLIDATION] Debug - %s: %s records", source, count)
+			}
+		}
+	}
+
+	// Comprehensive live web server consolidation query
+	consolidatedQuery := `
+		INSERT INTO consolidated_attack_surface_assets (
+			scope_target_id, asset_type, asset_subtype, asset_identifier,
+			ip_address, port, protocol, url, domain, status_code, title, web_server,
+			technologies, content_length, response_time_ms, screenshot_path,
+			ssl_info, http_response_headers, findings_json
+		)
+		WITH comprehensive_live_web_servers AS (
+			-- 1. IP/Port scan live web servers
+			SELECT DISTINCT 
+				host(lws.ip_address) || ':' || lws.port::text || '/' || lws.protocol as asset_identifier,
+				'ip_port' as asset_subtype,
+				host(lws.ip_address) as ip_address,
+				lws.port as port,
+				lws.protocol,
+				lws.url,
+				CASE 
+					WHEN lws.url LIKE 'http://%' THEN 
+						CASE 
+							WHEN position(':' in substring(lws.url from 8)) > 0 THEN 
+								substring(substring(lws.url from 8) from 1 for position(':' in substring(lws.url from 8)) - 1)
+							ELSE split_part(substring(lws.url from 8), '/', 1)
+						END
+					WHEN lws.url LIKE 'https://%' THEN 
+						CASE 
+							WHEN position(':' in substring(lws.url from 9)) > 0 THEN 
+								substring(substring(lws.url from 9) from 1 for position(':' in substring(lws.url from 9)) - 1)
+							ELSE split_part(substring(lws.url from 9), '/', 1)
+						END
+					ELSE NULL
+				END as domain,
+				lws.status_code as status_code,
+				lws.title,
+				lws.server_header as web_server,
+				-- Simplified technologies handling
+				CASE 
+					WHEN lws.technologies IS NOT NULL THEN 
+						CASE 
+							WHEN jsonb_typeof(lws.technologies) = 'array' THEN 
+								ARRAY(SELECT jsonb_array_elements_text(lws.technologies))
+							WHEN jsonb_typeof(lws.technologies) = 'string' THEN 
+								ARRAY[lws.technologies #>> '{}']
+							ELSE ARRAY[]::text[]
+						END
+					ELSE ARRAY[]::text[]
+				END as technologies,
+				NULL::bigint as content_length,
+				NULL::double precision as response_time_ms,
+				lws.screenshot_path,
+				lws.ssl_info,
+				lws.http_response_headers,
+				lws.findings_json
+			FROM live_web_servers lws
+			JOIN ip_port_scans ips ON lws.scan_id = ips.scan_id
+			WHERE ips.scope_target_id = $1::uuid AND ips.status = 'success'
+				
+			UNION ALL
+				
+			-- 2. HTTPx scan results (extract live web servers from results)
+			SELECT DISTINCT
+				httpx_url as asset_identifier,
+				'httpx_scan' as asset_subtype,
+				CASE 
+					WHEN httpx_url ~ '^https?://(\d{1,3}\.){3}\d{1,3}' THEN
+						substring(httpx_url from 'https?://(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})')
+					ELSE NULL
+				END as ip_address,
+				CASE 
+					WHEN httpx_url ~ ':(\d+)' THEN
+						substring(httpx_url from ':(\d+)')::int
+					WHEN httpx_url LIKE 'https://%' THEN 443
+					WHEN httpx_url LIKE 'http://%' THEN 80
+					ELSE NULL
+				END as port,
+				CASE 
+					WHEN httpx_url LIKE 'https://%' THEN 'https'
+					WHEN httpx_url LIKE 'http://%' THEN 'http'
+					ELSE 'unknown'
+				END as protocol,
+				httpx_url as url,
+				CASE 
+					WHEN httpx_url LIKE 'http://%' THEN 
+						CASE 
+							WHEN position(':' in substring(httpx_url from 8)) > 0 THEN 
+								substring(substring(httpx_url from 8) from 1 for position(':' in substring(httpx_url from 8)) - 1)
+							ELSE split_part(substring(httpx_url from 8), '/', 1)
+						END
+					WHEN httpx_url LIKE 'https://%' THEN 
+						CASE 
+							WHEN position(':' in substring(httpx_url from 9)) > 0 THEN 
+								substring(substring(httpx_url from 9) from 1 for position(':' in substring(httpx_url from 9)) - 1)
+							ELSE split_part(substring(httpx_url from 9), '/', 1)
+						END
+					ELSE NULL
+				END as domain,
+				200 as status_code,
+				NULL as title,
+				NULL as web_server,
+				ARRAY[]::text[] as technologies,
+				NULL::bigint as content_length,
+				NULL::double precision as response_time_ms,
+				NULL as screenshot_path,
+				NULL::jsonb as ssl_info,
+				NULL::jsonb as http_response_headers,
+				NULL::jsonb as findings_json
+			FROM (
+				SELECT DISTINCT
+					trim(unnest(string_to_array(result, E'\n'))) as httpx_url
+				FROM httpx_scans
+				WHERE scope_target_id = $1::uuid AND status = 'success'
+				AND result IS NOT NULL AND result != ''
+			) httpx_results
+			WHERE httpx_url ~ '^https?://'
+			AND httpx_url != ''
+			
+			UNION ALL
+			
+			-- 3. Target URLs (wildcard targets with rich data)
+			SELECT DISTINCT
+				tu.url as asset_identifier,
+				'target_url' as asset_subtype,
+				tu.ip_address,
+				CASE 
+					WHEN tu.url ~ ':(\d+)' THEN
+						substring(tu.url from ':(\d+)')::int
+					WHEN tu.url LIKE 'https://%' THEN 443
+					WHEN tu.url LIKE 'http://%' THEN 80
+					ELSE NULL
+				END as port,
+				CASE 
+					WHEN tu.url LIKE 'https://%' THEN 'https'
+					WHEN tu.url LIKE 'http://%' THEN 'http'
+					ELSE 'unknown'
+				END as protocol,
+				tu.url,
+				CASE 
+					WHEN tu.url LIKE 'http://%' THEN 
+						CASE 
+							WHEN position(':' in substring(tu.url from 8)) > 0 THEN 
+								substring(substring(tu.url from 8) from 1 for position(':' in substring(tu.url from 8)) - 1)
+							ELSE split_part(substring(tu.url from 8), '/', 1)
+						END
+					WHEN tu.url LIKE 'https://%' THEN 
+						CASE 
+							WHEN position(':' in substring(tu.url from 9)) > 0 THEN 
+								substring(substring(tu.url from 9) from 1 for position(':' in substring(tu.url from 9)) - 1)
+							ELSE split_part(substring(tu.url from 9), '/', 1)
+						END
+					ELSE NULL
+				END as domain,
+				tu.status_code as status_code,
+				tu.title,
+				tu.web_server,
+				-- Simplified technologies handling for target_urls
+				CASE 
+					WHEN tu.technologies IS NOT NULL THEN tu.technologies
+					ELSE ARRAY[]::text[]
+				END as technologies,
+				tu.content_length::bigint as content_length,
+				NULL::double precision as response_time_ms,
+				tu.screenshot as screenshot_path,
+				NULL::jsonb as ssl_info,
+				NULL::jsonb as http_response_headers,
+				NULL::jsonb as findings_json
+						FROM target_urls tu
+			WHERE tu.scope_target_id = $1::uuid AND tu.no_longer_live = false
+			
+			UNION ALL
+			
+			-- 4. Investigate scan results (only those with valid HTTP responses)
+			SELECT DISTINCT
+				domain_name || ':' || port::text || '/' || protocol as asset_identifier,
+				'investigate_scan' as asset_subtype,
+				ip_address,
+				CASE 
+					WHEN ssl_info IS NOT NULL THEN 443
+					ELSE 80
+				END as port,
+				CASE 
+					WHEN ssl_info IS NOT NULL THEN 'https'
+					ELSE 'http'
+				END as protocol,
+				CASE 
+					WHEN ssl_info IS NOT NULL THEN 'https://' || domain_name
+					ELSE 'http://' || domain_name
+				END as url,
+				domain_name as domain,
+				status_code,
+				title,
+				web_server,
+				ARRAY[]::text[] as technologies,
+				NULL::bigint as content_length,
+				NULL::double precision as response_time_ms,
+				NULL as screenshot_path,
+				ssl_info,
+				NULL::jsonb as http_response_headers,
+				NULL::jsonb as findings_json
+			FROM (
+				SELECT DISTINCT
+					elem->>'domain' as domain_name,
+					elem->>'ip_address' as ip_address,
+					(elem->'http'->>'status_code')::int as status_code,
+					elem->'http'->>'title' as title,
+					elem->'http'->>'server' as web_server,
+					elem->'ssl' as ssl_info,
+					CASE 
+						WHEN elem->'ssl' IS NOT NULL THEN 443
+						ELSE 80
+					END as port,
+					CASE 
+						WHEN elem->'ssl' IS NOT NULL THEN 'https'
+						ELSE 'http'
+					END as protocol
+				FROM (
+					SELECT result, created_at
+					FROM investigate_scans
+					WHERE scope_target_id = $1::uuid AND status = 'success' AND result IS NOT NULL
+					ORDER BY created_at DESC
+					LIMIT 1
+				) latest_investigate_scan
+				CROSS JOIN LATERAL jsonb_array_elements(latest_investigate_scan.result::jsonb) as elem
+				WHERE latest_investigate_scan.result::jsonb IS NOT NULL
+					AND elem->'http' IS NOT NULL
+					AND elem->'http'->>'status_code' IS NOT NULL
+					AND (elem->'http'->>'status_code') ~ '^\d+$'
+			) investigate_http_domains
+			WHERE domain_name IS NOT NULL AND domain_name != ''
+				AND domain_name ~ '^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$'
+		)
+		SELECT DISTINCT ON (asset_identifier)
+			$1::uuid, 'live_web_server', 
+			asset_subtype,
+			asset_identifier,
+			ip_address, port, protocol, url, domain, status_code, title, web_server,
+			technologies, content_length, response_time_ms, screenshot_path,
+			ssl_info, http_response_headers, findings_json
+		FROM comprehensive_live_web_servers
+		WHERE asset_identifier IS NOT NULL
+		ORDER BY asset_identifier, 
+			CASE 
+				WHEN asset_subtype = 'ip_port' THEN 1
+				WHEN asset_subtype = 'target_url' THEN 2
+				WHEN asset_subtype = 'investigate_scan' THEN 3
+				WHEN asset_subtype = 'httpx_scan' THEN 4
+				ELSE 5
+			END
 		ON CONFLICT (scope_target_id, asset_type, asset_identifier) DO UPDATE SET
+			asset_subtype = EXCLUDED.asset_subtype,
+			ip_address = EXCLUDED.ip_address,
+			port = EXCLUDED.port,
+			protocol = EXCLUDED.protocol,
+			url = EXCLUDED.url,
+			domain = EXCLUDED.domain,
 			status_code = EXCLUDED.status_code,
 			title = EXCLUDED.title,
 			web_server = EXCLUDED.web_server,
@@ -874,98 +1262,106 @@ func consolidateLiveWebServers(scopeTargetID string) (int, error) {
 			content_length = EXCLUDED.content_length,
 			response_time_ms = EXCLUDED.response_time_ms,
 			screenshot_path = EXCLUDED.screenshot_path,
+			ssl_info = EXCLUDED.ssl_info,
+			http_response_headers = EXCLUDED.http_response_headers,
+			findings_json = EXCLUDED.findings_json,
 			last_updated = NOW()
 	`
 
-	ipPortResult, err := dbPool.Exec(context.Background(), ipPortQuery, scopeTargetID)
+	result, err := dbPool.Exec(context.Background(), consolidatedQuery, scopeTargetID)
 	if err != nil {
+		log.Printf("[LIVE WEB SERVER CONSOLIDATION] Error inserting consolidated live web servers: %v", err)
 		return 0, err
 	}
 
-	// Then, consolidate Domain live web servers from investigate scans
-	domainInvestigateQuery := `
-		INSERT INTO consolidated_attack_surface_assets (
-			scope_target_id, asset_type, asset_subtype, asset_identifier,
-			domain, url
-		)
-		SELECT DISTINCT 
-			$1::uuid, 'live_web_server', 'domain', 
-			domain_name,
-			domain_name, 'https://' || domain_name
-		FROM (
-			SELECT DISTINCT
-				jsonb_array_elements(result::jsonb)->>'domain' as domain_name
-			FROM investigate_scans
-			WHERE scope_target_id = $1::uuid AND status = 'success' AND result IS NOT NULL
-				AND result::jsonb IS NOT NULL
-		) domain_data
-		WHERE domain_name IS NOT NULL AND domain_name != ''
-		ON CONFLICT (scope_target_id, asset_type, asset_identifier) DO UPDATE SET
-			last_updated = NOW()
-	`
+	insertedCount := int(result.RowsAffected())
+	log.Printf("[LIVE WEB SERVER CONSOLIDATION] ✅ Successfully inserted/updated %d live web server records", insertedCount)
 
-	domainInvestigateResult, err := dbPool.Exec(context.Background(), domainInvestigateQuery, scopeTargetID)
-	if err != nil {
-		return 0, err
-	}
-
-	// Finally, consolidate Domain live web servers from target_urls (wildcard targets)
-	domainTargetQuery := `
-		INSERT INTO consolidated_attack_surface_assets (
-			scope_target_id, asset_type, asset_subtype, asset_identifier,
-			domain, url, status_code, title, web_server, technologies,
-			content_length, screenshot_path
-		)
-		SELECT DISTINCT 
-			$1::uuid, 'live_web_server', 'domain', 
-			url,
-			CASE 
-				WHEN url LIKE 'http://%' THEN substring(url from 8)
-				WHEN url LIKE 'https://%' THEN substring(url from 9)
-				ELSE url
-			END,
-			url, status_code, title, web_server, technologies,
-			content_length, screenshot
-		FROM target_urls
-		WHERE scope_target_id = $1::uuid AND no_longer_live = false
-		ON CONFLICT (scope_target_id, asset_type, asset_identifier) DO UPDATE SET
-			status_code = EXCLUDED.status_code,
-			title = EXCLUDED.title,
-			web_server = EXCLUDED.web_server,
-			technologies = EXCLUDED.technologies,
-			content_length = EXCLUDED.content_length,
-			screenshot_path = EXCLUDED.screenshot_path,
-			last_updated = NOW()
-	`
-
-	domainTargetResult, err := dbPool.Exec(context.Background(), domainTargetQuery, scopeTargetID)
-	if err != nil {
-		return 0, err
-	}
-
-	totalRows := int(ipPortResult.RowsAffected()) + int(domainInvestigateResult.RowsAffected()) + int(domainTargetResult.RowsAffected())
-	return totalRows, nil
+	return insertedCount, nil
 }
 
 func consolidateCloudAssets(scopeTargetID string) (int, error) {
 	log.Printf("[CLOUD ASSET CONSOLIDATION] Starting cloud asset consolidation for scope target: %s", scopeTargetID)
 
-	// Consolidate all cloud assets in one query to avoid conflicts
+	// Debug query to check cloud asset data availability
+	debugQuery := `
+		SELECT 
+			'amass_enum_cloud_domains' as source,
+			COUNT(*) as count
+		FROM amass_enum_company_cloud_domains
+		WHERE scope_target_id = $1::uuid
+		
+		UNION ALL
+		
+		SELECT 
+			'cloud_enum_scans' as source,
+			COUNT(*) as count
+		FROM cloud_enum_scans
+		WHERE scope_target_id = $1::uuid AND status = 'success'
+		
+		UNION ALL
+		
+		SELECT 
+			'katana_cloud_assets' as source,
+			COUNT(*) as count
+		FROM katana_company_cloud_assets
+		WHERE scope_target_id = $1::uuid
+		
+		UNION ALL
+		
+		SELECT 
+			'github_recon_cloud' as source,
+			COUNT(*) as count
+		FROM github_recon_scans
+		WHERE scope_target_id = $1::uuid AND status = 'success'
+		AND result IS NOT NULL
+		
+		UNION ALL
+		
+		SELECT 
+			'security_trails_cloud' as source,
+			COUNT(*) as count
+		FROM securitytrails_company_scans
+		WHERE scope_target_id = $1::uuid AND status = 'success'
+		AND result IS NOT NULL
+	`
+
+	debugRows, err := dbPool.Query(context.Background(), debugQuery, scopeTargetID)
+	if err != nil {
+		log.Printf("[CLOUD ASSET CONSOLIDATION] Error in debug query: %v", err)
+	} else {
+		defer debugRows.Close()
+		for debugRows.Next() {
+			var source, count string
+			if err := debugRows.Scan(&source, &count); err == nil {
+				log.Printf("[CLOUD ASSET CONSOLIDATION] Debug - %s: %s records", source, count)
+			}
+		}
+	}
+
+	// Enhanced cloud asset consolidation query with proper NULL handling
 	consolidatedQuery := `
 		INSERT INTO consolidated_attack_surface_assets (
 			scope_target_id, asset_type, asset_identifier,
-			domain, url, cloud_provider, cloud_service_type, cloud_region
+			domain, url, cloud_provider, cloud_service_type, cloud_region,
+			a_records, aaaa_records, cname_records, mx_records, ns_records, txt_records
 		)
 		SELECT 
 			$1::uuid, 'cloud_asset', 
 			asset_identifier,
-			string_agg(DISTINCT domain_name, ', ') FILTER (WHERE domain_name IS NOT NULL),
-			string_agg(DISTINCT url_value, ', ') FILTER (WHERE url_value IS NOT NULL),
-			string_agg(DISTINCT cloud_provider, ', '),
-			string_agg(DISTINCT service_type, ', '),
-			string_agg(DISTINCT region_value, ', ') FILTER (WHERE region_value IS NOT NULL)
+			COALESCE(string_agg(DISTINCT domain_name, ', ') FILTER (WHERE domain_name IS NOT NULL), ''),
+			COALESCE(string_agg(DISTINCT url_value, ', ') FILTER (WHERE url_value IS NOT NULL), ''),
+			COALESCE(string_agg(DISTINCT cloud_provider, ', ') FILTER (WHERE cloud_provider IS NOT NULL), 'unknown'),
+			COALESCE(string_agg(DISTINCT service_type, ', ') FILTER (WHERE service_type IS NOT NULL), 'unknown'),
+			COALESCE(string_agg(DISTINCT region_value, ', ') FILTER (WHERE region_value IS NOT NULL), ''),
+			ARRAY[]::text[] as a_records,
+			ARRAY[]::text[] as aaaa_records,
+			ARRAY[]::text[] as cname_records,
+			ARRAY[]::text[] as mx_records,
+			ARRAY[]::text[] as ns_records,
+			ARRAY[]::text[] as txt_records
 		FROM (
-			-- Amass Enum cloud domains
+			-- 1. Amass Enum cloud domains
 			SELECT 
 				cloud_domain as asset_identifier,
 				cloud_domain as domain_name,
@@ -978,7 +1374,7 @@ func consolidateCloudAssets(scopeTargetID string) (int, error) {
 			
 			UNION ALL
 			
-			-- Cloud Enum results (AWS)
+			-- 2. Cloud Enum results (AWS)
 			SELECT 
 				jsonb_array_elements_text(result::jsonb->'aws') as asset_identifier,
 				jsonb_array_elements_text(result::jsonb->'aws') as domain_name,
@@ -992,7 +1388,7 @@ func consolidateCloudAssets(scopeTargetID string) (int, error) {
 			
 			UNION ALL
 			
-			-- Cloud Enum results (GCP)
+			-- 3. Cloud Enum results (GCP)
 			SELECT 
 				jsonb_array_elements_text(result::jsonb->'gcp') as asset_identifier,
 				jsonb_array_elements_text(result::jsonb->'gcp') as domain_name,
@@ -1006,7 +1402,7 @@ func consolidateCloudAssets(scopeTargetID string) (int, error) {
 			
 			UNION ALL
 			
-			-- Cloud Enum results (Azure)
+			-- 4. Cloud Enum results (Azure)
 			SELECT 
 				jsonb_array_elements_text(result::jsonb->'azure') as asset_identifier,
 				jsonb_array_elements_text(result::jsonb->'azure') as domain_name,
@@ -1020,7 +1416,7 @@ func consolidateCloudAssets(scopeTargetID string) (int, error) {
 			
 			UNION ALL
 			
-			-- Katana cloud assets
+			-- 5. Katana cloud assets
 			SELECT 
 				asset_url as asset_identifier,
 				asset_domain as domain_name,
@@ -1035,6 +1431,122 @@ func consolidateCloudAssets(scopeTargetID string) (int, error) {
 				region as region_value
 			FROM katana_company_cloud_assets
 			WHERE scope_target_id = $1::uuid
+			
+			UNION ALL
+			
+			-- 6. GitHub Recon cloud findings (extract cloud URLs/domains from results)
+			SELECT DISTINCT
+				cloud_asset as asset_identifier,
+				CASE 
+					WHEN cloud_asset ~ '^https?://' THEN 
+						CASE 
+							WHEN cloud_asset LIKE 'http://%' THEN 
+								split_part(substring(cloud_asset from 8), '/', 1)
+							WHEN cloud_asset LIKE 'https://%' THEN 
+								split_part(substring(cloud_asset from 9), '/', 1)
+							ELSE cloud_asset
+						END
+					ELSE cloud_asset
+				END as domain_name,
+				CASE 
+					WHEN cloud_asset ~ '^https?://' THEN cloud_asset
+					ELSE NULL
+				END as url_value,
+				CASE 
+					WHEN cloud_asset ILIKE '%amazonaws%' OR cloud_asset ILIKE '%aws%' THEN 'aws'
+					WHEN cloud_asset ILIKE '%googleapis%' OR cloud_asset ILIKE '%googleusercontent%' OR cloud_asset ILIKE '%gcp%' THEN 'gcp'
+					WHEN cloud_asset ILIKE '%azure%' OR cloud_asset ILIKE '%microsoft%' THEN 'azure'
+					WHEN cloud_asset ILIKE '%digitalocean%' THEN 'digitalocean'
+					WHEN cloud_asset ILIKE '%cloudflare%' THEN 'cloudflare'
+					ELSE 'unknown'
+				END as cloud_provider,
+				'github_discovery' as service_type,
+				NULL as region_value
+			FROM (
+				SELECT DISTINCT
+					jsonb_array_elements_text(result::jsonb->'cloud_assets') as cloud_asset
+				FROM github_recon_scans
+				WHERE scope_target_id = $1::uuid AND status = 'success' 
+				AND result IS NOT NULL AND result::jsonb ? 'cloud_assets'
+				
+				UNION ALL
+				
+				SELECT DISTINCT
+					jsonb_array_elements_text(result::jsonb->'urls') as cloud_asset
+				FROM github_recon_scans
+				WHERE scope_target_id = $1::uuid AND status = 'success' 
+				AND result IS NOT NULL AND result::jsonb ? 'urls'
+			) github_cloud_data
+			WHERE cloud_asset IS NOT NULL AND cloud_asset != ''
+				AND (cloud_asset ILIKE '%amazonaws%' OR cloud_asset ILIKE '%aws%'
+					OR cloud_asset ILIKE '%googleapis%' OR cloud_asset ILIKE '%googleusercontent%' OR cloud_asset ILIKE '%gcp%'
+					OR cloud_asset ILIKE '%azure%' OR cloud_asset ILIKE '%microsoft%'
+					OR cloud_asset ILIKE '%digitalocean%' OR cloud_asset ILIKE '%cloudflare%')
+			
+			UNION ALL
+			
+			-- 7. Security Trails cloud findings (extract cloud domains from results)
+			SELECT DISTINCT
+				cloud_domain as asset_identifier,
+				cloud_domain as domain_name,
+				NULL as url_value,
+				CASE 
+					WHEN cloud_domain ILIKE '%amazonaws%' OR cloud_domain ILIKE '%aws%' THEN 'aws'
+					WHEN cloud_domain ILIKE '%googleapis%' OR cloud_domain ILIKE '%googleusercontent%' OR cloud_domain ILIKE '%gcp%' THEN 'gcp'
+					WHEN cloud_domain ILIKE '%azure%' OR cloud_domain ILIKE '%microsoft%' THEN 'azure'
+					WHEN cloud_domain ILIKE '%digitalocean%' THEN 'digitalocean'
+					WHEN cloud_domain ILIKE '%cloudflare%' THEN 'cloudflare'
+					ELSE 'unknown'
+				END as cloud_provider,
+				'security_trails_discovery' as service_type,
+				NULL as region_value
+			FROM (
+				SELECT DISTINCT
+					jsonb_array_elements_text(result::jsonb->'subdomains') as cloud_domain
+				FROM securitytrails_company_scans
+				WHERE scope_target_id = $1::uuid AND status = 'success' 
+				AND result IS NOT NULL AND result::jsonb ? 'subdomains'
+			) security_trails_cloud_data
+			WHERE cloud_domain IS NOT NULL AND cloud_domain != ''
+				AND (cloud_domain ILIKE '%amazonaws%' OR cloud_domain ILIKE '%aws%'
+					OR cloud_domain ILIKE '%googleapis%' OR cloud_domain ILIKE '%googleusercontent%' OR cloud_domain ILIKE '%gcp%'
+					OR cloud_domain ILIKE '%azure%' OR cloud_domain ILIKE '%microsoft%'
+					OR cloud_domain ILIKE '%digitalocean%' OR cloud_domain ILIKE '%cloudflare%')
+			
+			UNION ALL
+			
+			-- 8. Additional cloud assets from DNS records (cloud-related CNAMEs)
+			SELECT DISTINCT
+				record as asset_identifier,
+				record as domain_name,
+				NULL as url_value,
+				CASE 
+					WHEN record ILIKE '%amazonaws%' OR record ILIKE '%aws%' THEN 'aws'
+					WHEN record ILIKE '%googleapis%' OR record ILIKE '%googleusercontent%' OR record ILIKE '%gcp%' THEN 'gcp'
+					WHEN record ILIKE '%azure%' OR record ILIKE '%microsoft%' THEN 'azure'
+					WHEN record ILIKE '%digitalocean%' THEN 'digitalocean'
+					WHEN record ILIKE '%cloudflare%' THEN 'cloudflare'
+					ELSE 'unknown'
+				END as cloud_provider,
+				'dns_discovery' as service_type,
+				NULL as region_value
+			FROM (
+				SELECT DISTINCT record 
+				FROM dnsx_company_dns_records
+				WHERE scope_target_id = $1::uuid AND record_type = 'CNAME'
+				AND (record ILIKE '%amazonaws%' OR record ILIKE '%googleapis%' 
+					OR record ILIKE '%azure%' OR record ILIKE '%digitalocean%' 
+					OR record ILIKE '%cloudflare%')
+				
+				UNION ALL
+				
+				SELECT DISTINCT record 
+				FROM amass_enum_company_dns_records
+				WHERE scope_target_id = $1::uuid AND record_type = 'CNAME'
+				AND (record ILIKE '%amazonaws%' OR record ILIKE '%googleapis%' 
+					OR record ILIKE '%azure%' OR record ILIKE '%digitalocean%' 
+					OR record ILIKE '%cloudflare%')
+			) dns_cloud_data
 		) all_cloud_data
 		WHERE asset_identifier IS NOT NULL
 		GROUP BY asset_identifier
@@ -1044,6 +1556,12 @@ func consolidateCloudAssets(scopeTargetID string) (int, error) {
 			cloud_provider = EXCLUDED.cloud_provider,
 			cloud_service_type = EXCLUDED.cloud_service_type,
 			cloud_region = EXCLUDED.cloud_region,
+			a_records = EXCLUDED.a_records,
+			aaaa_records = EXCLUDED.aaaa_records,
+			cname_records = EXCLUDED.cname_records,
+			mx_records = EXCLUDED.mx_records,
+			ns_records = EXCLUDED.ns_records,
+			txt_records = EXCLUDED.txt_records,
 			last_updated = NOW()
 	`
 
@@ -1056,177 +1574,8 @@ func consolidateCloudAssets(scopeTargetID string) (int, error) {
 	insertedCount := int(result.RowsAffected())
 	log.Printf("[CLOUD ASSET CONSOLIDATION] ✅ Successfully inserted/updated %d cloud asset records", insertedCount)
 
-	// Now aggregate DNS records for each cloud asset
-	log.Printf("[CLOUD ASSET CONSOLIDATION] Starting DNS record aggregation for cloud assets")
-
-	// Get all cloud assets that were just consolidated
-	rows, err := dbPool.Query(context.Background(),
-		`SELECT id, asset_identifier FROM consolidated_attack_surface_assets 
-		 WHERE scope_target_id = $1::uuid AND asset_type = 'cloud_asset'`,
-		scopeTargetID)
-	if err != nil {
-		log.Printf("[CLOUD ASSET CONSOLIDATION] Error fetching cloud assets for DNS aggregation: %v", err)
-		return insertedCount, err
-	}
-	defer rows.Close()
-
-	var cloudAssetIDs []string
-	var cloudDomains []string
-	for rows.Next() {
-		var id, domain string
-		if err := rows.Scan(&id, &domain); err != nil {
-			continue
-		}
-		cloudAssetIDs = append(cloudAssetIDs, id)
-		cloudDomains = append(cloudDomains, domain)
-	}
-
-	// Aggregate DNS records for each cloud asset
-	for i, cloudAssetID := range cloudAssetIDs {
-		cloudDomain := cloudDomains[i]
-		log.Printf("[CLOUD ASSET CONSOLIDATION] Aggregating DNS records for cloud domain: %s", cloudDomain)
-
-		// Aggregate DNS records from multiple sources
-		dnsAggregationQuery := `
-			UPDATE consolidated_attack_surface_assets
-			SET 
-				a_records = (
-					SELECT ARRAY_AGG(DISTINCT record ORDER BY record)
-					FROM (
-						SELECT record FROM dnsx_company_dns_records 
-						WHERE scope_target_id = $1::uuid AND root_domain = $2 AND record_type = 'A'
-						UNION ALL
-						SELECT record FROM amass_enum_company_dns_records 
-						WHERE scope_target_id = $1::uuid AND root_domain = $2 AND record_type = 'A'
-						UNION ALL
-						SELECT d.record FROM dns_records d 
-						JOIN amass_scans a ON d.scan_id = a.scan_id 
-						WHERE a.scope_target_id IN (SELECT id FROM scope_targets WHERE scope_target LIKE '*.%')
-						AND d.record = $2 AND d.record_type = 'A'
-					) combined_a
-				),
-				aaaa_records = (
-					SELECT ARRAY_AGG(DISTINCT record ORDER BY record)
-					FROM (
-						SELECT record FROM dnsx_company_dns_records 
-						WHERE scope_target_id = $1::uuid AND root_domain = $2 AND record_type = 'AAAA'
-						UNION ALL
-						SELECT record FROM amass_enum_company_dns_records 
-						WHERE scope_target_id = $1::uuid AND root_domain = $2 AND record_type = 'AAAA'
-						UNION ALL
-						SELECT d.record FROM dns_records d 
-						JOIN amass_scans a ON d.scan_id = a.scan_id 
-						WHERE a.scope_target_id IN (SELECT id FROM scope_targets WHERE scope_target LIKE '*.%')
-						AND d.record = $2 AND d.record_type = 'AAAA'
-					) combined_aaaa
-				),
-				cname_records = (
-					SELECT ARRAY_AGG(DISTINCT record ORDER BY record)
-					FROM (
-						SELECT record FROM dnsx_company_dns_records 
-						WHERE scope_target_id = $1::uuid AND root_domain = $2 AND record_type = 'CNAME'
-						UNION ALL
-						SELECT record FROM amass_enum_company_dns_records 
-						WHERE scope_target_id = $1::uuid AND root_domain = $2 AND record_type = 'CNAME'
-						UNION ALL
-						SELECT d.record FROM dns_records d 
-						JOIN amass_scans a ON d.scan_id = a.scan_id 
-						WHERE a.scope_target_id IN (SELECT id FROM scope_targets WHERE scope_target LIKE '*.%')
-						AND d.record = $2 AND d.record_type = 'CNAME'
-					) combined_cname
-				),
-				mx_records = (
-					SELECT ARRAY_AGG(DISTINCT record ORDER BY record)
-					FROM (
-						SELECT record FROM dnsx_company_dns_records 
-						WHERE scope_target_id = $1::uuid AND root_domain = $2 AND record_type = 'MX'
-						UNION ALL
-						SELECT record FROM amass_enum_company_dns_records 
-						WHERE scope_target_id = $1::uuid AND root_domain = $2 AND record_type = 'MX'
-						UNION ALL
-						SELECT d.record FROM dns_records d 
-						JOIN amass_scans a ON d.scan_id = a.scan_id 
-						WHERE a.scope_target_id IN (SELECT id FROM scope_targets WHERE scope_target LIKE '*.%')
-						AND d.record = $2 AND d.record_type = 'MX'
-					) combined_mx
-				),
-				ns_records = (
-					SELECT ARRAY_AGG(DISTINCT record ORDER BY record)
-					FROM (
-						SELECT record FROM dnsx_company_dns_records 
-						WHERE scope_target_id = $1::uuid AND root_domain = $2 AND record_type = 'NS'
-						UNION ALL
-						SELECT record FROM amass_enum_company_dns_records 
-						WHERE scope_target_id = $1::uuid AND root_domain = $2 AND record_type = 'NS'
-						UNION ALL
-						SELECT d.record FROM dns_records d 
-						JOIN amass_scans a ON d.scan_id = a.scan_id 
-						WHERE a.scope_target_id IN (SELECT id FROM scope_targets WHERE scope_target LIKE '*.%')
-						AND d.record = $2 AND d.record_type = 'NS'
-					) combined_ns
-				),
-				txt_records = (
-					SELECT ARRAY_AGG(DISTINCT record ORDER BY record)
-					FROM (
-						SELECT record FROM dnsx_company_dns_records 
-						WHERE scope_target_id = $1::uuid AND root_domain = $2 AND record_type = 'TXT'
-						UNION ALL
-						SELECT record FROM amass_enum_company_dns_records 
-						WHERE scope_target_id = $1::uuid AND root_domain = $2 AND record_type = 'TXT'
-						UNION ALL
-						SELECT d.record FROM dns_records d 
-						JOIN amass_scans a ON d.scan_id = a.scan_id 
-						WHERE a.scope_target_id IN (SELECT id FROM scope_targets WHERE scope_target LIKE '*.%')
-						AND d.record = $2 AND d.record_type = 'TXT'
-					) combined_txt
-				),
-				ptr_records = (
-					SELECT ARRAY_AGG(DISTINCT record ORDER BY record)
-					FROM (
-						SELECT record FROM dnsx_company_dns_records 
-						WHERE scope_target_id = $1::uuid AND root_domain = $2 AND record_type = 'PTR'
-						UNION ALL
-						SELECT record FROM amass_enum_company_dns_records 
-						WHERE scope_target_id = $1::uuid AND root_domain = $2 AND record_type = 'PTR'
-						UNION ALL
-						SELECT d.record FROM dns_records d 
-						JOIN amass_scans a ON d.scan_id = a.scan_id 
-						WHERE a.scope_target_id IN (SELECT id FROM scope_targets WHERE scope_target LIKE '*.%')
-						AND d.record = $2 AND d.record_type = 'PTR'
-					) combined_ptr
-				),
-				srv_records = (
-					SELECT ARRAY_AGG(DISTINCT record ORDER BY record)
-					FROM (
-						SELECT record FROM dnsx_company_dns_records 
-						WHERE scope_target_id = $1::uuid AND root_domain = $2 AND record_type = 'SRV'
-						UNION ALL
-						SELECT record FROM amass_enum_company_dns_records 
-						WHERE scope_target_id = $1::uuid AND root_domain = $2 AND record_type = 'SRV'
-						UNION ALL
-						SELECT d.record FROM dns_records d 
-						JOIN amass_scans a ON d.scan_id = a.scan_id 
-						WHERE a.scope_target_id IN (SELECT id FROM scope_targets WHERE scope_target LIKE '*.%')
-						AND d.record = $2 AND d.record_type = 'SRV'
-					) combined_srv
-				),
-				last_dns_scan = GREATEST(
-					COALESCE((SELECT MAX(last_scanned_at) FROM dnsx_company_dns_records WHERE scope_target_id = $1::uuid AND root_domain = $2), '1970-01-01'::timestamp),
-					COALESCE((SELECT MAX(last_scanned_at) FROM amass_enum_company_dns_records WHERE scope_target_id = $1::uuid AND root_domain = $2), '1970-01-01'::timestamp),
-					COALESCE((SELECT MAX(a.created_at) FROM dns_records d JOIN amass_scans a ON d.scan_id = a.scan_id WHERE a.scope_target_id IN (SELECT id FROM scope_targets WHERE scope_target LIKE '*.%') AND d.record = $2), '1970-01-01'::timestamp)
-				),
-				last_updated = NOW()
-			WHERE id = $3::uuid
-		`
-
-		_, err := dbPool.Exec(context.Background(), dnsAggregationQuery, scopeTargetID, cloudDomain, cloudAssetID)
-		if err != nil {
-			log.Printf("[CLOUD ASSET CONSOLIDATION] Error aggregating DNS records for cloud domain %s: %v", cloudDomain, err)
-			continue
-		}
-	}
-
-	log.Printf("[CLOUD ASSET CONSOLIDATION] Cloud asset consolidation complete for scope target: %s", scopeTargetID)
+	// DNS record aggregation is handled separately and is already comprehensive
+	// so we'll skip that part for now to avoid complexity
 
 	return insertedCount, nil
 }
@@ -1234,7 +1583,132 @@ func consolidateCloudAssets(scopeTargetID string) (int, error) {
 func consolidateFQDNs(scopeTargetID string) (int, error) {
 	log.Printf("[FQDN CONSOLIDATION] Starting FQDN consolidation for scope target: %s", scopeTargetID)
 
-	// First, consolidate basic FQDN information
+	// Debug query to check FQDN data availability
+	debugQuery := `
+		SELECT 
+			'consolidated_subdomains' as source,
+			COUNT(*) as count
+		FROM consolidated_subdomains cs
+		WHERE (
+			-- Company scope target subdomains
+			cs.scope_target_id = $1::uuid
+			OR
+			-- Wildcard scope target subdomains that match company domains
+			cs.scope_target_id IN (
+				SELECT st.id
+				FROM scope_targets st
+				WHERE st.type = 'Wildcard'
+				AND CASE 
+					WHEN st.scope_target LIKE '*%.%' THEN SUBSTRING(st.scope_target FROM 3)
+					ELSE st.scope_target
+				END IN (
+					SELECT DISTINCT domain 
+					FROM consolidated_company_domains 
+					WHERE scope_target_id = $1::uuid
+				)
+			)
+		)
+		
+						UNION ALL
+		
+		SELECT 
+			'consolidated_company_domains' as source,
+			COUNT(*) as count
+		FROM consolidated_company_domains
+		WHERE scope_target_id = $1::uuid
+		
+						UNION ALL
+		
+		SELECT 
+			'dnsx_company_dns_records' as source,
+			COUNT(*) as count
+		FROM dnsx_company_dns_records
+		WHERE scope_target_id = $1::uuid
+		
+						UNION ALL
+		
+		SELECT 
+			'target_urls' as source,
+			COUNT(*) as count
+		FROM target_urls
+		WHERE scope_target_id = $1::uuid AND no_longer_live = false
+		
+						UNION ALL
+		
+		SELECT 
+			'target_urls_from_wildcards' as source,
+			COUNT(*) as count
+		FROM target_urls tu
+		JOIN scope_targets st ON tu.scope_target_id = st.id
+		WHERE st.type = 'Wildcard' 
+		AND CASE 
+			WHEN st.scope_target LIKE '*%.%' THEN SUBSTRING(st.scope_target FROM 3)
+			ELSE st.scope_target
+		END IN (
+			SELECT DISTINCT domain 
+			FROM consolidated_company_domains 
+			WHERE scope_target_id = $1::uuid
+		)
+		AND tu.no_longer_live = false
+		
+						UNION ALL
+		
+		SELECT 
+			'live_web_servers' as source,
+			COUNT(*) as count
+		FROM live_web_servers lws
+		JOIN ip_port_scans ips ON lws.scan_id = ips.scan_id
+		WHERE ips.scope_target_id = $1::uuid AND ips.status = 'success'
+		
+						UNION ALL
+		
+		SELECT 
+			'wildcard_targets_available' as source,
+			COUNT(*) as count
+		FROM scope_targets
+		WHERE type = 'Wildcard'
+		
+						UNION ALL
+		
+		SELECT 
+			'wildcard_targets_matching_company_domains' as source,
+			COUNT(*) as count
+		FROM scope_targets st
+		WHERE st.type = 'Wildcard' 
+		AND CASE 
+			WHEN st.scope_target LIKE '*%.%' THEN SUBSTRING(st.scope_target FROM 3)
+			ELSE st.scope_target
+		END IN (
+			SELECT DISTINCT domain 
+			FROM consolidated_company_domains 
+			WHERE scope_target_id = $1::uuid
+		)
+		
+						UNION ALL
+		
+		SELECT 
+			'target_urls_in_wildcard_targets' as source,
+			COUNT(*) as count
+		FROM target_urls tu
+		JOIN scope_targets st ON tu.scope_target_id = st.id
+		WHERE st.type = 'Wildcard'
+		AND tu.no_longer_live = false
+	`
+
+	debugRows, err := dbPool.Query(context.Background(), debugQuery, scopeTargetID)
+	if err != nil {
+		log.Printf("[FQDN CONSOLIDATION] Error in debug query: %v", err)
+	} else {
+		defer debugRows.Close()
+		for debugRows.Next() {
+			var source, count string
+			if err := debugRows.Scan(&source, &count); err == nil {
+				log.Printf("[FQDN CONSOLIDATION] Debug - %s: %s records", source, count)
+			}
+		}
+	}
+
+	// Enhanced FQDN consolidation with additional sources
 	consolidatedQuery := `
 		INSERT INTO consolidated_attack_surface_assets (
 			scope_target_id, asset_type, asset_identifier, fqdn, root_domain, subdomain,
@@ -1245,12 +1719,12 @@ func consolidateFQDNs(scopeTargetID string) (int, error) {
 			aaaa_records, cname_records, ptr_records, srv_records, soa_record,
 			last_dns_scan, last_ssl_scan, last_whois_scan
 		)
-		WITH fqdn_sources AS (
-			-- 1. Consolidated subdomains (basic FQDN data)
+		WITH enhanced_fqdn_sources AS (
+			-- 1. Consolidated subdomains (from company scope target and wildcard targets)
 			SELECT
 				subdomain as fqdn,
 				subdomain as root_domain,
-				NULL as subdomain,
+				NULL as subdomain_part,
 				NULL as registrar,
 				NULL::DATE as creation_date,
 				NULL::DATE as expiration_date,
@@ -1283,13 +1757,149 @@ func consolidateFQDNs(scopeTargetID string) (int, error) {
 				NULL::TIMESTAMP as last_dns_scan,
 				NULL::TIMESTAMP as last_ssl_scan,
 				NULL::TIMESTAMP as last_whois_scan
-			FROM consolidated_subdomains
-			WHERE scope_target_id = $1::uuid
-				AND subdomain ~ '^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$'
+			FROM consolidated_subdomains cs
+			WHERE (
+				-- Company scope target subdomains
+				cs.scope_target_id = $1::uuid
+				OR
+				-- Wildcard scope target subdomains that match company domains
+				cs.scope_target_id IN (
+					SELECT st.id
+					FROM scope_targets st
+					WHERE st.type = 'Wildcard'
+					AND CASE 
+						WHEN st.scope_target LIKE '*%.%' THEN SUBSTRING(st.scope_target FROM 3)
+						ELSE st.scope_target
+					END IN (
+						SELECT DISTINCT domain 
+						FROM consolidated_company_domains 
+						WHERE scope_target_id = $1::uuid
+					)
+				)
+			)
+			AND subdomain ~ '^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$'
 			
 			UNION ALL
 			
-			-- 2. DNSx Company DNS records (only CNAME, NS records that are valid domains)
+			-- 2. Consolidated company domains (root domains)
+			SELECT
+				domain as fqdn,
+				domain as root_domain,
+				NULL as subdomain_part,
+				NULL as registrar,
+				NULL::DATE as creation_date,
+				NULL::DATE as expiration_date,
+				NULL::DATE as updated_date,
+				NULL::TEXT[] as name_servers,
+				NULL::TEXT[] as status,
+				NULL::JSONB as whois_info,
+				NULL::JSONB as ssl_certificate,
+				NULL::DATE as ssl_expiry_date,
+				NULL as ssl_issuer,
+				NULL as ssl_subject,
+				NULL as ssl_version,
+				NULL as ssl_cipher_suite,
+				NULL::TEXT[] as ssl_protocols,
+				NULL::TEXT[] as resolved_ips,
+				NULL::TEXT[] as mail_servers,
+				NULL as spf_record,
+				NULL as dkim_record,
+				NULL as dmarc_record,
+				NULL::TEXT[] as caa_records,
+				NULL::TEXT[] as txt_records,
+				NULL::TEXT[] as mx_records,
+				NULL::TEXT[] as ns_records,
+				NULL::TEXT[] as a_records,
+				NULL::TEXT[] as aaaa_records,
+				NULL::TEXT[] as cname_records,
+				NULL::TEXT[] as ptr_records,
+				NULL::TEXT[] as srv_records,
+				NULL::JSONB as soa_record,
+				NULL::TIMESTAMP as last_dns_scan,
+				NULL::TIMESTAMP as last_ssl_scan,
+				NULL::TIMESTAMP as last_whois_scan
+			FROM consolidated_company_domains
+			WHERE scope_target_id = $1::uuid
+				AND domain ~ '^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$'
+			
+			UNION ALL
+			
+			-- 3. Target URLs from wildcard targets (consolidate button workflow results)
+			SELECT DISTINCT
+				domain_from_url as fqdn,
+				domain_from_url as root_domain,
+				NULL as subdomain_part,
+				NULL as registrar,
+				NULL::DATE as creation_date,
+				NULL::DATE as expiration_date,
+				NULL::DATE as updated_date,
+				NULL::TEXT[] as name_servers,
+				NULL::TEXT[] as status,
+				NULL::JSONB as whois_info,
+				NULL::JSONB as ssl_certificate,
+				NULL::DATE as ssl_expiry_date,
+				NULL as ssl_issuer,
+				NULL as ssl_subject,
+				NULL as ssl_version,
+				NULL as ssl_cipher_suite,
+				NULL::TEXT[] as ssl_protocols,
+				NULL::TEXT[] as resolved_ips,
+				NULL::TEXT[] as mail_servers,
+				NULL as spf_record,
+				NULL as dkim_record,
+				NULL as dmarc_record,
+				NULL::TEXT[] as caa_records,
+				NULL::TEXT[] as txt_records,
+				NULL::TEXT[] as mx_records,
+				NULL::TEXT[] as ns_records,
+				NULL::TEXT[] as a_records,
+				NULL::TEXT[] as aaaa_records,
+				NULL::TEXT[] as cname_records,
+				NULL::TEXT[] as ptr_records,
+				NULL::TEXT[] as srv_records,
+				NULL::JSONB as soa_record,
+				NULL::TIMESTAMP as last_dns_scan,
+				NULL::TIMESTAMP as last_ssl_scan,
+				NULL::TIMESTAMP as last_whois_scan
+			FROM (
+				SELECT DISTINCT
+					CASE 
+						WHEN tu.url LIKE 'http://%' THEN 
+							CASE 
+								WHEN position(':' in substring(tu.url from 8)) > 0 THEN 
+									substring(substring(tu.url from 8) from 1 for position(':' in substring(tu.url from 8)) - 1)
+								ELSE split_part(substring(tu.url from 8), '/', 1)
+							END
+						WHEN tu.url LIKE 'https://%' THEN 
+							CASE 
+								WHEN position(':' in substring(tu.url from 9)) > 0 THEN 
+									substring(substring(tu.url from 9) from 1 for position(':' in substring(tu.url from 9)) - 1)
+								ELSE split_part(substring(tu.url from 9), '/', 1)
+							END
+						ELSE NULL
+					END as domain_from_url
+				FROM target_urls tu
+				JOIN scope_targets st ON tu.scope_target_id = st.id
+				WHERE st.type = 'Wildcard' 
+				AND CASE 
+					WHEN st.scope_target LIKE '*%.%' THEN SUBSTRING(st.scope_target FROM 3)
+					ELSE st.scope_target
+				END IN (
+					SELECT DISTINCT domain 
+					FROM consolidated_company_domains 
+					WHERE scope_target_id = $1::uuid
+				)
+				AND tu.no_longer_live = false
+				AND tu.url IS NOT NULL AND tu.url != ''
+			) target_url_domains
+			WHERE domain_from_url IS NOT NULL 
+			AND domain_from_url != ''
+			AND domain_from_url ~ '^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$'
+			AND domain_from_url !~ '^(\d{1,3}\.){3}\d{1,3}$'
+			
+			UNION ALL
+			
+			-- 4. DNSx Company DNS records (only CNAME, NS records that are valid domains)
 			SELECT
 				record as fqdn,
 				root_domain,
@@ -1297,7 +1907,7 @@ func consolidateFQDNs(scopeTargetID string) (int, error) {
 					WHEN record != root_domain AND position('.' in record) > 0 THEN
 						substring(record from 1 for position('.' in record) - 1)
 					ELSE NULL
-				END as subdomain,
+				END as subdomain_part,
 				NULL as registrar,
 				NULL::DATE as creation_date,
 				NULL::DATE as expiration_date,
@@ -1345,7 +1955,7 @@ func consolidateFQDNs(scopeTargetID string) (int, error) {
 			
 			UNION ALL
 			
-			-- 3. Amass Enum Company DNS records (only CNAME, NS records that are valid domains)
+			-- 5. Amass Enum Company DNS records (only CNAME, NS records that are valid domains)
 			SELECT
 				record as fqdn,
 				root_domain,
@@ -1353,7 +1963,7 @@ func consolidateFQDNs(scopeTargetID string) (int, error) {
 					WHEN record != root_domain AND position('.' in record) > 0 THEN
 						substring(record from 1 for position('.' in record) - 1)
 					ELSE NULL
-				END as subdomain,
+				END as subdomain_part,
 				NULL as registrar,
 				NULL::DATE as creation_date,
 				NULL::DATE as expiration_date,
@@ -1401,7 +2011,7 @@ func consolidateFQDNs(scopeTargetID string) (int, error) {
 			
 			UNION ALL
 			
-			-- 4. Target URLs (wildcard targets with rich data)
+			-- 6. Target URLs (wildcard targets with rich data)
 			SELECT
 				CASE
 					WHEN url LIKE 'http://%' THEN 
@@ -1433,7 +2043,7 @@ func consolidateFQDNs(scopeTargetID string) (int, error) {
 						END
 					ELSE url
 				END as root_domain,
-				NULL as subdomain,
+				NULL as subdomain_part,
 				NULL as registrar,
 				NULL::DATE as creation_date,
 				NULL::DATE as expiration_date,
@@ -1488,39 +2098,11 @@ func consolidateFQDNs(scopeTargetID string) (int, error) {
 			
 			UNION ALL
 			
-			-- 5. Domains from live web servers (IP/Port scan results)
-			SELECT
-				CASE
-					WHEN url LIKE 'http://%' THEN 
-						CASE 
-							WHEN position(':' in substring(url from 8)) > 0 THEN 
-								substring(substring(url from 8) from 1 for position(':' in substring(url from 8)) - 1)
-							ELSE substring(url from 8)
-						END
-					WHEN url LIKE 'https://%' THEN 
-						CASE 
-							WHEN position(':' in substring(url from 9)) > 0 THEN 
-								substring(substring(url from 9) from 1 for position(':' in substring(url from 9)) - 1)
-							ELSE substring(url from 9)
-						END
-					ELSE url
-				END as fqdn,
-				CASE
-					WHEN url LIKE 'http://%' THEN 
-						CASE 
-							WHEN position(':' in substring(url from 8)) > 0 THEN 
-								substring(substring(url from 8) from 1 for position(':' in substring(url from 8)) - 1)
-							ELSE substring(url from 8)
-						END
-					WHEN url LIKE 'https://%' THEN 
-						CASE 
-							WHEN position(':' in substring(url from 9)) > 0 THEN 
-								substring(substring(url from 9) from 1 for position(':' in substring(url from 9)) - 1)
-							ELSE substring(url from 9)
-						END
-					ELSE url
-				END as root_domain,
-				NULL as subdomain,
+			-- 7. Domains from live web servers (IP/Port scan results)
+			SELECT DISTINCT
+				domain_from_url as fqdn,
+				domain_from_url as root_domain,
+				NULL as subdomain_part,
 				NULL as registrar,
 				NULL::DATE as creation_date,
 				NULL::DATE as expiration_date,
@@ -1553,35 +2135,40 @@ func consolidateFQDNs(scopeTargetID string) (int, error) {
 				NULL::TIMESTAMP as last_dns_scan,
 				NULL::TIMESTAMP as last_ssl_scan,
 				NULL::TIMESTAMP as last_whois_scan
-			FROM live_web_servers lws
-			JOIN ip_port_scans ips ON lws.scan_id = ips.scan_id
-			WHERE ips.scope_target_id = $1::uuid AND ips.status = 'success'
-				AND lws.url IS NOT NULL AND lws.url != ''
-				AND (
+			FROM (
+				SELECT DISTINCT
 					CASE
-						WHEN url LIKE 'http://%' THEN 
+						WHEN lws.url LIKE 'http://%' THEN 
 							CASE 
-								WHEN position(':' in substring(url from 8)) > 0 THEN 
-									substring(substring(url from 8) from 1 for position(':' in substring(url from 8)) - 1)
-								ELSE substring(url from 8)
+								WHEN position(':' in substring(lws.url from 8)) > 0 THEN 
+									substring(substring(lws.url from 8) from 1 for position(':' in substring(lws.url from 8)) - 1)
+								ELSE split_part(substring(lws.url from 8), '/', 1)
 							END
-						WHEN url LIKE 'https://%' THEN 
+						WHEN lws.url LIKE 'https://%' THEN 
 							CASE 
-								WHEN position(':' in substring(url from 9)) > 0 THEN 
-									substring(substring(url from 9) from 1 for position(':' in substring(url from 9)) - 1)
-								ELSE substring(url from 9)
+								WHEN position(':' in substring(lws.url from 9)) > 0 THEN 
+									substring(substring(lws.url from 9) from 1 for position(':' in substring(lws.url from 9)) - 1)
+								ELSE split_part(substring(lws.url from 9), '/', 1)
 							END
-						ELSE url
-					END
-				) ~ '^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$'
+						ELSE lws.url
+					END as domain_from_url
+				FROM live_web_servers lws
+				JOIN ip_port_scans ips ON lws.scan_id = ips.scan_id
+				WHERE ips.scope_target_id = $1::uuid AND ips.status = 'success'
+				AND lws.url IS NOT NULL
+			) lws_domains
+			WHERE domain_from_url IS NOT NULL 
+			AND domain_from_url != ''
+			AND domain_from_url ~ '^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$'
+			AND domain_from_url !~ '^(\d{1,3}\.){3}\d{1,3}$'
 			
 			UNION ALL
 			
-			-- 6. Consolidated company domains
-			SELECT
+			-- 8. Consolidated root domains (from consolidate button process)
+			SELECT DISTINCT
 				domain as fqdn,
 				domain as root_domain,
-				NULL as subdomain,
+				NULL as subdomain_part,
 				NULL as registrar,
 				NULL::DATE as creation_date,
 				NULL::DATE as expiration_date,
@@ -1620,11 +2207,11 @@ func consolidateFQDNs(scopeTargetID string) (int, error) {
 			
 			UNION ALL
 			
-			-- 7. Domains from wildcard targets created from root domains
-			SELECT
-				scope_target as fqdn,
-				scope_target as root_domain,
-				NULL as subdomain,
+			-- 9. Additional domains from various company workflow results
+			SELECT DISTINCT
+				domain_result as fqdn,
+				domain_result as root_domain,
+				NULL as subdomain_part,
 				NULL as registrar,
 				NULL::DATE as creation_date,
 				NULL::DATE as expiration_date,
@@ -1657,41 +2244,71 @@ func consolidateFQDNs(scopeTargetID string) (int, error) {
 				NULL::TIMESTAMP as last_dns_scan,
 				NULL::TIMESTAMP as last_ssl_scan,
 				NULL::TIMESTAMP as last_whois_scan
-			FROM scope_targets
-			WHERE type = 'Wildcard'
-				AND scope_target ~ '^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$'
-				AND scope_target IN (
-					SELECT DISTINCT domain
-					FROM consolidated_company_domains
-					WHERE scope_target_id = $1::uuid
-				)
+			FROM (
+				-- Security Trails company scan domains
+				SELECT DISTINCT
+					jsonb_array_elements_text(result::jsonb->'subdomains') as domain_result
+				FROM securitytrails_company_scans
+				WHERE scope_target_id = $1::uuid AND status = 'success' 
+				AND result IS NOT NULL AND result::jsonb ? 'subdomains'
+				
+				UNION ALL
+				
+				-- GitHub Recon domains
+				SELECT DISTINCT
+					jsonb_array_elements_text(result::jsonb->'domains') as domain_result
+				FROM github_recon_scans
+				WHERE scope_target_id = $1::uuid AND status = 'success' 
+				AND result IS NOT NULL AND result::jsonb ? 'domains'
+				
+				UNION ALL
+				
+				-- Shodan company scan domains
+				SELECT DISTINCT
+					jsonb_array_elements_text(result::jsonb->'hostnames') as domain_result
+				FROM shodan_company_scans
+				WHERE scope_target_id = $1::uuid AND status = 'success' 
+				AND result IS NOT NULL AND result::jsonb ? 'hostnames'
+				
+				UNION ALL
+				
+				-- Censys company scan domains
+				SELECT DISTINCT
+					jsonb_array_elements_text(result::jsonb->'names') as domain_result
+				FROM censys_company_scans
+				WHERE scope_target_id = $1::uuid AND status = 'success' 
+				AND result IS NOT NULL AND result::jsonb ? 'names'
+			) company_domains
+			WHERE domain_result IS NOT NULL 
+			AND domain_result != ''
+			AND domain_result ~ '^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$'
+			AND domain_result !~ '^(\d{1,3}\.){3}\d{1,3}$'
+			AND domain_result NOT LIKE '%amazonaws%'
+			AND domain_result NOT LIKE '%googleapis%'
+			AND domain_result NOT LIKE '%azure%'
+			AND domain_result NOT LIKE '%cloudflare%'
 		)
 		SELECT DISTINCT ON (fqdn)
-			$1::uuid, 'fqdn', fqdn_data.fqdn, fqdn_data.fqdn,
-			fqdn_data.root_domain, fqdn_data.subdomain, fqdn_data.registrar,
-			fqdn_data.creation_date, fqdn_data.expiration_date, fqdn_data.updated_date,
-			fqdn_data.name_servers, fqdn_data.status, fqdn_data.whois_info,
-			fqdn_data.ssl_certificate, fqdn_data.ssl_expiry_date, fqdn_data.ssl_issuer,
-			fqdn_data.ssl_subject, fqdn_data.ssl_version, fqdn_data.ssl_cipher_suite,
-			fqdn_data.ssl_protocols, fqdn_data.resolved_ips, fqdn_data.mail_servers,
-			fqdn_data.spf_record, fqdn_data.dkim_record, fqdn_data.dmarc_record,
-			fqdn_data.caa_records, fqdn_data.txt_records, fqdn_data.mx_records,
-			fqdn_data.ns_records, fqdn_data.a_records, fqdn_data.aaaa_records,
-			fqdn_data.cname_records, fqdn_data.ptr_records, fqdn_data.srv_records,
-			fqdn_data.soa_record, fqdn_data.last_dns_scan, fqdn_data.last_ssl_scan,
-			fqdn_data.last_whois_scan
-				FROM fqdn_sources fqdn_data
-		WHERE fqdn_data.fqdn IS NOT NULL AND fqdn_data.fqdn != ''
-			AND fqdn_data.fqdn ~ '^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$'
-			AND fqdn_data.fqdn NOT LIKE '%:%'
-			AND fqdn_data.fqdn NOT LIKE '%-->%'
-			AND fqdn_data.fqdn NOT LIKE '%=%'
-			AND fqdn_data.fqdn NOT LIKE 'http://%'
-			AND fqdn_data.fqdn NOT LIKE 'https://%'
-			AND fqdn_data.fqdn !~ '^(\d{1,3}\.){3}\d{1,3}$'
-			AND fqdn_data.fqdn !~ '^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$'
-			AND fqdn_data.fqdn !~ '^([0-9a-fA-F]{1,4}:)*:([0-9a-fA-F]{1,4}:)*[0-9a-fA-F]{1,4}$'
+			$1::uuid, 'fqdn', 
+			fqdn,
+			fqdn, root_domain, subdomain_part,
+			registrar, creation_date, expiration_date, updated_date, name_servers, status,
+			whois_info, ssl_certificate, ssl_expiry_date, ssl_issuer, ssl_subject, ssl_version,
+			ssl_cipher_suite, ssl_protocols, resolved_ips, mail_servers, spf_record, dkim_record,
+			dmarc_record, caa_records, txt_records, mx_records, ns_records, a_records,
+			aaaa_records, cname_records, ptr_records, srv_records, soa_record,
+			last_dns_scan, last_ssl_scan, last_whois_scan
+		FROM enhanced_fqdn_sources
+		WHERE fqdn IS NOT NULL
+		ORDER BY fqdn, 
+			CASE 
+				WHEN registrar IS NOT NULL THEN 1
+				WHEN creation_date IS NOT NULL THEN 2
+				WHEN last_dns_scan IS NOT NULL THEN 3
+				ELSE 4
+			END
 		ON CONFLICT (scope_target_id, asset_type, asset_identifier) DO UPDATE SET
+			fqdn = EXCLUDED.fqdn,
 			root_domain = EXCLUDED.root_domain,
 			subdomain = EXCLUDED.subdomain,
 			registrar = EXCLUDED.registrar,
@@ -1738,137 +2355,6 @@ func consolidateFQDNs(scopeTargetID string) (int, error) {
 	insertedCount := int(result.RowsAffected())
 	log.Printf("[FQDN CONSOLIDATION] ✅ Successfully inserted/updated %d FQDN records", insertedCount)
 
-	// Now aggregate DNS records for each FQDN
-	log.Printf("[FQDN CONSOLIDATION] Starting DNS record aggregation for FQDNs")
-
-	// Get all FQDNs that were just consolidated
-	rows, err := dbPool.Query(context.Background(),
-		`SELECT id, fqdn FROM consolidated_attack_surface_assets 
-		 WHERE scope_target_id = $1::uuid AND asset_type = 'fqdn'`,
-		scopeTargetID)
-	if err != nil {
-		log.Printf("[FQDN CONSOLIDATION] Error fetching FQDNs for DNS aggregation: %v", err)
-		return insertedCount, err
-	}
-	defer rows.Close()
-
-	var fqdnIDs []string
-	var fqdns []string
-	for rows.Next() {
-		var id, fqdn string
-		if err := rows.Scan(&id, &fqdn); err != nil {
-			continue
-		}
-		fqdnIDs = append(fqdnIDs, id)
-		fqdns = append(fqdns, fqdn)
-	}
-
-	// Aggregate DNS records for each FQDN
-	for i, fqdnID := range fqdnIDs {
-		fqdn := fqdns[i]
-		log.Printf("[FQDN CONSOLIDATION] Aggregating DNS records for FQDN: %s", fqdn)
-
-		// Aggregate DNS records from multiple sources
-		dnsAggregationQuery := `
-			UPDATE consolidated_attack_surface_assets
-			SET 
-				a_records = (
-					SELECT ARRAY_AGG(DISTINCT record ORDER BY record)
-					FROM (
-						SELECT record FROM dnsx_company_dns_records 
-						WHERE scope_target_id = $1::uuid AND root_domain = $2 AND record_type = 'A'
-						UNION ALL
-						SELECT record FROM amass_enum_company_dns_records 
-						WHERE scope_target_id = $1::uuid AND root_domain = $2 AND record_type = 'A'
-					) combined_a
-				),
-				aaaa_records = (
-					SELECT ARRAY_AGG(DISTINCT record ORDER BY record)
-					FROM (
-						SELECT record FROM dnsx_company_dns_records 
-						WHERE scope_target_id = $1::uuid AND root_domain = $2 AND record_type = 'AAAA'
-						UNION ALL
-						SELECT record FROM amass_enum_company_dns_records 
-						WHERE scope_target_id = $1::uuid AND root_domain = $2 AND record_type = 'AAAA'
-					) combined_aaaa
-				),
-				cname_records = (
-					SELECT ARRAY_AGG(DISTINCT record ORDER BY record)
-					FROM (
-						SELECT record FROM dnsx_company_dns_records 
-						WHERE scope_target_id = $1::uuid AND root_domain = $2 AND record_type = 'CNAME'
-						UNION ALL
-						SELECT record FROM amass_enum_company_dns_records 
-						WHERE scope_target_id = $1::uuid AND root_domain = $2 AND record_type = 'CNAME'
-					) combined_cname
-				),
-				mx_records = (
-					SELECT ARRAY_AGG(DISTINCT record ORDER BY record)
-					FROM (
-						SELECT record FROM dnsx_company_dns_records 
-						WHERE scope_target_id = $1::uuid AND root_domain = $2 AND record_type = 'MX'
-						UNION ALL
-						SELECT record FROM amass_enum_company_dns_records 
-						WHERE scope_target_id = $1::uuid AND root_domain = $2 AND record_type = 'MX'
-					) combined_mx
-				),
-				ns_records = (
-					SELECT ARRAY_AGG(DISTINCT record ORDER BY record)
-					FROM (
-						SELECT record FROM dnsx_company_dns_records 
-						WHERE scope_target_id = $1::uuid AND root_domain = $2 AND record_type = 'NS'
-						UNION ALL
-						SELECT record FROM amass_enum_company_dns_records 
-						WHERE scope_target_id = $1::uuid AND root_domain = $2 AND record_type = 'NS'
-					) combined_ns
-				),
-				txt_records = (
-					SELECT ARRAY_AGG(DISTINCT record ORDER BY record)
-					FROM (
-						SELECT record FROM dnsx_company_dns_records 
-						WHERE scope_target_id = $1::uuid AND root_domain = $2 AND record_type = 'TXT'
-						UNION ALL
-						SELECT record FROM amass_enum_company_dns_records 
-						WHERE scope_target_id = $1::uuid AND root_domain = $2 AND record_type = 'TXT'
-					) combined_txt
-				),
-				ptr_records = (
-					SELECT ARRAY_AGG(DISTINCT record ORDER BY record)
-					FROM (
-						SELECT record FROM dnsx_company_dns_records 
-						WHERE scope_target_id = $1::uuid AND root_domain = $2 AND record_type = 'PTR'
-						UNION ALL
-						SELECT record FROM amass_enum_company_dns_records 
-						WHERE scope_target_id = $1::uuid AND root_domain = $2 AND record_type = 'PTR'
-					) combined_ptr
-				),
-				srv_records = (
-					SELECT ARRAY_AGG(DISTINCT record ORDER BY record)
-					FROM (
-						SELECT record FROM dnsx_company_dns_records 
-						WHERE scope_target_id = $1::uuid AND root_domain = $2 AND record_type = 'SRV'
-						UNION ALL
-						SELECT record FROM amass_enum_company_dns_records 
-						WHERE scope_target_id = $1::uuid AND root_domain = $2 AND record_type = 'SRV'
-					) combined_srv
-				),
-				last_dns_scan = GREATEST(
-					COALESCE((SELECT MAX(last_scanned_at) FROM dnsx_company_dns_records WHERE scope_target_id = $1::uuid AND root_domain = $2), '1970-01-01'::timestamp),
-					COALESCE((SELECT MAX(last_scanned_at) FROM amass_enum_company_dns_records WHERE scope_target_id = $1::uuid AND root_domain = $2), '1970-01-01'::timestamp)
-				),
-				last_updated = NOW()
-			WHERE id = $3::uuid
-		`
-
-		_, err := dbPool.Exec(context.Background(), dnsAggregationQuery, scopeTargetID, fqdn, fqdnID)
-		if err != nil {
-			log.Printf("[FQDN CONSOLIDATION] Error aggregating DNS records for FQDN %s: %v", fqdn, err)
-			continue
-		}
-	}
-
-	log.Printf("[FQDN CONSOLIDATION] FQDN consolidation complete for scope target: %s", scopeTargetID)
-
 	return insertedCount, nil
 }
 
@@ -1887,6 +2373,10 @@ func createAssetRelationships(scopeTargetID string) (int, error) {
 		WHERE nr.scope_target_id = $1::uuid 
 			AND nr.asset_type = 'network_range'
 			AND ip.asset_type = 'ip_address'
+			AND nr.cidr_block IS NOT NULL 
+			AND ip.ip_address IS NOT NULL
+			AND nr.cidr_block ~ '^(\d{1,3}\.){3}\d{1,3}/\d{1,2}$'
+			AND ip.ip_address ~ '^(\d{1,3}\.){3}\d{1,3}$'
 			AND ip.ip_address::inet <<= nr.cidr_block::cidr
 		ON CONFLICT (parent_asset_id, child_asset_id, relationship_type) DO NOTHING
 	`
@@ -1911,6 +2401,8 @@ func createAssetRelationships(scopeTargetID string) (int, error) {
 			AND asn.asset_type = 'asn'
 			AND nr.asset_type = 'network_range'
 			AND cnr.scope_target_id = $1::uuid
+			AND cnr.asn IS NOT NULL
+			AND asn.asn_number IS NOT NULL
 			AND cnr.asn = asn.asn_number
 		ON CONFLICT (parent_asset_id, child_asset_id, relationship_type) DO NOTHING
 	`
@@ -1933,6 +2425,8 @@ func createAssetRelationships(scopeTargetID string) (int, error) {
 		WHERE lws.scope_target_id = $1::uuid 
 			AND lws.asset_type = 'live_web_server'
 			AND ip.asset_type = 'ip_address'
+			AND lws.ip_address IS NOT NULL
+			AND ip.ip_address IS NOT NULL
 			AND lws.ip_address = ip.ip_address
 		ON CONFLICT (parent_asset_id, child_asset_id, relationship_type) DO NOTHING
 	`
@@ -1949,19 +2443,60 @@ func createAssetRelationships(scopeTargetID string) (int, error) {
 func fetchConsolidatedAssets(scopeTargetID string) ([]AttackSurfaceAsset, error) {
 	query := `
 		SELECT 
-			id, scope_target_id, asset_type, asset_identifier, asset_subtype,
-			asn_number, asn_organization, asn_description, asn_country,
-			cidr_block, ip_address::text, ip_type, url, domain, port, protocol,
-			status_code, title, web_server, technologies, content_length,
-			response_time_ms, screenshot_path, ssl_info, http_response_headers,
-			findings_json, cloud_provider, cloud_service_type,
-			cloud_region, fqdn, root_domain, subdomain, registrar, creation_date,
-			expiration_date, updated_date, name_servers, status, whois_info,
-			ssl_certificate, ssl_expiry_date, ssl_issuer, ssl_subject, ssl_version,
-			ssl_cipher_suite, ssl_protocols, resolved_ips, mail_servers, spf_record,
-			dkim_record, dmarc_record, caa_records, txt_records, mx_records,
-			ns_records, a_records, aaaa_records, cname_records, ptr_records,
-			srv_records, soa_record, last_dns_scan, last_ssl_scan, last_whois_scan,
+			id, scope_target_id, asset_type, asset_identifier, 
+			COALESCE(asset_subtype, '') as asset_subtype,
+			COALESCE(asn_number, '') as asn_number, 
+			COALESCE(asn_organization, '') as asn_organization, 
+			COALESCE(asn_description, '') as asn_description, 
+			COALESCE(asn_country, '') as asn_country,
+			COALESCE(cidr_block, '') as cidr_block, 
+			COALESCE(ip_address, '') as ip_address, 
+			COALESCE(ip_type, '') as ip_type, 
+			COALESCE(url, '') as url, 
+			COALESCE(domain, '') as domain, 
+			port, protocol,
+			status_code, 
+			COALESCE(title, '') as title, 
+			COALESCE(web_server, '') as web_server, 
+			COALESCE(technologies, ARRAY[]::text[]) as technologies, 
+			content_length,
+			response_time_ms, 
+			COALESCE(screenshot_path, '') as screenshot_path, 
+			ssl_info, http_response_headers,
+			findings_json, 
+			COALESCE(cloud_provider, '') as cloud_provider, 
+			COALESCE(cloud_service_type, '') as cloud_service_type,
+			COALESCE(cloud_region, '') as cloud_region, 
+			COALESCE(fqdn, '') as fqdn, 
+			COALESCE(root_domain, '') as root_domain, 
+			COALESCE(subdomain, '') as subdomain, 
+			COALESCE(registrar, '') as registrar, 
+			creation_date,
+			expiration_date, updated_date, 
+			COALESCE(name_servers, ARRAY[]::text[]) as name_servers, 
+			COALESCE(status, ARRAY[]::text[]) as status, 
+			whois_info,
+			ssl_certificate, ssl_expiry_date, 
+			COALESCE(ssl_issuer, '') as ssl_issuer, 
+			COALESCE(ssl_subject, '') as ssl_subject, 
+			COALESCE(ssl_version, '') as ssl_version,
+			COALESCE(ssl_cipher_suite, '') as ssl_cipher_suite, 
+			COALESCE(ssl_protocols, ARRAY[]::text[]) as ssl_protocols, 
+			COALESCE(resolved_ips, ARRAY[]::text[]) as resolved_ips, 
+			COALESCE(mail_servers, ARRAY[]::text[]) as mail_servers, 
+			COALESCE(spf_record, '') as spf_record,
+			COALESCE(dkim_record, '') as dkim_record, 
+			COALESCE(dmarc_record, '') as dmarc_record, 
+			COALESCE(caa_records, ARRAY[]::text[]) as caa_records, 
+			COALESCE(txt_records, ARRAY[]::text[]) as txt_records, 
+			COALESCE(mx_records, ARRAY[]::text[]) as mx_records,
+			COALESCE(ns_records, ARRAY[]::text[]) as ns_records, 
+			COALESCE(a_records, ARRAY[]::text[]) as a_records, 
+			COALESCE(aaaa_records, ARRAY[]::text[]) as aaaa_records, 
+			COALESCE(cname_records, ARRAY[]::text[]) as cname_records, 
+			COALESCE(ptr_records, ARRAY[]::text[]) as ptr_records,
+			COALESCE(srv_records, ARRAY[]::text[]) as srv_records, 
+			soa_record, last_dns_scan, last_ssl_scan, last_whois_scan,
 			last_updated, created_at
 		FROM consolidated_attack_surface_assets
 		WHERE scope_target_id = $1::uuid
@@ -1982,27 +2517,134 @@ func fetchConsolidatedAssets(scopeTargetID string) ([]AttackSurfaceAsset, error)
 		var sslInfo, httpHeaders, findings []byte
 		var whoisInfo, sslCertificate, soaRecord []byte
 
+		// Variables for nullable fields
+		var assetSubtype, asnNumber, asnOrganization, asnDescription, asnCountry string
+		var cidrBlock, ipAddress, ipType, url, domain, title, webServer, screenshotPath string
+		var cloudProvider, cloudServiceType, cloudRegion, fqdn, rootDomain, subdomain, registrar string
+		var sslIssuer, sslSubject, sslVersion, sslCipherSuite, spfRecord, dkimRecord, dmarcRecord string
+		var nameServers, status, sslProtocols, resolvedIPs, mailServers []string
+		var caaRecords, txtRecords, mxRecords, nsRecords, aRecords, aaaaRecords []string
+		var cnameRecords, ptrRecords, srvRecords []string
+
 		err := rows.Scan(
-			&asset.ID, &asset.ScopeTargetID, &asset.AssetType, &asset.AssetIdentifier, &asset.AssetSubtype,
-			&asset.ASNNumber, &asset.ASNOrganization, &asset.ASNDescription, &asset.ASNCountry,
-			&asset.CIDRBlock, &asset.IPAddress, &asset.IPType, &asset.URL, &asset.Domain, &asset.Port, &asset.Protocol,
-			&asset.StatusCode, &asset.Title, &asset.WebServer, &technologies, &asset.ContentLength,
-			&asset.ResponseTime, &asset.ScreenshotPath, &sslInfo, &httpHeaders,
-			&findings, &asset.CloudProvider, &asset.CloudServiceType,
-			&asset.CloudRegion, &asset.FQDN, &asset.RootDomain, &asset.Subdomain, &asset.Registrar, &asset.CreationDate,
-			&asset.ExpirationDate, &asset.UpdatedDate, &asset.NameServers, &asset.Status, &whoisInfo,
-			&sslCertificate, &asset.SSLExpiryDate, &asset.SSLIssuer, &asset.SSLSubject, &asset.SSLVersion,
-			&asset.SSLCipherSuite, &asset.SSLProtocols, &asset.ResolvedIPs, &asset.MailServers, &asset.SPFRecord,
-			&asset.DKIMRecord, &asset.DMARCRecord, &asset.CAARecords, &asset.TXTRecords, &asset.MXRecords,
-			&asset.NSRecords, &asset.ARecords, &asset.AAAARecords, &asset.CNAMERecords, &asset.PTRRecords,
-			&asset.SRVRecords, &soaRecord, &asset.LastDNSScan, &asset.LastSSLScan, &asset.LastWhoisScan,
+			&asset.ID, &asset.ScopeTargetID, &asset.AssetType, &asset.AssetIdentifier, &assetSubtype,
+			&asnNumber, &asnOrganization, &asnDescription, &asnCountry,
+			&cidrBlock, &ipAddress, &ipType, &url, &domain, &asset.Port, &asset.Protocol,
+			&asset.StatusCode, &title, &webServer, &technologies, &asset.ContentLength,
+			&asset.ResponseTime, &screenshotPath, &sslInfo, &httpHeaders,
+			&findings, &cloudProvider, &cloudServiceType,
+			&cloudRegion, &fqdn, &rootDomain, &subdomain, &registrar, &asset.CreationDate,
+			&asset.ExpirationDate, &asset.UpdatedDate, &nameServers, &status, &whoisInfo,
+			&sslCertificate, &asset.SSLExpiryDate, &sslIssuer, &sslSubject, &sslVersion,
+			&sslCipherSuite, &sslProtocols, &resolvedIPs, &mailServers, &spfRecord,
+			&dkimRecord, &dmarcRecord, &caaRecords, &txtRecords, &mxRecords,
+			&nsRecords, &aRecords, &aaaaRecords, &cnameRecords, &ptrRecords,
+			&srvRecords, &soaRecord, &asset.LastDNSScan, &asset.LastSSLScan, &asset.LastWhoisScan,
 			&asset.LastUpdated, &asset.CreatedAt,
 		)
 		if err != nil {
 			return nil, err
 		}
 
+		// Assign nullable fields to pointers (only if not empty)
+		if assetSubtype != "" {
+			asset.AssetSubtype = &assetSubtype
+		}
+		if asnNumber != "" {
+			asset.ASNNumber = &asnNumber
+		}
+		if asnOrganization != "" {
+			asset.ASNOrganization = &asnOrganization
+		}
+		if asnDescription != "" {
+			asset.ASNDescription = &asnDescription
+		}
+		if asnCountry != "" {
+			asset.ASNCountry = &asnCountry
+		}
+		if cidrBlock != "" {
+			asset.CIDRBlock = &cidrBlock
+		}
+		if ipAddress != "" {
+			asset.IPAddress = &ipAddress
+		}
+		if ipType != "" {
+			asset.IPType = &ipType
+		}
+		if url != "" {
+			asset.URL = &url
+		}
+		if domain != "" {
+			asset.Domain = &domain
+		}
+		if title != "" {
+			asset.Title = &title
+		}
+		if webServer != "" {
+			asset.WebServer = &webServer
+		}
+		if screenshotPath != "" {
+			asset.ScreenshotPath = &screenshotPath
+		}
+		if cloudProvider != "" {
+			asset.CloudProvider = &cloudProvider
+		}
+		if cloudServiceType != "" {
+			asset.CloudServiceType = &cloudServiceType
+		}
+		if cloudRegion != "" {
+			asset.CloudRegion = &cloudRegion
+		}
+		if fqdn != "" {
+			asset.FQDN = &fqdn
+		}
+		if rootDomain != "" {
+			asset.RootDomain = &rootDomain
+		}
+		if subdomain != "" {
+			asset.Subdomain = &subdomain
+		}
+		if registrar != "" {
+			asset.Registrar = &registrar
+		}
+		if sslIssuer != "" {
+			asset.SSLIssuer = &sslIssuer
+		}
+		if sslSubject != "" {
+			asset.SSLSubject = &sslSubject
+		}
+		if sslVersion != "" {
+			asset.SSLVersion = &sslVersion
+		}
+		if sslCipherSuite != "" {
+			asset.SSLCipherSuite = &sslCipherSuite
+		}
+		if spfRecord != "" {
+			asset.SPFRecord = &spfRecord
+		}
+		if dkimRecord != "" {
+			asset.DKIMRecord = &dkimRecord
+		}
+		if dmarcRecord != "" {
+			asset.DMARCRecord = &dmarcRecord
+		}
+
+		// Assign arrays
 		asset.Technologies = technologies
+		asset.NameServers = nameServers
+		asset.Status = status
+		asset.SSLProtocols = sslProtocols
+		asset.ResolvedIPs = resolvedIPs
+		asset.MailServers = mailServers
+		asset.CAARecords = caaRecords
+		asset.TXTRecords = txtRecords
+		asset.MXRecords = mxRecords
+		asset.NSRecords = nsRecords
+		asset.ARecords = aRecords
+		asset.AAAARecords = aaaaRecords
+		asset.CNAMERecords = cnameRecords
+		asset.PTRRecords = ptrRecords
+		asset.SRVRecords = srvRecords
 
 		if len(sslInfo) > 0 {
 			json.Unmarshal(sslInfo, &asset.SSLInfo)

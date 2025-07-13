@@ -428,6 +428,7 @@ func createTables() {
 			katana_results JSONB,
 			ffuf_results JSONB,
 			roi_score INTEGER DEFAULT 50,
+			ip_address TEXT,
 			UNIQUE(url, scope_target_id)
 		);`,
 		`CREATE INDEX IF NOT EXISTS target_urls_url_idx ON target_urls (url);`,
@@ -705,6 +706,7 @@ func createTables() {
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			scan_id UUID REFERENCES ip_port_scans(scan_id) ON DELETE CASCADE,
 			ip_address INET NOT NULL,
+			hostname TEXT,
 			network_range TEXT NOT NULL,
 			ping_time_ms FLOAT,
 			discovered_at TIMESTAMP DEFAULT NOW()
@@ -713,6 +715,7 @@ func createTables() {
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			scan_id UUID REFERENCES ip_port_scans(scan_id) ON DELETE CASCADE,
 			ip_address INET NOT NULL,
+			hostname TEXT,
 			port INT NOT NULL,
 			protocol VARCHAR(10) NOT NULL,
 			url TEXT NOT NULL,
@@ -723,12 +726,76 @@ func createTables() {
 			technologies JSONB,
 			response_time_ms FLOAT,
 			screenshot_path TEXT,
+			ssl_info JSONB,
+			http_response_headers JSONB,
+			findings_json JSONB,
 			last_checked TIMESTAMP DEFAULT NOW(),
 			UNIQUE(scan_id, ip_address, port, protocol)
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_discovered_live_ips_scan_id ON discovered_live_ips(scan_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_live_web_servers_scan_id ON live_web_servers(scan_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_live_web_servers_ip_port ON live_web_servers(ip_address, port);`,
+
+		// Add missing tables that are referenced in consolidation queries
+		`CREATE TABLE IF NOT EXISTS metabigor_network_ranges (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scan_id UUID NOT NULL,
+			cidr_block TEXT NOT NULL,
+			asn TEXT,
+			organization TEXT,
+			country TEXT,
+			scan_type TEXT NOT NULL,
+			created_at TIMESTAMP DEFAULT NOW(),
+			FOREIGN KEY (scan_id) REFERENCES metabigor_company_scans(scan_id) ON DELETE CASCADE
+		);`,
+
+		`CREATE TABLE IF NOT EXISTS cloud_enum_scans (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scan_id UUID NOT NULL UNIQUE,
+			company_name TEXT NOT NULL,
+			status VARCHAR(50) NOT NULL,
+			result TEXT,
+			error TEXT,
+			stdout TEXT,
+			stderr TEXT,
+			command TEXT,
+			execution_time TEXT,
+			created_at TIMESTAMP DEFAULT NOW(),
+			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
+			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
+		);`,
+
+		`CREATE TABLE IF NOT EXISTS metabigor_company_scans (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scan_id UUID NOT NULL UNIQUE,
+			company_name TEXT NOT NULL,
+			status VARCHAR(50) NOT NULL,
+			result TEXT,
+			error TEXT,
+			stdout TEXT,
+			stderr TEXT,
+			command TEXT,
+			execution_time TEXT,
+			created_at TIMESTAMP DEFAULT NOW(),
+			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
+			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
+		);`,
+
+		`CREATE TABLE IF NOT EXISTS censys_company_scans (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scan_id UUID NOT NULL UNIQUE,
+			company_name TEXT NOT NULL,
+			status VARCHAR(50) NOT NULL,
+			result TEXT,
+			error TEXT,
+			stdout TEXT,
+			stderr TEXT,
+			command TEXT,
+			execution_time TEXT,
+			created_at TIMESTAMP DEFAULT NOW(),
+			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
+			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
+		);`,
 
 		// Domain-centric results tables for cumulative attack surface building
 		`CREATE TABLE IF NOT EXISTS amass_enum_company_domain_results (
@@ -884,13 +951,16 @@ func createTables() {
 			
 			-- IP address specific fields
 			ip_address TEXT,
-			ip_type VARCHAR(10),
+			ip_type TEXT,
+			dnsx_a_records TEXT[],
+			amass_a_records TEXT[],
+			httpx_sources TEXT[],
 			
 			-- Live web server specific fields
 			url TEXT,
 			domain TEXT,
 			port INTEGER,
-			protocol VARCHAR(10),
+			protocol TEXT,
 			status_code INTEGER,
 			title TEXT,
 			web_server TEXT,
@@ -997,6 +1067,41 @@ func createTables() {
 		`CREATE INDEX IF NOT EXISTS idx_consolidated_attack_surface_relationships_child ON consolidated_attack_surface_relationships(child_asset_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_consolidated_attack_surface_dns_records_asset_id ON consolidated_attack_surface_dns_records(asset_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_consolidated_attack_surface_metadata_asset_id ON consolidated_attack_surface_metadata(asset_id);`,
+
+		// Migration queries to add missing columns to existing tables
+		`ALTER TABLE target_urls ADD COLUMN IF NOT EXISTS ip_address TEXT;`,
+		`ALTER TABLE discovered_live_ips ADD COLUMN IF NOT EXISTS hostname TEXT;`,
+		`ALTER TABLE live_web_servers ADD COLUMN IF NOT EXISTS hostname TEXT;`,
+		`ALTER TABLE live_web_servers ADD COLUMN IF NOT EXISTS ssl_info JSONB;`,
+		`ALTER TABLE live_web_servers ADD COLUMN IF NOT EXISTS http_response_headers JSONB;`,
+		`ALTER TABLE live_web_servers ADD COLUMN IF NOT EXISTS findings_json JSONB;`,
+
+		// Add missing columns to consolidated_attack_surface_assets table
+		`ALTER TABLE consolidated_attack_surface_assets ADD COLUMN IF NOT EXISTS dnsx_a_records TEXT[];`,
+		`ALTER TABLE consolidated_attack_surface_assets ADD COLUMN IF NOT EXISTS amass_a_records TEXT[];`,
+		`ALTER TABLE consolidated_attack_surface_assets ADD COLUMN IF NOT EXISTS httpx_sources TEXT[];`,
+		`ALTER TABLE consolidated_attack_surface_assets ADD COLUMN IF NOT EXISTS subnet_size INTEGER;`,
+		`ALTER TABLE consolidated_attack_surface_assets ADD COLUMN IF NOT EXISTS responsive_ip_count INTEGER;`,
+		`ALTER TABLE consolidated_attack_surface_assets ADD COLUMN IF NOT EXISTS responsive_port_count INTEGER;`,
+
+		// Ensure cloud-related columns exist
+		`ALTER TABLE consolidated_attack_surface_assets ADD COLUMN IF NOT EXISTS cloud_provider VARCHAR(50);`,
+		`ALTER TABLE consolidated_attack_surface_assets ADD COLUMN IF NOT EXISTS cloud_service_type VARCHAR(100);`,
+		`ALTER TABLE consolidated_attack_surface_assets ADD COLUMN IF NOT EXISTS cloud_region TEXT;`,
+
+		// Fix ASN number column type if it exists as VARCHAR(10)
+		`DO $$
+		BEGIN
+			IF EXISTS (
+				SELECT 1 FROM information_schema.columns 
+				WHERE table_name = 'consolidated_attack_surface_assets' 
+				AND column_name = 'asn_number' 
+				AND data_type = 'character varying' 
+				AND character_maximum_length = 10
+			) THEN
+				ALTER TABLE consolidated_attack_surface_assets ALTER COLUMN asn_number TYPE TEXT;
+			END IF;
+		END $$;`,
 	}
 
 	for _, query := range queries {
