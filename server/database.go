@@ -1112,6 +1112,7 @@ func createTables() {
 			UNIQUE(scope_target_id)
 		);`,
 		`ALTER TABLE nuclei_configs ADD COLUMN IF NOT EXISTS uploaded_templates JSONB DEFAULT '[]';`,
+		`ALTER TABLE nuclei_configs ADD COLUMN IF NOT EXISTS severities TEXT[] DEFAULT '{critical,high,medium,low,info}';`,
 		`CREATE TABLE IF NOT EXISTS nuclei_scans (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			scan_id UUID NOT NULL UNIQUE DEFAULT gen_random_uuid(),

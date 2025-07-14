@@ -2368,11 +2368,25 @@ function App() {
       
       if (!Array.isArray(findings)) return 0;
       
-      return findings.filter(finding => {
+      console.log('[getNucleiImpactfulFindings] Total findings:', findings.length);
+      
+      const impactfulFindings = findings.filter(finding => {
         const severity = finding.info?.severity?.toLowerCase();
-        return severity && severity !== 'info' && severity !== 'informational';
-      }).length;
+        const isImpactful = severity && severity !== 'info' && severity !== 'informational';
+        if (isImpactful) {
+          console.log('[getNucleiImpactfulFindings] Impactful finding:', {
+            template: finding.template_id,
+            severity: severity,
+            name: finding.info?.name
+          });
+        }
+        return isImpactful;
+      });
+      
+      console.log('[getNucleiImpactfulFindings] Impactful findings count:', impactfulFindings.length);
+      return impactfulFindings.length;
     } catch (error) {
+      console.error('[getNucleiImpactfulFindings] Error:', error);
       return 0;
     }
   };

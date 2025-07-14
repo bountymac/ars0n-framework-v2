@@ -12,6 +12,7 @@ const NucleiConfigModal = ({
   const [selectedCategory, setSelectedCategory] = useState('live_web_servers');
   const [selectedTargets, setSelectedTargets] = useState(new Set());
   const [selectedTemplates, setSelectedTemplates] = useState(new Set());
+  const [selectedSeverities, setSelectedSeverities] = useState(new Set(['critical', 'high', 'medium', 'low', 'info']));
   const [attackSurfaceAssets, setAttackSurfaceAssets] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -49,6 +50,15 @@ const NucleiConfigModal = ({
     { key: 'dns', name: 'DNS', description: 'DNS-related templates', icon: 'bi-globe' },
     { key: 'headless', name: 'Headless', description: 'Browser-based templates', icon: 'bi-window' },
     { key: 'custom', name: 'Custom Templates', description: `Upload your own Nuclei templates (${uploadedTemplates.length} uploaded)`, icon: 'bi-upload' }
+  ];
+
+  // Nuclei Template Severities
+  const severityCategories = [
+    { key: 'critical', name: 'Critical', description: 'Critical severity vulnerabilities', icon: 'bi-shield-exclamation', color: 'danger' },
+    { key: 'high', name: 'High', description: 'High severity vulnerabilities', icon: 'bi-exclamation-triangle-fill', color: 'warning' },
+    { key: 'medium', name: 'Medium', description: 'Medium severity vulnerabilities', icon: 'bi-exclamation-circle-fill', color: 'info' },
+    { key: 'low', name: 'Low', description: 'Low severity vulnerabilities', icon: 'bi-info-circle-fill', color: 'success' },
+    { key: 'info', name: 'Info', description: 'Informational findings', icon: 'bi-lightbulb', color: 'light' }
   ];
 
   useEffect(() => {
@@ -130,6 +140,13 @@ const NucleiConfigModal = ({
           const defaultTemplates = ['cves', 'vulnerabilities', 'exposures', 'technologies', 'misconfiguration', 'takeovers', 'network', 'dns', 'headless'];
           setSelectedTemplates(new Set(defaultTemplates));
         }
+        if (config.severities && Array.isArray(config.severities)) {
+          setSelectedSeverities(new Set(config.severities));
+        } else {
+          // Set default severities if none exist
+          const defaultSeverities = ['critical', 'high', 'medium', 'low', 'info'];
+          setSelectedSeverities(new Set(defaultSeverities));
+        }
         if (config.uploaded_templates && Array.isArray(config.uploaded_templates)) {
           setUploadedTemplates(config.uploaded_templates);
         }
@@ -155,6 +172,7 @@ const NucleiConfigModal = ({
       const config = {
         targets: Array.from(selectedTargets),
         templates: Array.from(selectedTemplates),
+        severities: Array.from(selectedSeverities),
         uploaded_templates: uploadedTemplates,
         created_at: new Date().toISOString()
       };
@@ -245,6 +263,16 @@ const NucleiConfigModal = ({
     setSelectedTemplates(newSelected);
   };
 
+  const handleSeveritySelect = (severityKey) => {
+    const newSelected = new Set(selectedSeverities);
+    if (newSelected.has(severityKey)) {
+      newSelected.delete(severityKey);
+    } else {
+      newSelected.add(severityKey);
+    }
+    setSelectedSeverities(newSelected);
+  };
+
   const handleSelectAll = () => {
     const categoryAssets = getFilteredAssets();
     const newSelected = new Set(selectedTargets);
@@ -287,6 +315,14 @@ const NucleiConfigModal = ({
 
   const handleSelectNoTemplates = () => {
     setSelectedTemplates(new Set());
+  };
+
+  const handleSelectAllSeverities = () => {
+    setSelectedSeverities(new Set(severityCategories.map(sev => sev.key)));
+  };
+
+  const handleSelectNoSeverities = () => {
+    setSelectedSeverities(new Set());
   };
 
   const handleFileUpload = async (event) => {
@@ -525,7 +561,7 @@ const NucleiConfigModal = ({
         </div>
       </div>
 
-      <Row className="row-cols-1 row-cols-md-2 g-3">
+      <Row className="row-cols-1 row-cols-md-2 g-3 mb-4">
         {templateCategories.map(template => (
           <Col key={template.key}>
             <div 
@@ -583,6 +619,44 @@ const NucleiConfigModal = ({
         ))}
       </Row>
 
+      <div className="d-flex justify-content-between align-items-center mb-3">
+        <h6 className="text-danger mb-0">Template Severity Levels</h6>
+        <div className="d-flex gap-2">
+          <Button variant="outline-success" size="sm" onClick={handleSelectAllSeverities}>
+            Select All
+          </Button>
+          <Button variant="outline-secondary" size="sm" onClick={handleSelectNoSeverities}>
+            Select None
+          </Button>
+        </div>
+      </div>
+
+      <Row className="g-3 mb-4">
+        {severityCategories.map(severity => (
+          <Col key={severity.key} xs={12}>
+            <div 
+              className={`card h-100 position-relative ${selectedSeverities.has(severity.key) ? `border-${severity.color} bg-${severity.color} bg-opacity-10` : 'border-secondary'}`}
+              style={{ cursor: 'pointer' }}
+              onClick={() => handleSeveritySelect(severity.key)}
+            >
+              <div className="card-body p-3">
+                <div className="d-flex align-items-center">
+                  <div className="d-flex align-items-center justify-content-center me-3" style={{ width: '50px', minWidth: '50px' }}>
+                    <i className={`${severity.icon} text-${severity.color}`} style={{ fontSize: '1.5rem' }}></i>
+                  </div>
+                  <div className="flex-grow-1">
+                    <h6 className="card-title mb-1">{severity.name}</h6>
+                    <p className="card-text text-muted small mb-0">
+                      {severity.description}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </Col>
+        ))}
+      </Row>
+
       {uploadedTemplates.length > 0 && (
         <div className="mt-4">
           <h6 className="text-danger mb-3">Uploaded Custom Templates</h6>
@@ -634,6 +708,7 @@ const NucleiConfigModal = ({
       <div className="mt-3 text-info">
         <small>
           Selected: {selectedTemplates.size} template categories | 
+          Severities: {selectedSeverities.size} levels | 
           Custom templates: {uploadedTemplates.length} uploaded
         </small>
       </div>
@@ -668,7 +743,8 @@ const NucleiConfigModal = ({
               <div>
                 <strong>Nuclei Security Scan:</strong> Configure targets and templates for comprehensive security scanning.
                 Selected targets: <strong>{selectedTargets.size}</strong> | 
-                Selected templates: <strong>{selectedTemplates.size}</strong>
+                Selected templates: <strong>{selectedTemplates.size}</strong> |
+                Selected severities: <strong>{selectedSeverities.size}</strong>
               </div>
             </div>
           </div>

@@ -110,10 +110,11 @@ func convertAttackSurfaceAssetsToTargets(assetIDs []string, scopeTargetID string
 }
 
 // executeNucleiScan executes a Nuclei scan with the given parameters
-func executeNucleiScan(targets []string, templates []string, uploadedTemplates []map[string]interface{}, outputFile string) error {
+func executeNucleiScan(targets []string, templates []string, severities []string, uploadedTemplates []map[string]interface{}, outputFile string) error {
 	log.Printf("[DEBUG] Starting Nuclei scan with %d targets", len(targets))
 	log.Printf("[DEBUG] Targets: %v", targets)
 	log.Printf("[DEBUG] Templates: %v", templates)
+	log.Printf("[DEBUG] Severities: %v", severities)
 
 	// Create targets file
 	targetsFile := outputFile + ".targets"
@@ -154,6 +155,15 @@ func executeNucleiScan(targets []string, templates []string, uploadedTemplates [
 				args = append(args, "-tags", "headless")
 			}
 		}
+	}
+
+	// Add severity filters
+	if len(severities) > 0 {
+		severityArgs := []string{}
+		for _, severity := range severities {
+			severityArgs = append(severityArgs, "-severity", severity)
+		}
+		args = append(args, severityArgs...)
 	}
 
 	// Handle custom templates
@@ -258,7 +268,7 @@ func parseNucleiResults(outputFile string) ([]NucleiFinding, error) {
 }
 
 // ExecuteNucleiScanForScopeTarget executes a complete Nuclei scan for a scope target
-func ExecuteNucleiScanForScopeTarget(scopeTargetID string, selectedTargets []string, selectedTemplates []string, uploadedTemplates []map[string]interface{}, dbPool *pgxpool.Pool) (string, []NucleiFinding, error) {
+func ExecuteNucleiScanForScopeTarget(scopeTargetID string, selectedTargets []string, selectedTemplates []string, selectedSeverities []string, uploadedTemplates []map[string]interface{}, dbPool *pgxpool.Pool) (string, []NucleiFinding, error) {
 	// Convert attack surface assets to Nuclei targets
 	targets, err := convertAttackSurfaceAssetsToTargets(selectedTargets, scopeTargetID, dbPool)
 	if err != nil {
@@ -278,7 +288,7 @@ func ExecuteNucleiScanForScopeTarget(scopeTargetID string, selectedTargets []str
 	outputFile := filepath.Join(outputDir, fmt.Sprintf("nuclei_scan_%s_%d.jsonl", scopeTargetID, time.Now().Unix()))
 
 	// Execute the scan
-	if err := executeNucleiScan(targets, selectedTemplates, uploadedTemplates, outputFile); err != nil {
+	if err := executeNucleiScan(targets, selectedTemplates, selectedSeverities, uploadedTemplates, outputFile); err != nil {
 		return "", nil, fmt.Errorf("scan execution failed: %v", err)
 	}
 

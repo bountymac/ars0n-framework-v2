@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Modal, Button, Badge, ListGroup, Row, Col, Card, Alert, Table } from 'react-bootstrap';
 import { copyToClipboard } from '../utils/miscUtils';
 
@@ -10,15 +10,38 @@ export const NucleiResultsModal = ({
 }) => {
   const [selectedFinding, setSelectedFinding] = useState(null);
   const [findings, setFindings] = useState([]);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [severityFilter, setSeverityFilter] = useState('all');
+  const [categoryFilter, setCategoryFilter] = useState('all');
 
   const formatResults = (results) => {
-    if (!results?.result) return [];
+    console.log('[NucleiResultsModal] Formatting results:', results);
+    
+    if (!results?.result) {
+      console.log('[NucleiResultsModal] No result data found');
+      return [];
+    }
+    
     try {
+      let findings = [];
       if (typeof results.result === 'string') {
-        const parsed = JSON.parse(results.result);
-        return Array.isArray(parsed) ? parsed : [];
+        console.log('[NucleiResultsModal] Parsing string result');
+        findings = JSON.parse(results.result);
+      } else if (Array.isArray(results.result)) {
+        console.log('[NucleiResultsModal] Result is already an array');
+        findings = results.result;
       }
-      return Array.isArray(results.result) ? results.result : [];
+      
+      console.log('[NucleiResultsModal] Parsed findings:', findings);
+      console.log('[NucleiResultsModal] Findings count:', Array.isArray(findings) ? findings.length : 0);
+      
+      if (Array.isArray(findings) && findings.length > 0) {
+        console.log('[NucleiResultsModal] Sample finding:', findings[0]);
+        console.log('[NucleiResultsModal] Sample finding severity:', findings[0].info?.severity);
+      }
+      
+      return Array.isArray(findings) ? findings : [];
     } catch (error) {
       console.error('Error parsing Nuclei results:', error);
       return [];
@@ -107,7 +130,12 @@ export const NucleiResultsModal = ({
 
   const groupBySeverity = (findings) => {
     const grouped = findings.reduce((acc, finding) => {
-      const severity = finding.info?.severity?.toLowerCase() || 'info';
+      let severity = finding.info?.severity?.toLowerCase() || 'info';
+      
+      if (severity === 'unknown') {
+        severity = 'info';
+      }
+      
       if (!acc[severity]) acc[severity] = [];
       acc[severity].push(finding);
       return acc;
@@ -124,21 +152,138 @@ export const NucleiResultsModal = ({
     return sortedGrouped;
   };
 
-  const groupedFindings = groupBySeverity(findings);
+  const getAvailableCategories = useMemo(() => {
+    const categories = new Set();
+    findings.forEach(finding => {
+      if (finding.info?.tags && finding.info.tags.length > 0) {
+        finding.info.tags.forEach(tag => categories.add(tag));
+      }
+    });
+    return Array.from(categories).sort();
+  }, [findings]);
+
+  const filteredFindings = useMemo(() => {
+    let filtered = findings;
+
+    if (searchTerm) {
+      const isNegativeSearch = searchTerm.startsWith('-');
+      const searchValue = isNegativeSearch ? searchTerm.substring(1) : searchTerm;
+      
+      filtered = filtered.filter(finding => {
+        const searchableText = [
+          finding.info?.name || '',
+          finding.host || '',
+          finding.matched || '',
+          finding.template_id || '',
+          finding.info?.description || '',
+          finding.info?.tags?.join(' ') || ''
+        ].join(' ').toLowerCase();
+        
+        const matches = searchableText.includes(searchValue.toLowerCase());
+        return isNegativeSearch ? !matches : matches;
+      });
+    }
+
+    if (severityFilter !== 'all') {
+      filtered = filtered.filter(finding => {
+        const severity = finding.info?.severity?.toLowerCase() || 'info';
+        return severity === severityFilter || (severity === 'unknown' && severityFilter === 'info');
+      });
+    }
+
+    if (categoryFilter !== 'all') {
+      filtered = filtered.filter(finding => {
+        return finding.info?.tags?.includes(categoryFilter);
+      });
+    }
+
+    return filtered;
+  }, [findings, searchTerm, severityFilter, categoryFilter]);
+
+  const filteredGroupedFindings = useMemo(() => {
+    return groupBySeverity(filteredFindings);
+  }, [filteredFindings]);
+
+  const allFindings = useMemo(() => {
+    const findings = [];
+    Object.entries(filteredGroupedFindings).forEach(([severity, severityFindings]) => {
+      severityFindings.forEach(finding => {
+        findings.push({ ...finding, severity });
+      });
+    });
+    return findings;
+  }, [filteredGroupedFindings]);
+
+  useEffect(() => {
+    if (show && allFindings.length > 0 && !selectedFinding) {
+      setSelectedFinding(allFindings[0]);
+      setSelectedIndex(0);
+    }
+  }, [show, allFindings, selectedFinding]);
+
+  useEffect(() => {
+    const handleGlobalKeyDown = (event) => {
+      if (!show) return;
+      
+      if (allFindings.length === 0) return;
+
+      switch (event.key) {
+        case 'ArrowDown':
+          event.preventDefault();
+          const nextIndex = Math.min(selectedIndex + 1, allFindings.length - 1);
+          if (nextIndex !== selectedIndex) {
+            setSelectedIndex(nextIndex);
+            setSelectedFinding(allFindings[nextIndex]);
+          }
+          break;
+        case 'ArrowUp':
+          event.preventDefault();
+          const prevIndex = Math.max(selectedIndex - 1, 0);
+          if (prevIndex !== selectedIndex) {
+            setSelectedIndex(prevIndex);
+            setSelectedFinding(allFindings[prevIndex]);
+          }
+          break;
+        case 'Home':
+          event.preventDefault();
+          if (selectedIndex !== 0) {
+            setSelectedIndex(0);
+            setSelectedFinding(allFindings[0]);
+          }
+          break;
+        case 'End':
+          event.preventDefault();
+          const lastIndex = allFindings.length - 1;
+          if (selectedIndex !== lastIndex) {
+            setSelectedIndex(lastIndex);
+            setSelectedFinding(allFindings[lastIndex]);
+          }
+          break;
+      }
+    };
+
+    if (show) {
+      document.addEventListener('keydown', handleGlobalKeyDown);
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleGlobalKeyDown);
+    };
+  }, [show, allFindings, selectedIndex]);
 
   const renderFindingsList = () => {
-    if (findings.length === 0) {
+    if (filteredFindings.length === 0) {
       return (
         <div className="text-center text-muted p-4">
           <i className="bi bi-search fs-1 mb-3 d-block"></i>
-          <p>No security findings detected in this scan.</p>
+          <p>{findings.length === 0 ? 'No security findings detected in this scan.' : 'No findings match the current filters.'}</p>
         </div>
       );
     }
 
     return (
-      <div style={{ height: '60vh', overflowY: 'auto' }}>
-        {Object.entries(groupedFindings).map(([severity, severityFindings]) => (
+      <div style={{ height: '75vh', overflowY: 'auto' }}>
+        {Object.entries(filteredGroupedFindings).map(([severity, severityFindings]) => (
           <div key={severity} className="mb-3">
             <div className="d-flex align-items-center mb-2">
               <Badge bg={getSeverityBadge(severity)} className="me-2">
@@ -150,18 +295,26 @@ export const NucleiResultsModal = ({
             </div>
             
             <ListGroup variant="flush">
-              {severityFindings.map((finding, index) => (
-                <ListGroup.Item
-                  key={`${severity}-${index}`}
-                  action
-                  active={selectedFinding === finding}
-                  onClick={() => setSelectedFinding(finding)}
-                  className="py-2 border-0 mb-1"
-                  style={{ 
-                    backgroundColor: selectedFinding === finding ? 'rgba(13, 110, 253, 0.25)' : 'rgba(255, 255, 255, 0.05)',
-                    borderRadius: '4px'
-                  }}
-                >
+              {severityFindings.map((finding, index) => {
+                const findingIndex = allFindings.findIndex(f => f === finding);
+                const isSelected = selectedFinding === finding;
+                
+                return (
+                  <ListGroup.Item
+                    key={`${severity}-${index}`}
+                    action
+                    active={isSelected}
+                    onClick={() => {
+                      setSelectedFinding(finding);
+                      setSelectedIndex(findingIndex);
+                    }}
+                    className="py-2 border-0 mb-1"
+                    style={{ 
+                      backgroundColor: isSelected ? 'rgba(13, 110, 253, 0.25)' : 'rgba(255, 255, 255, 0.05)',
+                      borderRadius: '4px',
+                      border: isSelected ? '2px solid #0d6efd' : '2px solid transparent'
+                    }}
+                  >
                   <div className="d-flex align-items-start">
                     <i className={`bi bi-${getSeverityIcon(severity)} text-${getSeverityBadge(severity) === 'danger' ? 'danger' : getSeverityBadge(severity) === 'warning' ? 'warning' : 'info'} me-2 mt-1`}></i>
                     <div className="flex-grow-1">
@@ -177,7 +330,8 @@ export const NucleiResultsModal = ({
                     </div>
                   </div>
                 </ListGroup.Item>
-              ))}
+                );
+              })}
             </ListGroup>
           </div>
         ))}
@@ -199,7 +353,7 @@ export const NucleiResultsModal = ({
     const severity = finding.info?.severity?.toLowerCase() || 'info';
 
     return (
-      <div style={{ height: '60vh', overflowY: 'auto' }}>
+      <div style={{ height: '75vh', overflowY: 'auto' }}>
         <Card className="bg-dark border-secondary">
           <Card.Header className="d-flex justify-content-between align-items-center">
             <div className="d-flex align-items-center">
@@ -355,6 +509,9 @@ export const NucleiResultsModal = ({
       onHide={handleClose} 
       size="xl"
       className="nuclei-results-modal"
+      dialogClassName="modal-fullscreen"
+      style={{ margin: 0 }}
+      tabIndex={0}
     >
       <Modal.Header closeButton>
         <Modal.Title className='text-danger'>
@@ -364,6 +521,78 @@ export const NucleiResultsModal = ({
       </Modal.Header>
       
       <Modal.Body className="p-0">
+        <div className="bg-dark border-bottom px-3 py-3">
+          <Row className="g-2">
+            <Col md={4}>
+              <div className="input-group input-group-sm">
+                <span className="input-group-text bg-secondary border-secondary">
+                  <i className="bi bi-search"></i>
+                </span>
+                <input
+                  type="text"
+                  className="form-control bg-dark text-light border-secondary"
+                  placeholder="Search findings (use -term for negative search)"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+                {searchTerm && (
+                  <button
+                    className="btn btn-outline-secondary btn-sm"
+                    onClick={() => setSearchTerm('')}
+                  >
+                    <i className="bi bi-x"></i>
+                  </button>
+                )}
+              </div>
+            </Col>
+            <Col md={3}>
+              <select
+                className="form-select form-select-sm bg-dark text-light border-secondary"
+                value={severityFilter}
+                onChange={(e) => setSeverityFilter(e.target.value)}
+              >
+                <option value="all">All Severities</option>
+                <option value="critical">Critical</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+                <option value="info">Info</option>
+              </select>
+            </Col>
+            <Col md={3}>
+              <select
+                className="form-select form-select-sm bg-dark text-light border-secondary"
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+              >
+                <option value="all">All Categories</option>
+                {getAvailableCategories.map(category => (
+                  <option key={category} value={category}>{category}</option>
+                ))}
+              </select>
+            </Col>
+            <Col md={2}>
+              <div className="d-flex justify-content-between align-items-center">
+                <small className="text-muted">
+                  {filteredFindings.length} of {findings.length}
+                </small>
+                <Button 
+                  variant="outline-secondary" 
+                  size="sm" 
+                  onClick={() => {
+                    setSearchTerm('');
+                    setSeverityFilter('all');
+                    setCategoryFilter('all');
+                  }}
+                  disabled={!searchTerm && severityFilter === 'all' && categoryFilter === 'all'}
+                >
+                  <i className="bi bi-arrow-clockwise"></i>
+                </Button>
+              </div>
+            </Col>
+          </Row>
+        </div>
+        
         <div className="d-flex align-items-center justify-content-between bg-dark border-bottom px-3 py-2">
           <div>
             <small className="text-muted">
@@ -380,9 +609,15 @@ export const NucleiResultsModal = ({
         <Row className="g-0">
           <Col md={4} className="border-end">
             <div className="p-3">
-              <h6 className="text-light mb-3">
-                <i className="bi bi-list-ul me-2"></i>Findings
-              </h6>
+              <div className="d-flex justify-content-between align-items-center mb-3">
+                <h6 className="text-light mb-0">
+                  <i className="bi bi-list-ul me-2"></i>Findings
+                </h6>
+                <small className="text-muted">
+                  <i className="bi bi-keyboard me-1"></i>
+                  Use ↑↓ arrows to navigate, Home/End for first/last
+                </small>
+              </div>
               {renderFindingsList()}
             </div>
           </Col>

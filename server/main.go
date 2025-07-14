@@ -2837,13 +2837,13 @@ func getNucleiConfig(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("[INFO] Getting Nuclei config for scope target: %s", scopeTargetID)
 
-	var targets, templates []string
+	var targets, templates, severities []string
 	var uploadedTemplates []byte
 	var createdAt time.Time
 
 	err := dbPool.QueryRow(context.Background(),
-		`SELECT targets, templates, uploaded_templates, created_at FROM nuclei_configs WHERE scope_target_id = $1::uuid ORDER BY created_at DESC LIMIT 1`,
-		scopeTargetID).Scan(&targets, &templates, &uploadedTemplates, &createdAt)
+		`SELECT targets, templates, severities, uploaded_templates, created_at FROM nuclei_configs WHERE scope_target_id = $1::uuid ORDER BY created_at DESC LIMIT 1`,
+		scopeTargetID).Scan(&targets, &templates, &severities, &uploadedTemplates, &createdAt)
 
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -2894,6 +2894,7 @@ func saveNucleiConfig(w http.ResponseWriter, r *http.Request) {
 	var config struct {
 		Targets           []string      `json:"targets"`
 		Templates         []string      `json:"templates"`
+		Severities        []string      `json:"severities"`
 		UploadedTemplates []interface{} `json:"uploaded_templates"`
 		CreatedAt         string        `json:"created_at"`
 	}
@@ -2910,14 +2911,16 @@ func saveNucleiConfig(w http.ResponseWriter, r *http.Request) {
 	uploadedTemplatesJSON, _ := json.Marshal(config.UploadedTemplates)
 
 	_, err := dbPool.Exec(context.Background(), `
-		INSERT INTO nuclei_configs (scope_target_id, targets, templates, uploaded_templates, created_at) 
-		VALUES ($1::uuid, $2, $3, $4, NOW())
-		ON CONFLICT (scope_target_id) DO UPDATE SET
+		INSERT INTO nuclei_configs (scope_target_id, targets, templates, severities, uploaded_templates, created_at)
+		VALUES ($1::uuid, $2, $3, $4, $5, NOW())
+		ON CONFLICT (scope_target_id) 
+		DO UPDATE SET 
 			targets = EXCLUDED.targets,
 			templates = EXCLUDED.templates,
+			severities = EXCLUDED.severities,
 			uploaded_templates = EXCLUDED.uploaded_templates,
 			created_at = NOW()
-	`, scopeTargetID, config.Targets, config.Templates, uploadedTemplatesJSON)
+	`, scopeTargetID, config.Targets, config.Templates, config.Severities, uploadedTemplatesJSON)
 
 	if err != nil {
 		log.Printf("[ERROR] Failed to save Nuclei config: %v", err)
@@ -3000,11 +3003,11 @@ func startNucleiScan(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[INFO] Starting Nuclei scan for scope target: %s", scopeTargetID)
 
 	// Get the latest Nuclei config for this scope target
-	var targets, templates []string
+	var targets, templates, severities []string
 	var uploadedTemplatesJSON []byte
 	err := dbPool.QueryRow(context.Background(),
-		`SELECT targets, templates, uploaded_templates FROM nuclei_configs WHERE scope_target_id = $1::uuid ORDER BY created_at DESC LIMIT 1`,
-		scopeTargetID).Scan(&targets, &templates, &uploadedTemplatesJSON)
+		`SELECT targets, templates, severities, uploaded_templates FROM nuclei_configs WHERE scope_target_id = $1::uuid ORDER BY created_at DESC LIMIT 1`,
+		scopeTargetID).Scan(&targets, &templates, &severities, &uploadedTemplatesJSON)
 
 	if err != nil {
 		log.Printf("[ERROR] Failed to get Nuclei config: %v", err)
@@ -3057,7 +3060,7 @@ func startNucleiScan(w http.ResponseWriter, r *http.Request) {
 		startTime := time.Now()
 
 		// Execute the scan
-		outputFile, findings, err := utils.ExecuteNucleiScanForScopeTarget(scopeTargetID, targets, templates, uploadedTemplates, dbPool)
+		outputFile, findings, err := utils.ExecuteNucleiScanForScopeTarget(scopeTargetID, targets, templates, severities, uploadedTemplates, dbPool)
 
 		executionTime := time.Since(startTime)
 
