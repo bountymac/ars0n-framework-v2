@@ -1106,11 +1106,12 @@ func createTables() {
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			scope_target_id UUID NOT NULL REFERENCES scope_targets(id) ON DELETE CASCADE,
 			targets TEXT[] NOT NULL DEFAULT '{}',
-			templates TEXT[] NOT NULL DEFAULT '{}',
+			templates TEXT[] NOT NULL DEFAULT '{cves,vulnerabilities,exposures,technologies,misconfiguration,takeovers,network,dns,headless}',
 			uploaded_templates JSONB DEFAULT '[]',
 			created_at TIMESTAMP DEFAULT NOW(),
 			UNIQUE(scope_target_id)
 		);`,
+		`ALTER TABLE nuclei_configs ADD COLUMN IF NOT EXISTS uploaded_templates JSONB DEFAULT '[]';`,
 		`CREATE TABLE IF NOT EXISTS nuclei_scans (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			scan_id UUID NOT NULL UNIQUE DEFAULT gen_random_uuid(),
@@ -1125,8 +1126,10 @@ func createTables() {
 			command TEXT,
 			execution_time TEXT,
 			created_at TIMESTAMP DEFAULT NOW(),
+			updated_at TIMESTAMP DEFAULT NOW(),
 			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
 		);`,
+		`ALTER TABLE nuclei_scans ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();`,
 	}
 
 	for _, query := range queries {

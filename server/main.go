@@ -16,6 +16,7 @@ import (
 
 	"ars0n-framework-v2-server/utils"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -239,6 +240,8 @@ func main() {
 	r.HandleFunc("/nuclei-config/{scope_target_id}", getNucleiConfig).Methods("GET", "OPTIONS")
 	r.HandleFunc("/nuclei-config/{scope_target_id}", saveNucleiConfig).Methods("POST", "OPTIONS")
 	r.HandleFunc("/scopetarget/{id}/scans/nuclei", getNucleiScansForScopeTarget).Methods("GET", "OPTIONS")
+	r.HandleFunc("/scopetarget/{id}/scans/nuclei/start", startNucleiScan).Methods("POST", "OPTIONS")
+	r.HandleFunc("/nuclei-scan/{scan_id}/status", getNucleiScanStatus).Methods("GET", "OPTIONS")
 
 	// Katana Company scan routes
 	r.HandleFunc("/katana-company/run/{scope_target_id}", utils.RunKatanaCompanyScan).Methods("POST", "OPTIONS")
@@ -2845,9 +2848,10 @@ func getNucleiConfig(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			log.Printf("[INFO] No Nuclei config found for scope target %s", scopeTargetID)
+			defaultTemplates := []string{"cves", "vulnerabilities", "exposures", "technologies", "misconfiguration", "takeovers", "network", "dns", "headless"}
 			json.NewEncoder(w).Encode(map[string]interface{}{
 				"targets":            []string{},
-				"templates":          []string{},
+				"templates":          defaultTemplates,
 				"uploaded_templates": []interface{}{},
 				"created_at":         nil,
 			})
@@ -2981,4 +2985,179 @@ func getNucleiScansForScopeTarget(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("[INFO] Found %d Nuclei scans for scope target %s", len(scans), scopeTargetID)
 	json.NewEncoder(w).Encode(scans)
+}
+
+func startNucleiScan(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	vars := mux.Vars(r)
+	scopeTargetID := vars["id"]
+
+	if scopeTargetID == "" {
+		http.Error(w, "Missing id parameter", http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("[INFO] Starting Nuclei scan for scope target: %s", scopeTargetID)
+
+	// Get the latest Nuclei config for this scope target
+	var targets, templates []string
+	var uploadedTemplatesJSON []byte
+	err := dbPool.QueryRow(context.Background(),
+		`SELECT targets, templates, uploaded_templates FROM nuclei_configs WHERE scope_target_id = $1::uuid ORDER BY created_at DESC LIMIT 1`,
+		scopeTargetID).Scan(&targets, &templates, &uploadedTemplatesJSON)
+
+	if err != nil {
+		log.Printf("[ERROR] Failed to get Nuclei config: %v", err)
+		http.Error(w, "No Nuclei configuration found. Please configure targets and templates first.", http.StatusBadRequest)
+		return
+	}
+
+	if len(targets) == 0 {
+		http.Error(w, "No targets configured. Please configure targets first.", http.StatusBadRequest)
+		return
+	}
+
+	// Parse uploaded templates
+	var uploadedTemplates []map[string]interface{}
+	if len(uploadedTemplatesJSON) > 0 {
+		if err := json.Unmarshal(uploadedTemplatesJSON, &uploadedTemplates); err != nil {
+			log.Printf("[WARN] Failed to parse uploaded templates: %v", err)
+		}
+	}
+
+	// Generate scan ID
+	scanID := uuid.New().String()
+
+	// Insert scan record with pending status
+	_, err = dbPool.Exec(context.Background(), `
+		INSERT INTO nuclei_scans (scan_id, scope_target_id, targets, templates, status, created_at) 
+		VALUES ($1, $2::uuid, $3, $4, 'pending', NOW())
+	`, scanID, scopeTargetID, targets, templates)
+
+	if err != nil {
+		log.Printf("[ERROR] Failed to insert Nuclei scan record: %v", err)
+		http.Error(w, "Failed to create scan record", http.StatusInternalServerError)
+		return
+	}
+
+	// Start scan in background goroutine
+	go func() {
+		log.Printf("[INFO] Starting background Nuclei scan %s", scanID)
+
+		// Update status to running
+		_, err := dbPool.Exec(context.Background(), `
+			UPDATE nuclei_scans SET status = 'running', updated_at = NOW() WHERE scan_id = $1
+		`, scanID)
+
+		if err != nil {
+			log.Printf("[ERROR] Failed to update scan status to running: %v", err)
+			return
+		}
+
+		startTime := time.Now()
+
+		// Execute the scan
+		outputFile, findings, err := utils.ExecuteNucleiScanForScopeTarget(scopeTargetID, targets, templates, uploadedTemplates, dbPool)
+
+		executionTime := time.Since(startTime)
+
+		if err != nil {
+			log.Printf("[ERROR] Nuclei scan failed: %v", err)
+
+			// Update scan with error status
+			_, updateErr := dbPool.Exec(context.Background(), `
+				UPDATE nuclei_scans SET 
+					status = 'failed', 
+					error = $1, 
+					execution_time = $2,
+					updated_at = NOW() 
+				WHERE scan_id = $3
+			`, err.Error(), executionTime.String(), scanID)
+
+			if updateErr != nil {
+				log.Printf("[ERROR] Failed to update scan with error: %v", updateErr)
+			}
+			return
+		}
+
+		// Convert findings to JSON
+		findingsJSON, err := json.Marshal(findings)
+		if err != nil {
+			log.Printf("[ERROR] Failed to marshal findings: %v", err)
+			findingsJSON = []byte("[]")
+		}
+
+		// Update scan with success status and results
+		_, err = dbPool.Exec(context.Background(), `
+			UPDATE nuclei_scans SET 
+				status = 'success', 
+				result = $1, 
+				execution_time = $2,
+				updated_at = NOW() 
+			WHERE scan_id = $3
+		`, string(findingsJSON), executionTime.String(), scanID)
+
+		if err != nil {
+			log.Printf("[ERROR] Failed to update scan with results: %v", err)
+		} else {
+			log.Printf("[INFO] Nuclei scan %s completed successfully with %d findings", scanID, len(findings))
+		}
+
+		// Clean up output file
+		if outputFile != "" {
+			os.Remove(outputFile)
+		}
+	}()
+
+	// Return scan ID immediately
+	response := map[string]string{
+		"scan_id": scanID,
+		"status":  "pending",
+		"message": "Nuclei scan started successfully",
+	}
+
+	log.Printf("[INFO] Nuclei scan %s initiated for scope target %s", scanID, scopeTargetID)
+	json.NewEncoder(w).Encode(response)
+}
+
+func getNucleiScanStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	vars := mux.Vars(r)
+	scanID := vars["scan_id"]
+
+	if scanID == "" {
+		http.Error(w, "Missing scan_id parameter", http.StatusBadRequest)
+		return
+	}
+
+	var status, result, error, executionTime sql.NullString
+	var createdAt, updatedAt time.Time
+
+	err := dbPool.QueryRow(context.Background(), `
+		SELECT status, result, error, execution_time, created_at, updated_at
+		FROM nuclei_scans 
+		WHERE scan_id = $1
+	`, scanID).Scan(&status, &result, &error, &executionTime, &createdAt, &updatedAt)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			http.Error(w, "Scan not found", http.StatusNotFound)
+			return
+		}
+		log.Printf("[ERROR] Failed to get scan status: %v", err)
+		http.Error(w, "Failed to get scan status", http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]interface{}{
+		"scan_id":        scanID,
+		"status":         status.String,
+		"result":         result.String,
+		"error":          error.String,
+		"execution_time": executionTime.String,
+		"created_at":     createdAt,
+		"updated_at":     updatedAt,
+	}
+
+	json.NewEncoder(w).Encode(response)
 }

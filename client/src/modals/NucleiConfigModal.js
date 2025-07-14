@@ -125,6 +125,10 @@ const NucleiConfigModal = ({
         }
         if (config.templates && Array.isArray(config.templates)) {
           setSelectedTemplates(new Set(config.templates));
+        } else {
+          // Set default templates if none exist
+          const defaultTemplates = ['cves', 'vulnerabilities', 'exposures', 'technologies', 'misconfiguration', 'takeovers', 'network', 'dns', 'headless'];
+          setSelectedTemplates(new Set(defaultTemplates));
         }
         if (config.uploaded_templates && Array.isArray(config.uploaded_templates)) {
           setUploadedTemplates(config.uploaded_templates);
@@ -132,22 +136,15 @@ const NucleiConfigModal = ({
       }
     } catch (error) {
       console.error('Error loading Nuclei config:', error);
+      // Set default templates on error as well
+      const defaultTemplates = ['cves', 'vulnerabilities', 'exposures', 'technologies', 'misconfiguration', 'takeovers', 'network', 'dns', 'headless'];
+      setSelectedTemplates(new Set(defaultTemplates));
     }
   };
 
   const handleSaveConfig = async () => {
     if (!activeTarget?.id) {
       setError('No active target selected');
-      return;
-    }
-
-    if (selectedTargets.size === 0) {
-      setError('Please select at least one target');
-      return;
-    }
-
-    if (selectedTemplates.size === 0) {
-      setError('Please select at least one template category');
       return;
     }
 
@@ -665,16 +662,16 @@ const NucleiConfigModal = ({
         )}
 
         <div className="mb-4">
-          <Alert variant="info">
+          <div className="text-white">
             <div className="d-flex align-items-center">
-              <i className="bi bi-info-circle-fill me-2" />
+              <i className="bi bi-shield-shaded me-2" />
               <div>
                 <strong>Nuclei Security Scan:</strong> Configure targets and templates for comprehensive security scanning.
                 Selected targets: <strong>{selectedTargets.size}</strong> | 
                 Selected templates: <strong>{selectedTemplates.size}</strong>
               </div>
             </div>
-          </Alert>
+          </div>
         </div>
 
         <Tabs
@@ -698,7 +695,7 @@ const NucleiConfigModal = ({
         <Button 
           variant="danger" 
           onClick={handleSaveConfig}
-          disabled={saving || selectedTargets.size === 0 || selectedTemplates.size === 0}
+          disabled={saving}
         >
           {saving ? (
             <>

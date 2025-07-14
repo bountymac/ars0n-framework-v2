@@ -17,19 +17,19 @@ import Ars0nFrameworkHeader from './components/ars0nFrameworkHeader.js';
 import ManageScopeTargets from './components/manageScopeTargets.js';
 import fetchAmassScans from './utils/fetchAmassScans.js';
 import {
-    Container,
-    Fade,
-    Card,
-    Row,
-    Col,
-    Button,
-    ListGroup,
-    Accordion,
-    Modal,
-    Table,
-    Toast,
-    ToastContainer,
-    Spinner,
+  Container,
+  Fade,
+  Card,
+  Row,
+  Col,
+  Button,
+  ListGroup,
+  Accordion,
+  Modal,
+  Table,
+  Toast,
+  ToastContainer,
+  Spinner,
 } from 'react-bootstrap';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'bootstrap-icons/font/bootstrap-icons.css';
@@ -37,14 +37,14 @@ import initiateAmassScan from './utils/initiateAmassScan';
 import monitorScanStatus from './utils/monitorScanStatus';
 import validateInput from './utils/validateInput.js';
 import {
-    getTypeIcon,
-    getLastScanDate,
-    getLatestScanStatus,
-    getLatestScanTime,
-    getLatestScanId,
-    getExecutionTime,
-    getResultLength,
-    copyToClipboard,
+  getTypeIcon,
+  getLastScanDate,
+  getLatestScanStatus,
+  getLatestScanTime,
+  getLatestScanId,
+  getExecutionTime,
+  getResultLength,
+  copyToClipboard,
 } from './utils/miscUtils.js';
 import { MdCopyAll, MdCheckCircle } from 'react-icons/md';
 import initiateHttpxScan from './utils/initiateHttpxScan';
@@ -81,6 +81,8 @@ import monitorGoSpiderScanStatus from './utils/monitorGoSpiderScanStatus';
 import { SubdomainizerResultsModal } from './modals/subdomainizerModals';
 import initiateSubdomainizerScan from './utils/initiateSubdomainizerScan';
 import monitorSubdomainizerScanStatus from './utils/monitorSubdomainizerScanStatus';
+import initiateNucleiScan from './utils/initiateNucleiScan';
+import monitorNucleiScanStatus from './utils/monitorNucleiScanStatus';
 import initiateNucleiScreenshotScan from './utils/initiateNucleiScreenshotScan';
 import monitorNucleiScreenshotScanStatus from './utils/monitorNucleiScreenshotScanStatus';
 import initiateMetaDataScan, { initiateCompanyMetaDataScan } from './utils/initiateMetaDataScan';
@@ -90,9 +92,9 @@ import fetchHttpxScans from './utils/fetchHttpxScans';
 import ROIReport from './components/ROIReport';
 import HelpMeLearn from './components/HelpMeLearn';
 import {
-    AUTO_SCAN_STEPS,
-    resumeAutoScan as resumeAutoScanUtil,
-    startAutoScan as startAutoScanUtil
+  AUTO_SCAN_STEPS,
+  resumeAutoScan as resumeAutoScanUtil,
+  startAutoScan as startAutoScanUtil
 } from './utils/wildcardAutoScan';
 import getAutoScanSteps from './utils/autoScanSteps';
 import fetchAmassIntelScans from './utils/fetchAmassIntelScans';
@@ -104,6 +106,7 @@ import { CTLCompanyResultsModal, CTLCompanyHistoryModal } from './modals/CTLComp
 import { CloudEnumResultsModal, CloudEnumHistoryModal } from './modals/CloudEnumResultsModal';
 import CloudEnumConfigModal from './modals/CloudEnumConfigModal';
 import NucleiConfigModal from './modals/NucleiConfigModal';
+import { NucleiResultsModal, NucleiHistoryModal } from './modals/NucleiResultsModal';
 import monitorMetabigorCompanyScanStatus from './utils/monitorMetabigorCompanyScanStatus';
 import initiateMetabigorCompanyScan from './utils/initiateMetabigorCompanyScan';
 import { MetabigorCompanyResultsModal, MetabigorCompanyHistoryModal } from './modals/MetabigorCompanyResultsModal';
@@ -555,6 +558,13 @@ function App() {
   const [showCloudEnumHistoryModal, setShowCloudEnumHistoryModal] = useState(false);
   const [showCloudEnumConfigModal, setShowCloudEnumConfigModal] = useState(false);
   const [showNucleiConfigModal, setShowNucleiConfigModal] = useState(false);
+  const [nucleiScans, setNucleiScans] = useState([]);
+  const [mostRecentNucleiScan, setMostRecentNucleiScan] = useState(null);
+  const [mostRecentNucleiScanStatus, setMostRecentNucleiScanStatus] = useState(null);
+  const [isNucleiScanning, setIsNucleiScanning] = useState(false);
+  const [nucleiConfig, setNucleiConfig] = useState(null);
+  const [showNucleiResultsModal, setShowNucleiResultsModal] = useState(false);
+  const [showNucleiHistoryModal, setShowNucleiHistoryModal] = useState(false);
 
   // Katana Company state variables
   const [katanaCompanyScans, setKatanaCompanyScans] = useState([]);
@@ -1070,6 +1080,7 @@ function App() {
       fetchGoogleDorkingDomains();
       fetchReverseWhoisDomains();
       fetchIPPortScans(activeTarget, setIPPortScans, setMostRecentIPPortScan, setMostRecentIPPortScanStatus);
+      fetchNucleiScans(activeTarget, setNucleiScans, setMostRecentNucleiScan, setMostRecentNucleiScanStatus);
     }
   }, [activeTarget]);
 
@@ -2267,6 +2278,111 @@ function App() {
   const handleCloseNucleiConfigModal = () => setShowNucleiConfigModal(false);
   const handleOpenNucleiConfigModal = () => setShowNucleiConfigModal(true);
 
+  const loadNucleiConfig = async () => {
+    if (!activeTarget?.id) return;
+
+    try {
+      const response = await fetch(
+        `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/nuclei-config/${activeTarget.id}`
+      );
+      
+      if (response.ok) {
+        const config = await response.json();
+        setNucleiConfig(config);
+      }
+    } catch (error) {
+      console.error('Error loading Nuclei config:', error);
+    }
+  };
+
+  const handleNucleiConfigSave = async (config) => {
+    console.log('Nuclei configuration saved:', config);
+    setNucleiConfig(config);
+    setShowNucleiConfigModal(false);
+  };
+
+  const isNucleiScanDisabled = () => {
+    return !nucleiConfig || 
+           !nucleiConfig.targets || 
+           !Array.isArray(nucleiConfig.targets) || 
+           nucleiConfig.targets.length === 0 || 
+           !nucleiConfig.templates || 
+           !Array.isArray(nucleiConfig.templates) || 
+           nucleiConfig.templates.length === 0;
+  };
+
+  const getNucleiSelectedTargetsCount = () => {
+    if (!nucleiConfig?.targets || !Array.isArray(nucleiConfig.targets)) return 0;
+    return nucleiConfig.targets.length;
+  };
+
+  const getNucleiSelectedTemplatesCount = () => {
+    if (!nucleiConfig?.templates || !Array.isArray(nucleiConfig.templates)) return 0;
+    return nucleiConfig.templates.length;
+  };
+
+  const getNucleiEstimatedScanTime = () => {
+    const targetCount = getNucleiSelectedTargetsCount();
+    const templateCount = getNucleiSelectedTemplatesCount();
+    
+    if (targetCount === 0 || templateCount === 0) return "0 min";
+    
+    const estimatedSeconds = (targetCount * templateCount) * 0.5;
+    const estimatedMinutes = Math.ceil(estimatedSeconds / 60);
+    
+    if (estimatedMinutes < 60) {
+      return `${estimatedMinutes} min`;
+    } else {
+      const hours = Math.floor(estimatedMinutes / 60);
+      const remainingMinutes = estimatedMinutes % 60;
+      return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
+    }
+  };
+
+  const getNucleiTotalFindings = () => {
+    if (!mostRecentNucleiScan?.result) return 0;
+    
+    try {
+      let findings = [];
+      if (typeof mostRecentNucleiScan.result === 'string') {
+        findings = JSON.parse(mostRecentNucleiScan.result);
+      } else if (Array.isArray(mostRecentNucleiScan.result)) {
+        findings = mostRecentNucleiScan.result;
+      }
+      return Array.isArray(findings) ? findings.length : 0;
+    } catch (error) {
+      return 0;
+    }
+  };
+
+  const getNucleiImpactfulFindings = () => {
+    if (!mostRecentNucleiScan?.result) return 0;
+    
+    try {
+      let findings = [];
+      if (typeof mostRecentNucleiScan.result === 'string') {
+        findings = JSON.parse(mostRecentNucleiScan.result);
+      } else if (Array.isArray(mostRecentNucleiScan.result)) {
+        findings = mostRecentNucleiScan.result;
+      }
+      
+      if (!Array.isArray(findings)) return 0;
+      
+      return findings.filter(finding => {
+        const severity = finding.info?.severity?.toLowerCase();
+        return severity && severity !== 'info' && severity !== 'informational';
+      }).length;
+    } catch (error) {
+      return 0;
+    }
+  };
+
+  const handleOpenNucleiResultsModal = () => setShowNucleiResultsModal(true);
+  const handleCloseNucleiResultsModal = () => setShowNucleiResultsModal(false);
+
+  const handleOpenNucleiHistoryModal = () => setShowNucleiHistoryModal(true);
+  const handleCloseNucleiHistoryModal = () => setShowNucleiHistoryModal(false);
+
   const handleCloseKatanaCompanyResultsModal = () => setShowKatanaCompanyResultsModal(false);
   const handleOpenKatanaCompanyResultsModal = () => setShowKatanaCompanyResultsModal(true);
 
@@ -2418,6 +2534,41 @@ function App() {
       }
     } catch (error) {
       console.error('Error fetching Google dorking domains:', error);
+    }
+  };
+
+  const fetchNucleiScans = async (activeTarget, setNucleiScans, setMostRecentNucleiScan, setMostRecentNucleiScanStatus) => {
+    if (!activeTarget) return;
+
+    try {
+      console.log('[fetchNucleiScans] Fetching nuclei scans for target:', activeTarget.id);
+      const response = await fetch(
+        `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${activeTarget.id}/scans/nuclei`
+      );
+
+      if (response.ok) {
+        const scans = await response.json();
+        console.log('[fetchNucleiScans] Received nuclei scans:', scans);
+        
+        if (Array.isArray(scans)) {
+          setNucleiScans(scans);
+          
+          if (scans.length > 0) {
+            const mostRecentScan = scans[0]; // Assuming scans are sorted by most recent first
+            console.log('[fetchNucleiScans] Most recent scan:', mostRecentScan);
+            setMostRecentNucleiScan(mostRecentScan);
+            setMostRecentNucleiScanStatus(mostRecentScan.status);
+          } else {
+            console.log('[fetchNucleiScans] No nuclei scans found');
+            setMostRecentNucleiScan(null);
+            setMostRecentNucleiScanStatus(null);
+          }
+        }
+      } else {
+        console.error('[fetchNucleiScans] Failed to fetch nuclei scans:', response.status, response.statusText);
+      }
+    } catch (error) {
+      console.error('[fetchNucleiScans] Error fetching nuclei scans:', error);
     }
   };
 
@@ -3460,6 +3611,24 @@ function App() {
       fetchKatanaCompanyScans();
     }
   }, [activeTarget]);
+
+  // Nuclei scans useEffect
+  useEffect(() => {
+    if (activeTarget) {
+      loadNucleiConfig();
+    }
+  }, [activeTarget]);
+
+  const startNucleiScan = () => {
+    initiateNucleiScan(
+      activeTarget,
+      monitorNucleiScanStatus,
+      setIsNucleiScanning,
+      setNucleiScans,
+      setMostRecentNucleiScanStatus,
+      setMostRecentNucleiScan
+    );
+  };
 
   const startCensysCompanyScan = () => {
     initiateCensysCompanyScan(
@@ -5264,11 +5433,46 @@ function App() {
                         <Card.Text className="text-white small fst-italic mb-4">
                           Comprehensive vulnerability scanning across your entire company attack surface using Nuclei templates to identify security issues and potential bug bounty targets.
                         </Card.Text>
+                        <div className="text-danger mb-4">
+                          <div className="row row-cols-5">
+                            <div className="col">
+                              <h3 className="mb-0">{getNucleiSelectedTargetsCount()}</h3>
+                              <small className="text-white-50">Selected<br/>Targets</small>
+                            </div>
+                            <div className="col">
+                              <h3 className="mb-0">{getNucleiSelectedTemplatesCount()}</h3>
+                              <small className="text-white-50">Selected<br/>Templates</small>
+                            </div>
+                            <div className="col">
+                              <h3 className="mb-0">{getNucleiEstimatedScanTime()}</h3>
+                              <small className="text-white-50">Estimated<br/>Scan Time</small>
+                            </div>
+                            <div className="col">
+                              <h3 className="mb-0">{getNucleiTotalFindings()}</h3>
+                              <small className="text-white-50">Total<br/>Findings</small>
+                            </div>
+                            <div className="col">
+                              <h3 className="mb-0">{getNucleiImpactfulFindings()}</h3>
+                              <small className="text-white-50">Impactful<br/>Findings</small>
+                            </div>
+                          </div>
+                        </div>
                         <div className="d-flex justify-content-between mt-auto gap-2">
-                          <Button variant="outline-danger" className="flex-fill">History</Button>
+                          <Button variant="outline-danger" className="flex-fill" onClick={handleOpenNucleiHistoryModal}>History</Button>
                           <Button variant="outline-danger" className="flex-fill" onClick={handleOpenNucleiConfigModal}>Configure</Button>
-                          <Button variant="outline-danger" className="flex-fill">Scan</Button>
-                          <Button variant="outline-danger" className="flex-fill">Results</Button>
+                          <Button 
+                            variant="outline-danger" 
+                            className="flex-fill"
+                            disabled={isNucleiScanDisabled() || isNucleiScanning}
+                            onClick={startNucleiScan}
+                          >
+                            {isNucleiScanning ? (
+                              <Spinner animation="border" size="sm" />
+                            ) : (
+                              'Scan'
+                            )}
+                          </Button>
+                          <Button variant="outline-danger" className="flex-fill" onClick={handleOpenNucleiResultsModal}>Results</Button>
                         </div>
                       </Card.Body>
                     </Card>
@@ -6381,7 +6585,7 @@ function App() {
         show={showNucleiConfigModal}
         handleClose={handleCloseNucleiConfigModal}
         activeTarget={activeTarget}
-        onSaveConfig={() => setShowNucleiConfigModal(false)}
+        onSaveConfig={handleNucleiConfigSave}
       />
 
       <KatanaCompanyConfigModal
@@ -6411,12 +6615,24 @@ function App() {
         activeTarget={activeTarget}
       />
 
-             <AttackSurfaceVisualizationModal
+      <AttackSurfaceVisualizationModal
          show={showAttackSurfaceVisualizationModal}
          onHide={handleCloseAttackSurfaceVisualizationModal}
          scopeTargetId={activeTarget?.id}
          scopeTargetName={activeTarget?.scope_target}
        />
+      <NucleiResultsModal
+        show={showNucleiResultsModal}
+        handleClose={handleCloseNucleiResultsModal}
+        scan={mostRecentNucleiScan}
+        setShowToast={setShowToast}
+      />
+
+      <NucleiHistoryModal
+        show={showNucleiHistoryModal}
+        handleClose={handleCloseNucleiHistoryModal}
+        scans={nucleiScans}
+      />
     </Container>
   );
 }
