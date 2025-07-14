@@ -565,6 +565,7 @@ function App() {
   const [nucleiConfig, setNucleiConfig] = useState(null);
   const [showNucleiResultsModal, setShowNucleiResultsModal] = useState(false);
   const [showNucleiHistoryModal, setShowNucleiHistoryModal] = useState(false);
+  const [activeNucleiScan, setActiveNucleiScan] = useState(null);
 
   // Katana Company state variables
   const [katanaCompanyScans, setKatanaCompanyScans] = useState([]);
@@ -1080,7 +1081,7 @@ function App() {
       fetchGoogleDorkingDomains();
       fetchReverseWhoisDomains();
       fetchIPPortScans(activeTarget, setIPPortScans, setMostRecentIPPortScan, setMostRecentIPPortScanStatus);
-      fetchNucleiScans(activeTarget, setNucleiScans, setMostRecentNucleiScan, setMostRecentNucleiScanStatus);
+      fetchNucleiScans(activeTarget, setNucleiScans, setMostRecentNucleiScan, setMostRecentNucleiScanStatus, setActiveNucleiScan);
     }
   }, [activeTarget]);
 
@@ -2551,7 +2552,7 @@ function App() {
     }
   };
 
-  const fetchNucleiScans = async (activeTarget, setNucleiScans, setMostRecentNucleiScan, setMostRecentNucleiScanStatus) => {
+  const fetchNucleiScans = async (activeTarget, setNucleiScans, setMostRecentNucleiScan, setMostRecentNucleiScanStatus, setActiveNucleiScan) => {
     if (!activeTarget) return;
 
     try {
@@ -2572,10 +2573,16 @@ function App() {
             console.log('[fetchNucleiScans] Most recent scan:', mostRecentScan);
             setMostRecentNucleiScan(mostRecentScan);
             setMostRecentNucleiScanStatus(mostRecentScan.status);
+            
+            // Set the most recent scan as active if no active scan is currently set
+            if (!activeNucleiScan) {
+              setActiveNucleiScan(mostRecentScan);
+            }
           } else {
             console.log('[fetchNucleiScans] No nuclei scans found');
             setMostRecentNucleiScan(null);
             setMostRecentNucleiScanStatus(null);
+            setActiveNucleiScan(null);
           }
         }
       } else {
@@ -3640,7 +3647,8 @@ function App() {
       setIsNucleiScanning,
       setNucleiScans,
       setMostRecentNucleiScanStatus,
-      setMostRecentNucleiScan
+      setMostRecentNucleiScan,
+      setActiveNucleiScan
     );
   };
 
@@ -6638,7 +6646,10 @@ function App() {
       <NucleiResultsModal
         show={showNucleiResultsModal}
         handleClose={handleCloseNucleiResultsModal}
-        scan={mostRecentNucleiScan}
+        scan={activeNucleiScan}
+        scans={nucleiScans}
+        activeNucleiScan={activeNucleiScan}
+        setActiveNucleiScan={setActiveNucleiScan}
         setShowToast={setShowToast}
       />
 

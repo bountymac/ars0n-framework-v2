@@ -4,7 +4,8 @@ const monitorNucleiScanStatus = async (
   setNucleiScans,
   setMostRecentNucleiScanStatus,
   setMostRecentNucleiScan,
-  scopeTargetId
+  scopeTargetId,
+  setActiveNucleiScan
 ) => {
   const checkStatus = async () => {
     try {
@@ -26,6 +27,11 @@ const monitorNucleiScanStatus = async (
         // Scan is complete
         setIsNucleiScanning(false);
         setMostRecentNucleiScan(scanData);
+        
+        // Set the completed scan as the active scan (for successful scans)
+        if (scanData.status === 'success' && setActiveNucleiScan) {
+          setActiveNucleiScan(scanData);
+        }
         
         // Refresh the scans list
         await refreshNucleiScans(scopeTargetId, setNucleiScans);

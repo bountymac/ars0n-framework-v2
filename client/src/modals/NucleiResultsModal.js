@@ -6,6 +6,9 @@ export const NucleiResultsModal = ({
   show, 
   handleClose, 
   scan,
+  scans,
+  activeNucleiScan,
+  setActiveNucleiScan,
   setShowToast 
 }) => {
   const [selectedFinding, setSelectedFinding] = useState(null);
@@ -14,6 +17,7 @@ export const NucleiResultsModal = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [severityFilter, setSeverityFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
+  const [showScanSelector, setShowScanSelector] = useState(false);
 
   const formatResults = (results) => {
     console.log('[NucleiResultsModal] Formatting results:', results);
@@ -162,6 +166,44 @@ export const NucleiResultsModal = ({
     return Array.from(categories).sort();
   }, [findings]);
 
+  // Helper function to get scan details
+  const getScanDetails = (scan) => {
+    if (!scan) return null;
+    
+    const findingsCount = (() => {
+      if (!scan.result) return 0;
+      try {
+        let findings = [];
+        if (typeof scan.result === 'string') {
+          findings = JSON.parse(scan.result);
+        } else if (Array.isArray(scan.result)) {
+          findings = scan.result;
+        }
+        return Array.isArray(findings) ? findings.length : 0;
+      } catch (error) {
+        return 0;
+      }
+    })();
+
+    const targetsCount = scan.targets?.length || 0;
+    const templatesCount = scan.templates?.length || 0;
+    
+    return {
+      findingsCount,
+      targetsCount,
+      templatesCount,
+      scanId: scan.scan_id || scan.id,
+      createdAt: scan.created_at,
+      status: scan.status
+    };
+  };
+
+  // Handle scan selection
+  const handleScanSelect = (selectedScan) => {
+    setActiveNucleiScan(selectedScan);
+    setShowScanSelector(false);
+  };
+
   const filteredFindings = useMemo(() => {
     let filtered = findings;
 
@@ -220,6 +262,23 @@ export const NucleiResultsModal = ({
       setSelectedIndex(0);
     }
   }, [show, allFindings, selectedFinding]);
+
+  // Close scan selector when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showScanSelector && !event.target.closest('.position-relative')) {
+        setShowScanSelector(false);
+      }
+    };
+
+    if (showScanSelector) {
+      document.addEventListener('click', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+    };
+  }, [showScanSelector]);
 
   useEffect(() => {
     const handleGlobalKeyDown = (event) => {
@@ -594,11 +653,134 @@ export const NucleiResultsModal = ({
         </div>
         
         <div className="d-flex align-items-center justify-content-between bg-dark border-bottom px-3 py-2">
-          <div>
-            <small className="text-muted">
-              Scan ID: {scan?.id} | 
-              Executed: {scan?.created_at ? new Date(scan.created_at).toLocaleString() : 'Unknown'}
-            </small>
+          <div className="position-relative">
+            {(() => {
+              const scanDetails = getScanDetails(scan);
+              if (!scanDetails) return null;
+              
+              return (
+                <div 
+                  className="d-flex align-items-center cursor-pointer"
+                  onClick={() => setShowScanSelector(!showScanSelector)}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <div>
+                    <div className="d-flex align-items-center">
+                      <small className="text-muted me-2">
+                        <strong>Scan ID:</strong> {scanDetails.scanId}
+                      </small>
+                      <Badge bg="secondary" className="me-2">
+                        {scanDetails.targetsCount} targets
+                      </Badge>
+                      <Badge bg="secondary" className="me-2">
+                        {scanDetails.templatesCount} templates
+                      </Badge>
+                      <Badge bg={scanDetails.findingsCount > 0 ? 'danger' : 'success'} className="me-2">
+                        {scanDetails.findingsCount} findings
+                      </Badge>
+                      <i className={`bi bi-chevron-${showScanSelector ? 'up' : 'down'} text-muted`}></i>
+                    </div>
+                    <div className="mt-1">
+                      <small className="text-muted">
+                        <strong>Executed:</strong> {scanDetails.createdAt ? new Date(scanDetails.createdAt).toLocaleString() : 'Unknown'}
+                      </small>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+            
+            {showScanSelector && scans && scans.length > 0 && (
+              <div 
+                className="position-absolute top-100 start-0 bg-dark border border-secondary rounded shadow-lg"
+                style={{ 
+                  zIndex: 1000, 
+                  minWidth: '500px',
+                  maxHeight: '400px',
+                  overflowY: 'auto'
+                }}
+              >
+                <div className="p-2">
+                  <div className="text-light mb-2">
+                    <strong>Select Scan to View:</strong>
+                  </div>
+                  {scans.map((scanItem, index) => {
+                    const details = getScanDetails(scanItem);
+                    const isActive = activeNucleiScan?.scan_id === scanItem.scan_id || activeNucleiScan?.id === scanItem.id;
+                    
+                    // Determine background color and icon based on status
+                    const getStatusStyle = (status) => {
+                      switch (status) {
+                        case 'success':
+                          return {
+                            bgClass: 'bg-success bg-opacity-25 border border-success',
+                            icon: 'bi-check-circle-fill text-success',
+                            textClass: 'text-success'
+                          };
+                        case 'failed':
+                          return {
+                            bgClass: 'bg-danger bg-opacity-25 border border-danger',
+                            icon: 'bi-x-circle-fill text-danger',
+                            textClass: 'text-danger'
+                          };
+                        case 'pending':
+                        case 'running':
+                          return {
+                            bgClass: 'bg-warning bg-opacity-25 border border-warning',
+                            icon: 'bi-hourglass-split text-warning',
+                            textClass: 'text-warning'
+                          };
+                        default:
+                          return {
+                            bgClass: 'bg-secondary bg-opacity-10 border border-secondary',
+                            icon: 'bi-question-circle text-secondary',
+                            textClass: 'text-secondary'
+                          };
+                      }
+                    };
+                    
+                    const statusStyle = getStatusStyle(details?.status);
+                    
+                    return (
+                      <div
+                        key={scanItem.scan_id || scanItem.id}
+                        className={`p-2 rounded mb-1 ${statusStyle.bgClass}`}
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => handleScanSelect(scanItem)}
+                      >
+                        <div>
+                          <div className="d-flex align-items-center">
+                            <i className={`${statusStyle.icon} me-2`}></i>
+                            <small className="text-light me-2">
+                              <strong>ID:</strong> {details?.scanId}
+                            </small>
+                            <Badge bg={details?.status === 'success' ? 'success' : details?.status === 'failed' ? 'danger' : 'warning'} className="me-2">
+                              {details?.status}
+                            </Badge>
+                          </div>
+                          <div className="mt-1">
+                            <Badge bg="secondary" className="me-1">
+                              {details?.targetsCount} targets
+                            </Badge>
+                            <Badge bg="secondary" className="me-1">
+                              {details?.templatesCount} templates
+                            </Badge>
+                            <Badge bg={details?.findingsCount > 0 ? 'danger' : 'success'} className="me-1">
+                              {details?.findingsCount} findings
+                            </Badge>
+                          </div>
+                          <div className="mt-1">
+                            <small className="text-muted">
+                              {details?.createdAt ? new Date(details.createdAt).toLocaleString() : 'Unknown'}
+                            </small>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
           <Button variant="outline-success" size="sm" onClick={handleCopy} disabled={findings.length === 0}>
             <i className="bi bi-clipboard me-1"></i>

@@ -4,7 +4,8 @@ const initiateNucleiScan = async (
   setIsNucleiScanning,
   setNucleiScans,
   setMostRecentNucleiScanStatus,
-  setMostRecentNucleiScan
+  setMostRecentNucleiScan,
+  setActiveNucleiScan
 ) => {
   if (!activeTarget || !activeTarget.id) {
     console.error('No active target specified for Nuclei scan');
@@ -42,7 +43,8 @@ const initiateNucleiScan = async (
         setNucleiScans,
         setMostRecentNucleiScanStatus,
         setMostRecentNucleiScan,
-        activeTarget.id
+        activeTarget.id,
+        setActiveNucleiScan
       );
     }
 
