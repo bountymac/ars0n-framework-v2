@@ -10,6 +10,7 @@ func createTables() {
 	queries := []string{
 		`CREATE EXTENSION IF NOT EXISTS pgcrypto;`,
 		`DROP TABLE IF EXISTS requests CASCADE;`,
+
 		`CREATE TABLE IF NOT EXISTS scope_targets (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			type VARCHAR(50) NOT NULL CHECK (type IN ('Company', 'Wildcard', 'URL')),
@@ -18,6 +19,7 @@ func createTables() {
 			active BOOLEAN DEFAULT false,
 			created_at TIMESTAMP DEFAULT NOW()
 		);`,
+
 		`CREATE TABLE IF NOT EXISTS auto_scan_sessions (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			scope_target_id UUID NOT NULL REFERENCES scope_targets(id) ON DELETE CASCADE,
@@ -30,6 +32,7 @@ func createTables() {
 			final_consolidated_subdomains INTEGER,
 			final_live_web_servers INTEGER
 		);`,
+
 		`CREATE TABLE IF NOT EXISTS user_settings (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			amass_rate_limit INTEGER DEFAULT 10,
@@ -48,9 +51,11 @@ func createTables() {
 			created_at TIMESTAMP DEFAULT NOW(),
 			updated_at TIMESTAMP DEFAULT NOW()
 		);`,
+
 		`INSERT INTO user_settings (id)
 		SELECT gen_random_uuid()
 		WHERE NOT EXISTS (SELECT 1 FROM user_settings LIMIT 1);`,
+
 		`CREATE TABLE IF NOT EXISTS api_keys (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			tool_name VARCHAR(100) NOT NULL,
@@ -60,51 +65,45 @@ func createTables() {
 			updated_at TIMESTAMP DEFAULT NOW(),
 			UNIQUE(tool_name, api_key_name)
 		);`,
-		`CREATE TABLE IF NOT EXISTS securitytrails_company_scans (
+
+		`CREATE TABLE IF NOT EXISTS auto_scan_config (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-			scan_id UUID NOT NULL UNIQUE,
-			company_name TEXT NOT NULL,
-			status VARCHAR(50) NOT NULL,
-			result TEXT,
-			error TEXT,
-			stdout TEXT,
-			stderr TEXT,
-			command TEXT,
-			execution_time TEXT,
+			amass BOOLEAN DEFAULT TRUE,
+			sublist3r BOOLEAN DEFAULT TRUE,
+			assetfinder BOOLEAN DEFAULT TRUE,
+			gau BOOLEAN DEFAULT TRUE,
+			ctl BOOLEAN DEFAULT TRUE,
+			subfinder BOOLEAN DEFAULT TRUE,
+			consolidate_httpx_round1 BOOLEAN DEFAULT TRUE,
+			shuffledns BOOLEAN DEFAULT TRUE,
+			cewl BOOLEAN DEFAULT TRUE,
+			consolidate_httpx_round2 BOOLEAN DEFAULT TRUE,
+			gospider BOOLEAN DEFAULT TRUE,
+			subdomainizer BOOLEAN DEFAULT TRUE,
+			consolidate_httpx_round3 BOOLEAN DEFAULT TRUE,
+			nuclei_screenshot BOOLEAN DEFAULT TRUE,
+			metadata BOOLEAN DEFAULT TRUE,
+			max_consolidated_subdomains INTEGER DEFAULT 2500,
+			max_live_web_servers INTEGER DEFAULT 500,
 			created_at TIMESTAMP DEFAULT NOW(),
-			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
-			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
+			updated_at TIMESTAMP DEFAULT NOW()
 		);`,
-		`CREATE TABLE IF NOT EXISTS github_recon_scans (
+
+		`INSERT INTO auto_scan_config (id)
+		SELECT gen_random_uuid()
+		WHERE NOT EXISTS (SELECT 1 FROM auto_scan_config LIMIT 1);`,
+
+		`CREATE TABLE IF NOT EXISTS auto_scan_state (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-			scan_id UUID NOT NULL UNIQUE,
-			company_name TEXT NOT NULL,
-			status VARCHAR(50) NOT NULL,
-			result TEXT,
-			error TEXT,
-			stdout TEXT,
-			stderr TEXT,
-			command TEXT,
-			execution_time TEXT,
+			scope_target_id UUID NOT NULL REFERENCES scope_targets(id) ON DELETE CASCADE,
+			current_step TEXT NOT NULL,
+			is_paused BOOLEAN DEFAULT false,
+			is_cancelled BOOLEAN DEFAULT false,
 			created_at TIMESTAMP DEFAULT NOW(),
-			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
-			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
+			updated_at TIMESTAMP DEFAULT NOW(),
+			UNIQUE(scope_target_id)
 		);`,
-		`CREATE TABLE IF NOT EXISTS shodan_company_scans (
-			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-			scan_id UUID NOT NULL UNIQUE,
-			company_name TEXT NOT NULL,
-			status VARCHAR(50) NOT NULL,
-			result TEXT,
-			error TEXT,
-			stdout TEXT,
-			stderr TEXT,
-			command TEXT,
-			execution_time TEXT,
-			created_at TIMESTAMP DEFAULT NOW(),
-			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
-			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
-		);`,
+
 		`CREATE TABLE IF NOT EXISTS amass_scans (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			scan_id UUID NOT NULL UNIQUE,
@@ -120,55 +119,38 @@ func createTables() {
 			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
 			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
 		);`,
-		`CREATE TABLE IF NOT EXISTS dns_records (
+
+		`CREATE TABLE IF NOT EXISTS amass_intel_scans (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-			scan_id UUID NOT NULL,
-			record TEXT NOT NULL,
-			record_type TEXT NOT NULL,
-			created_at TIMESTAMP DEFAULT NOW()
-		);`,
-		`CREATE TABLE IF NOT EXISTS ips (
-			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-			scan_id UUID NOT NULL,
-			ip_address TEXT NOT NULL,
-			created_at TIMESTAMP DEFAULT NOW()
-		);`,
-		`CREATE TABLE IF NOT EXISTS subdomains (
-			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-			scan_id UUID NOT NULL,
-			subdomain TEXT NOT NULL,
-			created_at TIMESTAMP DEFAULT NOW()
-		);`,
-		`CREATE TABLE IF NOT EXISTS cloud_domains (
-			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-			scan_id UUID NOT NULL,
-			domain TEXT NOT NULL,
-			type TEXT NOT NULL CHECK (type IN ('aws', 'gcp', 'azu')),
+			scan_id UUID NOT NULL UNIQUE,
+			company_name TEXT NOT NULL,
+			status VARCHAR(50) NOT NULL,
+			result TEXT,
+			error TEXT,
+			stdout TEXT,
+			stderr TEXT,
+			command TEXT,
+			execution_time TEXT,
 			created_at TIMESTAMP DEFAULT NOW(),
-			FOREIGN KEY (scan_id) REFERENCES amass_scans(scan_id) ON DELETE CASCADE
+			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
+			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
 		);`,
-		`CREATE TABLE IF NOT EXISTS asns (
+
+		`CREATE TABLE IF NOT EXISTS amass_enum_company_scans (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-			scan_id UUID NOT NULL,
-			number TEXT NOT NULL,
-			raw_data TEXT NOT NULL,
+			scan_id UUID NOT NULL UNIQUE,
+			scope_target_id UUID NOT NULL REFERENCES scope_targets(id) ON DELETE CASCADE,
+			domains JSONB NOT NULL DEFAULT '[]',
+			status VARCHAR(50) NOT NULL,
+			result TEXT,
+			error TEXT,
+			stdout TEXT,
+			stderr TEXT,
+			command TEXT,
+			execution_time TEXT,
 			created_at TIMESTAMP DEFAULT NOW()
 		);`,
-		`CREATE TABLE IF NOT EXISTS subnets (
-			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-			scan_id UUID NOT NULL,
-			cidr TEXT NOT NULL,
-			raw_data TEXT NOT NULL,
-			created_at TIMESTAMP DEFAULT NOW()
-		);`,
-		`CREATE TABLE IF NOT EXISTS service_providers (
-			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-			scan_id UUID NOT NULL,
-			provider TEXT NOT NULL,
-			raw_data TEXT NOT NULL,
-			created_at TIMESTAMP DEFAULT NOW(),
-			FOREIGN KEY (scan_id) REFERENCES amass_scans(scan_id) ON DELETE CASCADE
-		);`,
+
 		`CREATE TABLE IF NOT EXISTS httpx_scans (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			scan_id UUID NOT NULL UNIQUE, 
@@ -184,6 +166,7 @@ func createTables() {
 			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
 			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
 		);`,
+
 		`CREATE TABLE IF NOT EXISTS gau_scans (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			scan_id UUID NOT NULL UNIQUE, 
@@ -199,6 +182,7 @@ func createTables() {
 			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
 			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
 		);`,
+
 		`CREATE TABLE IF NOT EXISTS sublist3r_scans (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			scan_id UUID NOT NULL UNIQUE,
@@ -214,6 +198,7 @@ func createTables() {
 			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
 			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
 		);`,
+
 		`CREATE TABLE IF NOT EXISTS assetfinder_scans (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			scan_id UUID NOT NULL UNIQUE,
@@ -229,6 +214,7 @@ func createTables() {
 			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
 			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
 		);`,
+
 		`CREATE TABLE IF NOT EXISTS ctl_scans (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			scan_id UUID NOT NULL UNIQUE,
@@ -244,6 +230,7 @@ func createTables() {
 			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
 			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
 		);`,
+
 		`CREATE TABLE IF NOT EXISTS subfinder_scans (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			scan_id UUID NOT NULL UNIQUE,
@@ -259,13 +246,7 @@ func createTables() {
 			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
 			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
 		);`,
-		`CREATE TABLE IF NOT EXISTS consolidated_subdomains (
-			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
-			subdomain TEXT NOT NULL,
-			created_at TIMESTAMP DEFAULT NOW(),
-			UNIQUE(scope_target_id, subdomain)
-		);`,
+
 		`CREATE TABLE IF NOT EXISTS shuffledns_scans (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			scan_id UUID NOT NULL UNIQUE,
@@ -281,6 +262,7 @@ func createTables() {
 			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
 			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
 		);`,
+
 		`CREATE TABLE IF NOT EXISTS cewl_scans (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			scan_id UUID NOT NULL UNIQUE,
@@ -296,6 +278,7 @@ func createTables() {
 			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
 			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
 		);`,
+
 		`CREATE TABLE IF NOT EXISTS shufflednscustom_scans (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			scan_id UUID NOT NULL UNIQUE,
@@ -311,6 +294,7 @@ func createTables() {
 			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
 			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
 		);`,
+
 		`CREATE TABLE IF NOT EXISTS gospider_scans (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			scan_id UUID NOT NULL UNIQUE,
@@ -326,6 +310,7 @@ func createTables() {
 			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
 			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
 		);`,
+
 		`CREATE TABLE IF NOT EXISTS subdomainizer_scans (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			scan_id UUID NOT NULL UNIQUE,
@@ -341,16 +326,7 @@ func createTables() {
 			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
 			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
 		);`,
-		`CREATE TABLE IF NOT EXISTS auto_scan_state (
-			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-			scope_target_id UUID NOT NULL REFERENCES scope_targets(id) ON DELETE CASCADE,
-			current_step TEXT NOT NULL,
-			created_at TIMESTAMP DEFAULT NOW(),
-			updated_at TIMESTAMP DEFAULT NOW(),
-			UNIQUE(scope_target_id),
-			is_paused BOOLEAN DEFAULT false,
-			is_cancelled BOOLEAN DEFAULT false
-		);`,
+
 		`CREATE TABLE IF NOT EXISTS nuclei_screenshots (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			scan_id UUID NOT NULL UNIQUE,
@@ -366,6 +342,7 @@ func createTables() {
 			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
 			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
 		);`,
+
 		`CREATE TABLE IF NOT EXISTS metadata_scans (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			scan_id UUID NOT NULL UNIQUE,
@@ -381,6 +358,7 @@ func createTables() {
 			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
 			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
 		);`,
+
 		`CREATE TABLE IF NOT EXISTS company_metadata_scans (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			scan_id UUID NOT NULL UNIQUE,
@@ -393,6 +371,216 @@ func createTables() {
 			updated_at TIMESTAMP DEFAULT NOW(),
 			FOREIGN KEY (scope_target_id) REFERENCES scope_targets(id) ON DELETE CASCADE
 		);`,
+
+		`CREATE TABLE IF NOT EXISTS securitytrails_company_scans (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scan_id UUID NOT NULL UNIQUE,
+			company_name TEXT NOT NULL,
+			status VARCHAR(50) NOT NULL,
+			result TEXT,
+			error TEXT,
+			stdout TEXT,
+			stderr TEXT,
+			command TEXT,
+			execution_time TEXT,
+			created_at TIMESTAMP DEFAULT NOW(),
+			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
+			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
+		);`,
+
+		`CREATE TABLE IF NOT EXISTS github_recon_scans (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scan_id UUID NOT NULL UNIQUE,
+			company_name TEXT NOT NULL,
+			status VARCHAR(50) NOT NULL,
+			result TEXT,
+			error TEXT,
+			stdout TEXT,
+			stderr TEXT,
+			command TEXT,
+			execution_time TEXT,
+			created_at TIMESTAMP DEFAULT NOW(),
+			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
+			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
+		);`,
+
+		`CREATE TABLE IF NOT EXISTS shodan_company_scans (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scan_id UUID NOT NULL UNIQUE,
+			company_name TEXT NOT NULL,
+			status VARCHAR(50) NOT NULL,
+			result TEXT,
+			error TEXT,
+			stdout TEXT,
+			stderr TEXT,
+			command TEXT,
+			execution_time TEXT,
+			created_at TIMESTAMP DEFAULT NOW(),
+			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
+			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
+		);`,
+
+		`CREATE TABLE IF NOT EXISTS censys_company_scans (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scan_id UUID NOT NULL UNIQUE,
+			company_name TEXT NOT NULL,
+			status VARCHAR(50) NOT NULL,
+			result TEXT,
+			error TEXT,
+			stdout TEXT,
+			stderr TEXT,
+			command TEXT,
+			execution_time TEXT,
+			created_at TIMESTAMP DEFAULT NOW(),
+			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
+			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
+		);`,
+
+		`CREATE TABLE IF NOT EXISTS metabigor_company_scans (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scan_id UUID NOT NULL UNIQUE,
+			company_name TEXT NOT NULL,
+			status VARCHAR(50) NOT NULL,
+			result TEXT,
+			error TEXT,
+			stdout TEXT,
+			stderr TEXT,
+			command TEXT,
+			execution_time TEXT,
+			created_at TIMESTAMP DEFAULT NOW(),
+			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
+			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
+		);`,
+
+		`CREATE TABLE IF NOT EXISTS cloud_enum_scans (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scan_id UUID NOT NULL UNIQUE,
+			company_name TEXT NOT NULL,
+			status VARCHAR(50) NOT NULL,
+			result TEXT,
+			error TEXT,
+			stdout TEXT,
+			stderr TEXT,
+			command TEXT,
+			execution_time TEXT,
+			created_at TIMESTAMP DEFAULT NOW(),
+			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
+			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
+		);`,
+
+		`CREATE TABLE IF NOT EXISTS katana_company_scans (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scan_id UUID NOT NULL UNIQUE,
+			scope_target_id UUID NOT NULL REFERENCES scope_targets(id) ON DELETE CASCADE,
+			domains JSONB NOT NULL DEFAULT '[]',
+			status VARCHAR(50) NOT NULL,
+			result TEXT,
+			error TEXT,
+			stdout TEXT,
+			stderr TEXT,
+			command TEXT,
+			execution_time TEXT,
+			created_at TIMESTAMP DEFAULT NOW(),
+			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
+		);`,
+
+		`CREATE TABLE IF NOT EXISTS dnsx_company_scans (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scan_id UUID NOT NULL UNIQUE,
+			scope_target_id UUID NOT NULL REFERENCES scope_targets(id) ON DELETE CASCADE,
+			domains JSONB NOT NULL DEFAULT '[]',
+			status VARCHAR(50) NOT NULL,
+			result TEXT,
+			error TEXT,
+			stdout TEXT,
+			stderr TEXT,
+			command TEXT,
+			execution_time TEXT,
+			created_at TIMESTAMP DEFAULT NOW()
+		);`,
+
+		`CREATE TABLE IF NOT EXISTS nuclei_scans (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scan_id UUID NOT NULL UNIQUE DEFAULT gen_random_uuid(),
+			scope_target_id UUID NOT NULL REFERENCES scope_targets(id) ON DELETE CASCADE,
+			targets TEXT[] NOT NULL DEFAULT '{}',
+			templates TEXT[] NOT NULL DEFAULT '{}',
+			status VARCHAR(50) NOT NULL DEFAULT 'pending',
+			result TEXT,
+			error TEXT,
+			stdout TEXT,
+			stderr TEXT,
+			command TEXT,
+			execution_time TEXT,
+			created_at TIMESTAMP DEFAULT NOW(),
+			updated_at TIMESTAMP DEFAULT NOW(),
+			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
+		);`,
+
+		`CREATE TABLE IF NOT EXISTS investigate_scans (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scan_id UUID NOT NULL UNIQUE,
+			scope_target_id UUID NOT NULL,
+			status VARCHAR(50) NOT NULL,
+			result TEXT,
+			error TEXT,
+			stdout TEXT,
+			stderr TEXT,
+			command TEXT,
+			execution_time TEXT,
+			created_at TIMESTAMP DEFAULT NOW(),
+			FOREIGN KEY (scope_target_id) REFERENCES scope_targets(id) ON DELETE CASCADE
+		);`,
+
+		`CREATE TABLE IF NOT EXISTS ip_port_scans (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scan_id UUID NOT NULL UNIQUE,
+			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
+			status VARCHAR(50) NOT NULL,
+			total_network_ranges INT DEFAULT 0,
+			processed_network_ranges INT DEFAULT 0,
+			total_ips_discovered INT DEFAULT 0,
+			total_ports_scanned INT DEFAULT 0,
+			live_web_servers_found INT DEFAULT 0,
+			error_message TEXT,
+			command TEXT,
+			execution_time TEXT,
+			created_at TIMESTAMP DEFAULT NOW(),
+			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
+		);`,
+
+		`CREATE TABLE IF NOT EXISTS discovered_live_ips (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scan_id UUID REFERENCES ip_port_scans(scan_id) ON DELETE CASCADE,
+			ip_address INET NOT NULL,
+			hostname TEXT,
+			network_range TEXT NOT NULL,
+			ping_time_ms FLOAT,
+			discovered_at TIMESTAMP DEFAULT NOW()
+		);`,
+
+		`CREATE TABLE IF NOT EXISTS live_web_servers (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scan_id UUID REFERENCES ip_port_scans(scan_id) ON DELETE CASCADE,
+			ip_address INET NOT NULL,
+			hostname TEXT,
+			port INT NOT NULL,
+			protocol VARCHAR(10) NOT NULL,
+			url TEXT NOT NULL,
+			status_code INT,
+			title TEXT,
+			server_header TEXT,
+			content_length BIGINT,
+			technologies JSONB,
+			response_time_ms FLOAT,
+			screenshot_path TEXT,
+			ssl_info JSONB,
+			http_response_headers JSONB,
+			findings_json JSONB,
+			last_checked TIMESTAMP DEFAULT NOW(),
+			UNIQUE(scan_id, ip_address, port, protocol)
+		);`,
+
 		`CREATE TABLE IF NOT EXISTS target_urls (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			url TEXT NOT NULL,
@@ -431,23 +619,69 @@ func createTables() {
 			ip_address TEXT,
 			UNIQUE(url, scope_target_id)
 		);`,
-		`CREATE INDEX IF NOT EXISTS target_urls_url_idx ON target_urls (url);`,
-		`CREATE INDEX IF NOT EXISTS target_urls_scope_target_id_idx ON target_urls (scope_target_id);`,
 
-		`CREATE TABLE IF NOT EXISTS amass_intel_scans (
+		`CREATE TABLE IF NOT EXISTS dns_records (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-			scan_id UUID NOT NULL UNIQUE,
-			company_name TEXT NOT NULL,
-			status VARCHAR(50) NOT NULL,
-			result TEXT,
-			error TEXT,
-			stdout TEXT,
-			stderr TEXT,
-			command TEXT,
-			execution_time TEXT,
+			scan_id UUID NOT NULL,
+			record TEXT NOT NULL,
+			record_type TEXT NOT NULL,
+			created_at TIMESTAMP DEFAULT NOW()
+		);`,
+
+		`CREATE TABLE IF NOT EXISTS ips (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scan_id UUID NOT NULL,
+			ip_address TEXT NOT NULL,
+			created_at TIMESTAMP DEFAULT NOW()
+		);`,
+
+		`CREATE TABLE IF NOT EXISTS subdomains (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scan_id UUID NOT NULL,
+			subdomain TEXT NOT NULL,
+			created_at TIMESTAMP DEFAULT NOW()
+		);`,
+
+		`CREATE TABLE IF NOT EXISTS cloud_domains (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scan_id UUID NOT NULL,
+			domain TEXT NOT NULL,
+			type TEXT NOT NULL CHECK (type IN ('aws', 'gcp', 'azu')),
 			created_at TIMESTAMP DEFAULT NOW(),
+			FOREIGN KEY (scan_id) REFERENCES amass_scans(scan_id) ON DELETE CASCADE
+		);`,
+
+		`CREATE TABLE IF NOT EXISTS asns (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scan_id UUID NOT NULL,
+			number TEXT NOT NULL,
+			raw_data TEXT NOT NULL,
+			created_at TIMESTAMP DEFAULT NOW()
+		);`,
+
+		`CREATE TABLE IF NOT EXISTS subnets (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scan_id UUID NOT NULL,
+			cidr TEXT NOT NULL,
+			raw_data TEXT NOT NULL,
+			created_at TIMESTAMP DEFAULT NOW()
+		);`,
+
+		`CREATE TABLE IF NOT EXISTS service_providers (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scan_id UUID NOT NULL,
+			provider TEXT NOT NULL,
+			raw_data TEXT NOT NULL,
+			created_at TIMESTAMP DEFAULT NOW(),
+			FOREIGN KEY (scan_id) REFERENCES amass_scans(scan_id) ON DELETE CASCADE
+		);`,
+
+		`CREATE TABLE IF NOT EXISTS consolidated_subdomains (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
-			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
+			subdomain TEXT NOT NULL,
+			created_at TIMESTAMP DEFAULT NOW(),
+			UNIQUE(scope_target_id, subdomain)
 		);`,
 
 		`CREATE TABLE IF NOT EXISTS intel_network_ranges (
@@ -472,32 +706,6 @@ func createTables() {
 			created_at TIMESTAMP DEFAULT NOW(),
 			FOREIGN KEY (scan_id) REFERENCES amass_intel_scans(scan_id) ON DELETE CASCADE
 		);`,
-
-		`CREATE TABLE IF NOT EXISTS auto_scan_config (
-			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-			amass BOOLEAN DEFAULT TRUE,
-			sublist3r BOOLEAN DEFAULT TRUE,
-			assetfinder BOOLEAN DEFAULT TRUE,
-			gau BOOLEAN DEFAULT TRUE,
-			ctl BOOLEAN DEFAULT TRUE,
-			subfinder BOOLEAN DEFAULT TRUE,
-			consolidate_httpx_round1 BOOLEAN DEFAULT TRUE,
-			shuffledns BOOLEAN DEFAULT TRUE,
-			cewl BOOLEAN DEFAULT TRUE,
-			consolidate_httpx_round2 BOOLEAN DEFAULT TRUE,
-			gospider BOOLEAN DEFAULT TRUE,
-			subdomainizer BOOLEAN DEFAULT TRUE,
-			consolidate_httpx_round3 BOOLEAN DEFAULT TRUE,
-			nuclei_screenshot BOOLEAN DEFAULT TRUE,
-			metadata BOOLEAN DEFAULT TRUE,
-			max_consolidated_subdomains INTEGER DEFAULT 2500,
-			max_live_web_servers INTEGER DEFAULT 500,
-			created_at TIMESTAMP DEFAULT NOW(),
-			updated_at TIMESTAMP DEFAULT NOW()
-		);`,
-		`INSERT INTO auto_scan_config (id)
-		SELECT gen_random_uuid()
-		WHERE NOT EXISTS (SELECT 1 FROM auto_scan_config LIMIT 1);`,
 
 		`CREATE TABLE IF NOT EXISTS google_dorking_domains (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -542,34 +750,16 @@ func createTables() {
 			UNIQUE(scope_target_id, cidr_block, source)
 		);`,
 
-		`CREATE TABLE IF NOT EXISTS investigate_scans (
+		`CREATE TABLE IF NOT EXISTS metabigor_network_ranges (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-			scan_id UUID NOT NULL UNIQUE,
-			scope_target_id UUID NOT NULL,
-			status VARCHAR(50) NOT NULL,
-			result TEXT,
-			error TEXT,
-			stdout TEXT,
-			stderr TEXT,
-			command TEXT,
-			execution_time TEXT,
+			scan_id UUID NOT NULL,
+			cidr_block TEXT NOT NULL,
+			asn TEXT,
+			organization TEXT,
+			country TEXT,
+			scan_type TEXT NOT NULL,
 			created_at TIMESTAMP DEFAULT NOW(),
-			FOREIGN KEY (scope_target_id) REFERENCES scope_targets(id) ON DELETE CASCADE
-		);`,
-
-		`CREATE TABLE IF NOT EXISTS amass_enum_company_scans (
-			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-			scan_id UUID NOT NULL UNIQUE,
-			scope_target_id UUID NOT NULL REFERENCES scope_targets(id) ON DELETE CASCADE,
-			domains JSONB NOT NULL DEFAULT '[]',
-			status VARCHAR(50) NOT NULL,
-			result TEXT,
-			error TEXT,
-			stdout TEXT,
-			stderr TEXT,
-			command TEXT,
-			execution_time TEXT,
-			created_at TIMESTAMP DEFAULT NOW()
+			FOREIGN KEY (scan_id) REFERENCES metabigor_company_scans(scan_id) ON DELETE CASCADE
 		);`,
 
 		`CREATE TABLE IF NOT EXISTS amass_enum_cloud_domains (
@@ -627,21 +817,6 @@ func createTables() {
 			updated_at TIMESTAMP DEFAULT NOW()
 		);`,
 
-		`CREATE TABLE IF NOT EXISTS dnsx_company_scans (
-			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-			scan_id UUID NOT NULL UNIQUE,
-			scope_target_id UUID NOT NULL REFERENCES scope_targets(id) ON DELETE CASCADE,
-			domains JSONB NOT NULL DEFAULT '[]',
-			status VARCHAR(50) NOT NULL,
-			result TEXT,
-			error TEXT,
-			stdout TEXT,
-			stderr TEXT,
-			command TEXT,
-			execution_time TEXT,
-			created_at TIMESTAMP DEFAULT NOW()
-		);`,
-
 		`CREATE TABLE IF NOT EXISTS dnsx_dns_records (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			scan_id UUID NOT NULL,
@@ -685,119 +860,6 @@ func createTables() {
 			UNIQUE(scope_target_id, root_domain, record, record_type)
 		);`,
 
-		// IP/Port scan tables
-		`CREATE TABLE IF NOT EXISTS ip_port_scans (
-			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-			scan_id UUID NOT NULL UNIQUE,
-			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
-			status VARCHAR(50) NOT NULL,
-			total_network_ranges INT DEFAULT 0,
-			processed_network_ranges INT DEFAULT 0,
-			total_ips_discovered INT DEFAULT 0,
-			total_ports_scanned INT DEFAULT 0,
-			live_web_servers_found INT DEFAULT 0,
-			error_message TEXT,
-			command TEXT,
-			execution_time TEXT,
-			created_at TIMESTAMP DEFAULT NOW(),
-			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
-		);`,
-		`CREATE TABLE IF NOT EXISTS discovered_live_ips (
-			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-			scan_id UUID REFERENCES ip_port_scans(scan_id) ON DELETE CASCADE,
-			ip_address INET NOT NULL,
-			hostname TEXT,
-			network_range TEXT NOT NULL,
-			ping_time_ms FLOAT,
-			discovered_at TIMESTAMP DEFAULT NOW()
-		);`,
-		`CREATE TABLE IF NOT EXISTS live_web_servers (
-			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-			scan_id UUID REFERENCES ip_port_scans(scan_id) ON DELETE CASCADE,
-			ip_address INET NOT NULL,
-			hostname TEXT,
-			port INT NOT NULL,
-			protocol VARCHAR(10) NOT NULL,
-			url TEXT NOT NULL,
-			status_code INT,
-			title TEXT,
-			server_header TEXT,
-			content_length BIGINT,
-			technologies JSONB,
-			response_time_ms FLOAT,
-			screenshot_path TEXT,
-			ssl_info JSONB,
-			http_response_headers JSONB,
-			findings_json JSONB,
-			last_checked TIMESTAMP DEFAULT NOW(),
-			UNIQUE(scan_id, ip_address, port, protocol)
-		);`,
-		`CREATE INDEX IF NOT EXISTS idx_discovered_live_ips_scan_id ON discovered_live_ips(scan_id);`,
-		`CREATE INDEX IF NOT EXISTS idx_live_web_servers_scan_id ON live_web_servers(scan_id);`,
-		`CREATE INDEX IF NOT EXISTS idx_live_web_servers_ip_port ON live_web_servers(ip_address, port);`,
-
-		// Add missing tables that are referenced in consolidation queries
-		`CREATE TABLE IF NOT EXISTS metabigor_network_ranges (
-			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-			scan_id UUID NOT NULL,
-			cidr_block TEXT NOT NULL,
-			asn TEXT,
-			organization TEXT,
-			country TEXT,
-			scan_type TEXT NOT NULL,
-			created_at TIMESTAMP DEFAULT NOW(),
-			FOREIGN KEY (scan_id) REFERENCES metabigor_company_scans(scan_id) ON DELETE CASCADE
-		);`,
-
-		`CREATE TABLE IF NOT EXISTS cloud_enum_scans (
-			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-			scan_id UUID NOT NULL UNIQUE,
-			company_name TEXT NOT NULL,
-			status VARCHAR(50) NOT NULL,
-			result TEXT,
-			error TEXT,
-			stdout TEXT,
-			stderr TEXT,
-			command TEXT,
-			execution_time TEXT,
-			created_at TIMESTAMP DEFAULT NOW(),
-			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
-			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
-		);`,
-
-		`CREATE TABLE IF NOT EXISTS metabigor_company_scans (
-			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-			scan_id UUID NOT NULL UNIQUE,
-			company_name TEXT NOT NULL,
-			status VARCHAR(50) NOT NULL,
-			result TEXT,
-			error TEXT,
-			stdout TEXT,
-			stderr TEXT,
-			command TEXT,
-			execution_time TEXT,
-			created_at TIMESTAMP DEFAULT NOW(),
-			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
-			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
-		);`,
-
-		`CREATE TABLE IF NOT EXISTS censys_company_scans (
-			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-			scan_id UUID NOT NULL UNIQUE,
-			company_name TEXT NOT NULL,
-			status VARCHAR(50) NOT NULL,
-			result TEXT,
-			error TEXT,
-			stdout TEXT,
-			stderr TEXT,
-			command TEXT,
-			execution_time TEXT,
-			created_at TIMESTAMP DEFAULT NOW(),
-			scope_target_id UUID REFERENCES scope_targets(id) ON DELETE CASCADE,
-			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
-		);`,
-
-		// Domain-centric results tables for cumulative attack surface building
 		`CREATE TABLE IF NOT EXISTS amass_enum_company_domain_results (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			scope_target_id UUID NOT NULL REFERENCES scope_targets(id) ON DELETE CASCADE,
@@ -834,22 +896,6 @@ func createTables() {
 			UNIQUE(scope_target_id, root_domain, record, record_type)
 		);`,
 
-		`CREATE TABLE IF NOT EXISTS katana_company_scans (
-			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-			scan_id UUID NOT NULL UNIQUE,
-			scope_target_id UUID NOT NULL REFERENCES scope_targets(id) ON DELETE CASCADE,
-			domains JSONB NOT NULL DEFAULT '[]',
-			status VARCHAR(50) NOT NULL,
-			result TEXT,
-			error TEXT,
-			stdout TEXT,
-			stderr TEXT,
-			command TEXT,
-			execution_time TEXT,
-			created_at TIMESTAMP DEFAULT NOW(),
-			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
-		);`,
-
 		`CREATE TABLE IF NOT EXISTS katana_company_configs (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			scope_target_id UUID NOT NULL UNIQUE REFERENCES scope_targets(id) ON DELETE CASCADE,
@@ -880,7 +926,6 @@ func createTables() {
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		);`,
 
-		// Domain-centric results tables for Katana Company scans
 		`CREATE TABLE IF NOT EXISTS katana_company_domain_results (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			scope_target_id UUID NOT NULL REFERENCES scope_targets(id) ON DELETE CASCADE,
@@ -929,7 +974,17 @@ func createTables() {
 			UNIQUE(scope_target_id, root_domain, finding_url, finding_type, content)
 		);`,
 
-		// Consolidated Attack Surface Tables - New Schema
+		`CREATE TABLE IF NOT EXISTS nuclei_configs (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			scope_target_id UUID NOT NULL REFERENCES scope_targets(id) ON DELETE CASCADE,
+			targets TEXT[] NOT NULL DEFAULT '{}',
+			templates TEXT[] NOT NULL DEFAULT '{cves,vulnerabilities,exposures,technologies,misconfiguration,takeovers,network,dns,headless}',
+			severities TEXT[] DEFAULT '{critical,high,medium,low,info}',
+			uploaded_templates JSONB DEFAULT '[]',
+			created_at TIMESTAMP DEFAULT NOW(),
+			UNIQUE(scope_target_id)
+		);`,
+
 		`CREATE TABLE IF NOT EXISTS consolidated_attack_surface_assets (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			scope_target_id UUID NOT NULL REFERENCES scope_targets(id) ON DELETE CASCADE,
@@ -943,11 +998,11 @@ func createTables() {
 			asn_description TEXT,
 			asn_country TEXT,
 			
-			    -- Network range specific fields
-    cidr_block TEXT,
-    subnet_size INTEGER,
-    responsive_ip_count INTEGER,
-    responsive_port_count INTEGER,
+			-- Network range specific fields
+			cidr_block TEXT,
+			subnet_size INTEGER,
+			responsive_ip_count INTEGER,
+			responsive_port_count INTEGER,
 			
 			-- IP address specific fields
 			ip_address TEXT,
@@ -1052,7 +1107,12 @@ func createTables() {
 			UNIQUE(asset_id, metadata_type, metadata_key)
 		);`,
 
-		// Add indexes for performance
+		// Create indexes for performance
+		`CREATE INDEX IF NOT EXISTS target_urls_url_idx ON target_urls (url);`,
+		`CREATE INDEX IF NOT EXISTS target_urls_scope_target_id_idx ON target_urls (scope_target_id);`,
+		`CREATE INDEX IF NOT EXISTS idx_discovered_live_ips_scan_id ON discovered_live_ips(scan_id);`,
+		`CREATE INDEX IF NOT EXISTS idx_live_web_servers_scan_id ON live_web_servers(scan_id);`,
+		`CREATE INDEX IF NOT EXISTS idx_live_web_servers_ip_port ON live_web_servers(ip_address, port);`,
 		`CREATE INDEX IF NOT EXISTS idx_consolidated_attack_surface_assets_scope_target ON consolidated_attack_surface_assets(scope_target_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_consolidated_attack_surface_assets_asset_type ON consolidated_attack_surface_assets(asset_type);`,
 		`CREATE INDEX IF NOT EXISTS idx_consolidated_attack_surface_assets_asset_identifier ON consolidated_attack_surface_assets(asset_identifier);`,
@@ -1067,79 +1127,14 @@ func createTables() {
 		`CREATE INDEX IF NOT EXISTS idx_consolidated_attack_surface_relationships_child ON consolidated_attack_surface_relationships(child_asset_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_consolidated_attack_surface_dns_records_asset_id ON consolidated_attack_surface_dns_records(asset_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_consolidated_attack_surface_metadata_asset_id ON consolidated_attack_surface_metadata(asset_id);`,
-
-		// Migration queries to add missing columns to existing tables
-		`ALTER TABLE target_urls ADD COLUMN IF NOT EXISTS ip_address TEXT;`,
-		`ALTER TABLE discovered_live_ips ADD COLUMN IF NOT EXISTS hostname TEXT;`,
-		`ALTER TABLE live_web_servers ADD COLUMN IF NOT EXISTS hostname TEXT;`,
-		`ALTER TABLE live_web_servers ADD COLUMN IF NOT EXISTS ssl_info JSONB;`,
-		`ALTER TABLE live_web_servers ADD COLUMN IF NOT EXISTS http_response_headers JSONB;`,
-		`ALTER TABLE live_web_servers ADD COLUMN IF NOT EXISTS findings_json JSONB;`,
-
-		// Add missing columns to consolidated_attack_surface_assets table
-		`ALTER TABLE consolidated_attack_surface_assets ADD COLUMN IF NOT EXISTS dnsx_a_records TEXT[];`,
-		`ALTER TABLE consolidated_attack_surface_assets ADD COLUMN IF NOT EXISTS amass_a_records TEXT[];`,
-		`ALTER TABLE consolidated_attack_surface_assets ADD COLUMN IF NOT EXISTS httpx_sources TEXT[];`,
-		`ALTER TABLE consolidated_attack_surface_assets ADD COLUMN IF NOT EXISTS subnet_size INTEGER;`,
-		`ALTER TABLE consolidated_attack_surface_assets ADD COLUMN IF NOT EXISTS responsive_ip_count INTEGER;`,
-		`ALTER TABLE consolidated_attack_surface_assets ADD COLUMN IF NOT EXISTS responsive_port_count INTEGER;`,
-
-		// Ensure cloud-related columns exist
-		`ALTER TABLE consolidated_attack_surface_assets ADD COLUMN IF NOT EXISTS cloud_provider VARCHAR(50);`,
-		`ALTER TABLE consolidated_attack_surface_assets ADD COLUMN IF NOT EXISTS cloud_service_type VARCHAR(100);`,
-		`ALTER TABLE consolidated_attack_surface_assets ADD COLUMN IF NOT EXISTS cloud_region TEXT;`,
-
-		// Fix ASN number column type if it exists as VARCHAR(10)
-		`DO $$
-		BEGIN
-			IF EXISTS (
-				SELECT 1 FROM information_schema.columns 
-				WHERE table_name = 'consolidated_attack_surface_assets' 
-				AND column_name = 'asn_number' 
-				AND data_type = 'character varying' 
-				AND character_maximum_length = 10
-			) THEN
-				ALTER TABLE consolidated_attack_surface_assets ALTER COLUMN asn_number TYPE TEXT;
-			END IF;
-		END $$;`,
-		`CREATE TABLE IF NOT EXISTS nuclei_configs (
-			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-			scope_target_id UUID NOT NULL REFERENCES scope_targets(id) ON DELETE CASCADE,
-			targets TEXT[] NOT NULL DEFAULT '{}',
-			templates TEXT[] NOT NULL DEFAULT '{cves,vulnerabilities,exposures,technologies,misconfiguration,takeovers,network,dns,headless}',
-			uploaded_templates JSONB DEFAULT '[]',
-			created_at TIMESTAMP DEFAULT NOW(),
-			UNIQUE(scope_target_id)
-		);`,
-		`ALTER TABLE nuclei_configs ADD COLUMN IF NOT EXISTS uploaded_templates JSONB DEFAULT '[]';`,
-		`ALTER TABLE nuclei_configs ADD COLUMN IF NOT EXISTS severities TEXT[] DEFAULT '{critical,high,medium,low,info}';`,
-		`CREATE TABLE IF NOT EXISTS nuclei_scans (
-			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-			scan_id UUID NOT NULL UNIQUE DEFAULT gen_random_uuid(),
-			scope_target_id UUID NOT NULL REFERENCES scope_targets(id) ON DELETE CASCADE,
-			targets TEXT[] NOT NULL DEFAULT '{}',
-			templates TEXT[] NOT NULL DEFAULT '{}',
-			status VARCHAR(50) NOT NULL DEFAULT 'pending',
-			result TEXT,
-			error TEXT,
-			stdout TEXT,
-			stderr TEXT,
-			command TEXT,
-			execution_time TEXT,
-			created_at TIMESTAMP DEFAULT NOW(),
-			updated_at TIMESTAMP DEFAULT NOW(),
-			auto_scan_session_id UUID REFERENCES auto_scan_sessions(id) ON DELETE SET NULL
-		);`,
-		`ALTER TABLE nuclei_scans ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();`,
 	}
 
 	for _, query := range queries {
 		_, err := dbPool.Exec(context.Background(), query)
 		if err != nil {
 			log.Printf("[ERROR] Failed to execute query: %s, error: %v", query, err)
-			// Don't fatally exit on migration errors
-			if !strings.Contains(query, "ALTER TABLE") {
-				log.Fatalf("[ERROR] Failed to execute query: %s, error: %v", query, err)
+			if !strings.Contains(err.Error(), "already exists") {
+				log.Fatalf("[ERROR] Failed to create database schema: %v", err)
 			}
 		}
 	}
@@ -1162,20 +1157,15 @@ func createTables() {
 		DELETE FROM metadata_scans WHERE status = 'pending';
 		DELETE FROM ip_port_scans WHERE status = 'pending';
 		DELETE FROM katana_company_scans WHERE status = 'pending' OR status = 'running';
-		DELETE FROM amass_enum_company_scans WHERE status = 'pending' OR status = 'running';`
+		DELETE FROM amass_enum_company_scans WHERE status = 'pending' OR status = 'running';
+		DELETE FROM nuclei_scans WHERE status = 'pending' OR status = 'running';`
+
 	_, err := dbPool.Exec(context.Background(), deletePendingScansQuery)
 	if err != nil {
-		log.Fatalf("[ERROR] Failed to delete pending scans: %v", err)
+		log.Printf("[WARN] Failed to delete pending scans: %v", err)
+	} else {
+		log.Println("[INFO] Deleted any scans with status 'pending'")
 	}
-	log.Println("[INFO] Deleted any scans with status 'pending'")
 
-	_, err = dbPool.Exec(context.Background(), `
-		-- Add new columns to auto_scan_state table
-		ALTER TABLE auto_scan_state 
-		ADD COLUMN IF NOT EXISTS is_paused BOOLEAN DEFAULT false,
-		ADD COLUMN IF NOT EXISTS is_cancelled BOOLEAN DEFAULT false;
-	`)
-	if err != nil {
-		log.Printf("Error adding columns to auto_scan_state: %v", err)
-	}
+	log.Println("[INFO] Database schema created successfully")
 }
