@@ -17,6 +17,7 @@ export const NucleiResultsModal = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [severityFilter, setSeverityFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
+  const [templateFilter, setTemplateFilter] = useState('all');
   const [showScanSelector, setShowScanSelector] = useState(false);
 
   const formatResults = (results) => {
@@ -72,8 +73,8 @@ export const NucleiResultsModal = ({
       try {
         const exportText = findings.map(f => 
           `[${f.info?.severity?.toUpperCase() || 'INFO'}] ${f.info?.name || 'Unknown'} - ${f.host || f.matched}\n` +
-          `Template: ${f.template_id || 'N/A'}\n` +
-          `Matcher: ${f.matcher_name || 'N/A'}\n` +
+          `Template: ${f['template-id'] || 'N/A'}\n` +
+          `Matcher: ${f['matcher-name'] || 'N/A'}\n` +
           `${f.info?.description ? `Description: ${f.info.description}\n` : ''}` +
           `---\n`
         ).join('\n');
@@ -93,12 +94,23 @@ export const NucleiResultsModal = ({
     try {
       const exportText = 
         `[${finding.info?.severity?.toUpperCase() || 'INFO'}] ${finding.info?.name || 'Unknown'}\n` +
-        `Template: ${finding.template_id || 'N/A'}\n` +
+        `Template: ${finding['template-id'] || 'N/A'}\n` +
         `Target: ${finding.host || finding.matched || 'N/A'}\n` +
-        `Matcher: ${finding.matcher_name || 'N/A'}\n` +
+        `IP: ${finding.ip || 'N/A'}\n` +
+        `Port: ${finding.port || 'N/A'}\n` +
+        `Matched At: ${finding['matched-at'] || 'N/A'}\n` +
+        `Type: ${finding.type || 'N/A'}\n` +
+        `Matcher: ${finding['matcher-name'] || 'N/A'}\n` +
+        `Extractor: ${finding.extractor_name || 'N/A'}\n` +
+        `Matcher Status: ${finding['matcher-status'] !== undefined ? finding['matcher-status'] : 'N/A'}\n` +
+        `Timestamp: ${finding.timestamp || 'N/A'}\n` +
         `${finding.info?.description ? `Description: ${finding.info.description}\n` : ''}` +
         `${finding.info?.reference ? `References: ${finding.info.reference.join(', ')}\n` : ''}` +
-        `${finding.info?.tags ? `Tags: ${finding.info.tags.join(', ')}\n` : ''}`;
+        `${finding.info?.tags ? `Tags: ${finding.info.tags.join(', ')}\n` : ''}` +
+        `${finding['extracted-results'] && finding['extracted-results'].length > 0 ? `Extracted Results: ${finding['extracted-results'].join(', ')}\n` : ''}` +
+        `${finding['curl-command'] ? `Curl Command: ${finding['curl-command']}\n` : ''}` +
+        `${finding.request ? `Request: ${finding.request}\n` : ''}` +
+        `${finding.response ? `Response: ${finding.response}\n` : ''}`;
       
       const success = await copyToClipboard(exportText);
       if (success && setShowToast) {
@@ -113,9 +125,9 @@ export const NucleiResultsModal = ({
   const getSeverityBadge = (severity) => {
     const severityMap = {
       'critical': 'danger',
-      'high': 'danger',
-      'medium': 'warning', 
-      'low': 'info',
+      'high': 'warning',
+      'medium': 'info', 
+      'low': 'success',
       'info': 'secondary'
     };
     return severityMap[severity?.toLowerCase()] || 'secondary';
@@ -164,6 +176,17 @@ export const NucleiResultsModal = ({
       }
     });
     return Array.from(categories).sort();
+  }, [findings]);
+
+  const getAvailableTemplates = useMemo(() => {
+    const templates = new Set();
+    findings.forEach(finding => {
+      const templateName = finding.info?.name || finding['template-id'] || 'Unknown';
+      if (templateName && templateName !== 'Unknown') {
+        templates.add(templateName);
+      }
+    });
+    return Array.from(templates).sort();
   }, [findings]);
 
   // Helper function to get scan details
@@ -216,7 +239,7 @@ export const NucleiResultsModal = ({
           finding.info?.name || '',
           finding.host || '',
           finding.matched || '',
-          finding.template_id || '',
+          finding['template-id'] || '',
           finding.info?.description || '',
           finding.info?.tags?.join(' ') || ''
         ].join(' ').toLowerCase();
@@ -239,8 +262,15 @@ export const NucleiResultsModal = ({
       });
     }
 
+    if (templateFilter !== 'all') {
+      filtered = filtered.filter(finding => {
+        const templateName = finding.info?.name || finding['template-id'] || 'Unknown';
+        return templateName === templateFilter;
+      });
+    }
+
     return filtered;
-  }, [findings, searchTerm, severityFilter, categoryFilter]);
+  }, [findings, searchTerm, severityFilter, categoryFilter, templateFilter]);
 
   const filteredGroupedFindings = useMemo(() => {
     return groupBySeverity(filteredFindings);
@@ -355,8 +385,29 @@ export const NucleiResultsModal = ({
             
             <ListGroup variant="flush">
               {severityFindings.map((finding, index) => {
-                const findingIndex = allFindings.findIndex(f => f === finding);
-                const isSelected = selectedFinding === finding;
+                const findingIndex = allFindings.findIndex(f => 
+                  f.info?.name === finding.info?.name && 
+                  f.host === finding.host && 
+                  f['template-id'] === finding['template-id'] &&
+                  f.matched === finding.matched &&
+                  f['matched-at'] === finding['matched-at'] &&
+                  f.ip === finding.ip &&
+                  f.port === finding.port &&
+                  f.info?.severity === finding.info?.severity &&
+                  f['matcher-name'] === finding['matcher-name'] &&
+                  f.timestamp === finding.timestamp
+                );
+                const isSelected = selectedFinding && 
+                  selectedFinding.info?.name === finding.info?.name && 
+                  selectedFinding.host === finding.host && 
+                  selectedFinding['template-id'] === finding['template-id'] &&
+                  selectedFinding.matched === finding.matched &&
+                  selectedFinding['matched-at'] === finding['matched-at'] &&
+                  selectedFinding.ip === finding.ip &&
+                  selectedFinding.port === finding.port &&
+                  selectedFinding.info?.severity === finding.info?.severity &&
+                  selectedFinding['matcher-name'] === finding['matcher-name'] &&
+                  selectedFinding.timestamp === finding.timestamp;
                 
                 return (
                   <ListGroup.Item
@@ -369,22 +420,38 @@ export const NucleiResultsModal = ({
                     }}
                     className="py-2 border-0 mb-1"
                     style={{ 
-                      backgroundColor: isSelected ? 'rgba(13, 110, 253, 0.25)' : 'rgba(255, 255, 255, 0.05)',
+                      backgroundColor: isSelected ? 
+                        (severity === 'critical' ? 'rgba(220, 53, 69, 0.25)' : 
+                         severity === 'high' ? 'rgba(255, 193, 7, 0.25)' : 
+                         severity === 'medium' ? 'rgba(13, 202, 240, 0.25)' : 
+                         severity === 'low' ? 'rgba(25, 135, 84, 0.25)' : 
+                         'rgba(108, 117, 125, 0.25)') : 
+                        'rgba(255, 255, 255, 0.05)',
                       borderRadius: '4px',
-                      border: isSelected ? '2px solid #0d6efd' : '2px solid transparent'
+                      border: isSelected ? 
+                        (severity === 'critical' ? '2px solid #dc3545' : 
+                         severity === 'high' ? '2px solid #ffc107' : 
+                         severity === 'medium' ? '2px solid #0dcaf0' : 
+                         severity === 'low' ? '2px solid #198754' : 
+                         '2px solid #6c757d') : 
+                        '2px solid transparent'
                     }}
                   >
                   <div className="d-flex align-items-start">
                     <i className={`bi bi-${getSeverityIcon(severity)} text-${getSeverityBadge(severity) === 'danger' ? 'danger' : getSeverityBadge(severity) === 'warning' ? 'warning' : 'info'} me-2 mt-1`}></i>
                     <div className="flex-grow-1">
-                      <div className="fw-bold text-truncate" style={{ maxWidth: '200px' }}>
+                      <div className="fw-bold">
                         {finding.info?.name || finding.template_id || 'Unknown'}
                       </div>
-                      <div className="text-muted small text-truncate" style={{ maxWidth: '200px' }}>
+                      <div className="text-muted small">
                         {finding.host || finding.matched || 'Unknown target'}
                       </div>
                       <div className="text-muted small">
-                        {finding.template_id}
+                        {finding['template-id']}
+                      </div>
+                      <div className="text-info small">
+                        <i className="bi bi-gear me-1"></i>
+                        {finding['matcher-name'] || 'N/A'}
                       </div>
                     </div>
                   </div>
@@ -446,6 +513,7 @@ export const NucleiResultsModal = ({
                     {finding.port && (
                       <div className="text-muted small">Port: {finding.port}</div>
                     )}
+                    <div className="text-muted small">Matched At: {finding['matched-at'] || 'N/A'}</div>
                   </div>
                 </div>
               </Col>
@@ -456,14 +524,35 @@ export const NucleiResultsModal = ({
                     <i className="bi bi-file-code me-2"></i>Template
                   </h6>
                   <div className="bg-secondary rounded p-2">
-                    <div className="text-light">{finding.template_id || 'Unknown'}</div>
-                    {finding.matcher_name && (
-                      <div className="text-muted small">Matcher: {finding.matcher_name}</div>
+                    <div className="text-light">{finding['template-id'] || 'Unknown'}</div>
+                    {finding.template_path && (
+                      <div className="text-muted small">Path: {finding.template_path}</div>
                     )}
+                    {finding.type && (
+                      <div className="text-muted small">Type: {finding.type}</div>
+                    )}
+                    <div className="text-info small fw-bold">Matcher: {finding['matcher-name'] || 'N/A'}</div>
+                    <div className="text-muted small">Matcher Status: 
+                      <Badge bg={finding['matcher-status'] ? 'success' : 'danger'} className="ms-1">
+                        {finding['matcher-status'] ? 'True' : 'False'}
+                      </Badge>
+                    </div>
                   </div>
                 </div>
               </Col>
             </Row>
+
+            {finding.timestamp && (
+              <div className="mb-3">
+                <h6 className="text-light mb-2">
+                  <i className="bi bi-clock me-2"></i>Timestamp
+                </h6>
+                <div className="bg-secondary rounded p-2">
+                  <div className="text-light">{new Date(finding.timestamp).toLocaleString()}</div>
+                  <div className="text-muted small">{finding.timestamp}</div>
+                </div>
+              </div>
+            )}
 
             {finding.info?.description && (
               <div className="mb-3">
@@ -530,28 +619,53 @@ export const NucleiResultsModal = ({
               </div>
             )}
 
-            {finding.extracted_results && finding.extracted_results.length > 0 && (
-              <div className="mb-3">
-                <h6 className="text-light mb-2">
-                  <i className="bi bi-search me-2"></i>Extracted Results
-                </h6>
-                <div className="bg-secondary rounded p-2">
-                  {finding.extracted_results.map((result, index) => (
-                    <div key={index} className="mb-1">
-                      <code className="text-warning">{result}</code>
+            <div className="mb-3">
+              <h6 className="text-light mb-2">
+                <i className="bi bi-search me-2"></i>Extracted Results
+              </h6>
+              <div className="bg-secondary rounded p-2">
+                {finding['extracted-results'] && finding['extracted-results'].length > 0 ? (
+                  finding['extracted-results'].map((result, index) => (
+                    <div key={index} className="mb-2">
+                      <div className="text-muted small mb-1">Result {index + 1}:</div>
+                      <code className="text-warning d-block p-2 bg-dark rounded">{result}</code>
                     </div>
-                  ))}
-                </div>
+                  ))
+                ) : (
+                  <div className="text-muted">No extracted results</div>
+                )}
               </div>
-            )}
+            </div>
 
-            {finding.curl_command && (
+            {finding['curl-command'] && (
               <div className="mb-3">
                 <h6 className="text-light mb-2">
                   <i className="bi bi-terminal me-2"></i>Curl Command
                 </h6>
                 <div className="bg-dark rounded p-2">
-                  <code className="text-success small">{finding.curl_command}</code>
+                  <code className="text-success small">{finding['curl-command']}</code>
+                </div>
+              </div>
+            )}
+
+            {finding.request && (
+              <div className="mb-3">
+                <h6 className="text-light mb-2">
+                  <i className="bi bi-arrow-up me-2"></i>Request
+                </h6>
+                <div className="bg-dark rounded p-2">
+                  <pre className="text-info small mb-0" style={{ whiteSpace: 'pre-wrap' }}>{finding.request}</pre>
+                </div>
+              </div>
+            )}
+
+            {finding.response && (
+              <div className="mb-3">
+                <h6 className="text-light mb-2">
+                  <i className="bi bi-arrow-down me-2"></i>Response
+                </h6>
+                <div className="bg-dark rounded p-2">
+                  <pre className="text-success small mb-0" style={{ whiteSpace: 'pre-wrap' }}>{finding.response}</pre>
                 </div>
               </div>
             )}
@@ -582,7 +696,7 @@ export const NucleiResultsModal = ({
       <Modal.Body className="p-0">
         <div className="bg-dark border-bottom px-3 py-3">
           <Row className="g-2">
-            <Col md={4}>
+            <Col md={3}>
               <div className="input-group input-group-sm">
                 <span className="input-group-text bg-secondary border-secondary">
                   <i className="bi bi-search"></i>
@@ -604,7 +718,7 @@ export const NucleiResultsModal = ({
                 )}
               </div>
             </Col>
-            <Col md={3}>
+            <Col md={2}>
               <select
                 className="form-select form-select-sm bg-dark text-light border-secondary"
                 value={severityFilter}
@@ -618,7 +732,7 @@ export const NucleiResultsModal = ({
                 <option value="info">Info</option>
               </select>
             </Col>
-            <Col md={3}>
+            <Col md={2}>
               <select
                 className="form-select form-select-sm bg-dark text-light border-secondary"
                 value={categoryFilter}
@@ -627,6 +741,18 @@ export const NucleiResultsModal = ({
                 <option value="all">All Categories</option>
                 {getAvailableCategories.map(category => (
                   <option key={category} value={category}>{category}</option>
+                ))}
+              </select>
+            </Col>
+            <Col md={3}>
+              <select
+                className="form-select form-select-sm bg-dark text-light border-secondary"
+                value={templateFilter}
+                onChange={(e) => setTemplateFilter(e.target.value)}
+              >
+                <option value="all">All Templates</option>
+                {getAvailableTemplates.map(template => (
+                  <option key={template} value={template}>{template}</option>
                 ))}
               </select>
             </Col>
@@ -642,54 +768,52 @@ export const NucleiResultsModal = ({
                     setSearchTerm('');
                     setSeverityFilter('all');
                     setCategoryFilter('all');
+                    setTemplateFilter('all');
                   }}
-                  disabled={!searchTerm && severityFilter === 'all' && categoryFilter === 'all'}
+                  disabled={!searchTerm && severityFilter === 'all' && categoryFilter === 'all' && templateFilter === 'all'}
+                  title="Clear all filters"
                 >
-                  <i className="bi bi-arrow-clockwise"></i>
+                  <i className="bi bi-x-circle"></i>
                 </Button>
               </div>
             </Col>
           </Row>
         </div>
         
-        <div className="d-flex align-items-center justify-content-between bg-dark border-bottom px-3 py-2">
+        <div className="bg-dark border-bottom px-3 py-2">
           <div className="position-relative">
             {(() => {
               const scanDetails = getScanDetails(scan);
               if (!scanDetails) return null;
-              
               return (
                 <div 
-                  className="d-flex align-items-center cursor-pointer"
+                  className="d-flex align-items-center justify-content-between w-100 cursor-pointer"
                   onClick={() => setShowScanSelector(!showScanSelector)}
                   style={{ cursor: 'pointer' }}
                 >
-                  <div>
-                    <div className="d-flex align-items-center">
-                      <small className="text-muted me-2">
-                        <strong>Scan ID:</strong> {scanDetails.scanId}
-                      </small>
-                      <Badge bg="secondary" className="me-2">
-                        {scanDetails.targetsCount} targets
-                      </Badge>
-                      <Badge bg="secondary" className="me-2">
-                        {scanDetails.templatesCount} templates
-                      </Badge>
-                      <Badge bg={scanDetails.findingsCount > 0 ? 'danger' : 'success'} className="me-2">
-                        {scanDetails.findingsCount} findings
-                      </Badge>
-                      <i className={`bi bi-chevron-${showScanSelector ? 'up' : 'down'} text-muted`}></i>
-                    </div>
-                    <div className="mt-1">
-                      <small className="text-muted">
-                        <strong>Executed:</strong> {scanDetails.createdAt ? new Date(scanDetails.createdAt).toLocaleString() : 'Unknown'}
-                      </small>
-                    </div>
+                  <div className="d-flex align-items-center flex-wrap">
+                    <small className="text-muted me-3">
+                      <strong>Scan ID:</strong> {scanDetails.scanId}
+                    </small>
+                    <Badge bg="secondary" className="me-2">
+                      {scanDetails.targetsCount} targets
+                    </Badge>
+                    <Badge bg="secondary" className="me-2">
+                      {scanDetails.templatesCount} templates
+                    </Badge>
+                    <Badge bg={scanDetails.findingsCount > 0 ? 'danger' : 'success'} className="me-2">
+                      {scanDetails.findingsCount} findings
+                    </Badge>
+                  </div>
+                  <div className="d-flex align-items-center">
+                    <small className="text-muted me-2">
+                      <strong>Executed:</strong> {scanDetails.createdAt ? new Date(scanDetails.createdAt).toLocaleString() : 'Unknown'}
+                    </small>
+                    <i className={`bi bi-chevron-${showScanSelector ? 'up' : 'down'} text-muted`}></i>
                   </div>
                 </div>
               );
             })()}
-            
             {showScanSelector && scans && scans.length > 0 && (
               <div 
                 className="position-absolute top-100 start-0 bg-dark border border-secondary rounded shadow-lg"
@@ -707,8 +831,6 @@ export const NucleiResultsModal = ({
                   {scans.map((scanItem, index) => {
                     const details = getScanDetails(scanItem);
                     const isActive = activeNucleiScan?.scan_id === scanItem.scan_id || activeNucleiScan?.id === scanItem.id;
-                    
-                    // Determine background color and icon based on status
                     const getStatusStyle = (status) => {
                       switch (status) {
                         case 'success':
@@ -738,9 +860,7 @@ export const NucleiResultsModal = ({
                           };
                       }
                     };
-                    
                     const statusStyle = getStatusStyle(details?.status);
-                    
                     return (
                       <div
                         key={scanItem.scan_id || scanItem.id}
@@ -782,10 +902,6 @@ export const NucleiResultsModal = ({
               </div>
             )}
           </div>
-          <Button variant="outline-success" size="sm" onClick={handleCopy} disabled={findings.length === 0}>
-            <i className="bi bi-clipboard me-1"></i>
-            Copy All Results
-          </Button>
         </div>
         
         <Row className="g-0">

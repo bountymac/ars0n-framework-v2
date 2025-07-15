@@ -18,18 +18,22 @@ import (
 
 // NucleiFinding represents a single Nuclei finding from JSON output
 type NucleiFinding struct {
-	TemplateID  string     `json:"templateID"`
-	Info        NucleiInfo `json:"info"`
-	Type        string     `json:"type"`
-	Host        string     `json:"host"`
-	Matched     string     `json:"matched"`
-	IP          string     `json:"ip"`
-	Timestamp   string     `json:"timestamp"`
-	MatcherName string     `json:"matcher_name,omitempty"`
-	Extracted   []string   `json:"extracted_results,omitempty"`
-	CurlCommand string     `json:"curl-command,omitempty"`
-	Request     string     `json:"request,omitempty"`
-	Response    string     `json:"response,omitempty"`
+	TemplateID    string     `json:"template-id"`
+	Info          NucleiInfo `json:"info"`
+	Type          string     `json:"type"`
+	Host          string     `json:"host"`
+	Matched       string     `json:"matched"`
+	MatchedAt     string     `json:"matched-at"`
+	IP            string     `json:"ip"`
+	Port          string     `json:"port"`
+	URL           string     `json:"url"`
+	Timestamp     string     `json:"timestamp"`
+	MatcherName   string     `json:"matcher-name,omitempty"`
+	MatcherStatus bool       `json:"matcher-status,omitempty"`
+	Extracted     []string   `json:"extracted-results,omitempty"`
+	CurlCommand   string     `json:"curl-command,omitempty"`
+	Request       string     `json:"request,omitempty"`
+	Response      string     `json:"response,omitempty"`
 }
 
 // NucleiInfo represents the info section of a Nuclei finding
@@ -126,10 +130,12 @@ func executeNucleiScan(targets []string, templates []string, severities []string
 
 	log.Printf("[DEBUG] Created targets file: %s", targetsFile)
 	log.Printf("[DEBUG] Targets file content:\n%s", targetsContent)
+	log.Printf("[DEBUG] Number of targets: %d", len(targets))
+	log.Printf("[DEBUG] Targets array: %v", targets)
 
 	// Prepare Nuclei command arguments
 	var args []string
-	args = append(args, "-l", targetsFile, "-jsonl", "-o", outputFile)
+	args = append(args, "-l", targetsFile, "-jsonl", "-nh", "-o", outputFile)
 
 	// Add template categories
 	if len(templates) > 0 {

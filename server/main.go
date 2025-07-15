@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"os/exec"
@@ -23,6 +24,10 @@ import (
 )
 
 var dbPool *pgxpool.Pool
+
+func min(a, b int) int {
+	return int(math.Min(float64(a), float64(b)))
+}
 
 func main() {
 	connStr := os.Getenv("DATABASE_URL")
@@ -2987,6 +2992,17 @@ func getNucleiScansForScopeTarget(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Printf("[INFO] Found %d Nuclei scans for scope target %s", len(scans), scopeTargetID)
+
+	// Debug: Log the first scan's result if it exists
+	if len(scans) > 0 {
+		if result, exists := scans[0]["result"]; exists && result != nil {
+			if resultStr, ok := result.(string); ok && len(resultStr) > 0 {
+				log.Printf("[DEBUG] First scan result (first 500 chars): %s", resultStr[:min(len(resultStr), 500)])
+				log.Printf("[DEBUG] First scan result length: %d", len(resultStr))
+			}
+		}
+	}
+
 	json.NewEncoder(w).Encode(scans)
 }
 
