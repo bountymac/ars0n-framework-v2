@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Modal, Button, Badge, ListGroup, Row, Col, Card, Alert, Table } from 'react-bootstrap';
 import { copyToClipboard } from '../utils/miscUtils';
 
@@ -19,6 +19,7 @@ export const NucleiResultsModal = ({
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [templateFilter, setTemplateFilter] = useState('all');
   const [showScanSelector, setShowScanSelector] = useState(false);
+  const findingsListRef = useRef(null);
 
   const formatResults = (results) => {
     console.log('[NucleiResultsModal] Formatting results:', results);
@@ -227,6 +228,19 @@ export const NucleiResultsModal = ({
     setShowScanSelector(false);
   };
 
+  const scrollToSelectedFinding = () => {
+    if (findingsListRef.current && selectedFinding) {
+      const selectedElement = findingsListRef.current.querySelector('.list-group-item.active');
+      if (selectedElement) {
+        selectedElement.scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest',
+          inline: 'nearest'
+        });
+      }
+    }
+  };
+
   const filteredFindings = useMemo(() => {
     let filtered = findings;
 
@@ -292,6 +306,12 @@ export const NucleiResultsModal = ({
       setSelectedIndex(0);
     }
   }, [show, allFindings, selectedFinding]);
+
+  useEffect(() => {
+    if (selectedFinding) {
+      scrollToSelectedFinding();
+    }
+  }, [selectedFinding]);
 
   // Close scan selector when clicking outside
   useEffect(() => {
@@ -371,7 +391,7 @@ export const NucleiResultsModal = ({
     }
 
     return (
-      <div style={{ height: '75vh', overflowY: 'auto' }}>
+      <div ref={findingsListRef} style={{ height: '75vh', overflowY: 'auto' }}>
         {Object.entries(filteredGroupedFindings).map(([severity, severityFindings]) => (
           <div key={severity} className="mb-3">
             <div className="d-flex align-items-center mb-2">
