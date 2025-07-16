@@ -2854,9 +2854,11 @@ func getNucleiConfig(w http.ResponseWriter, r *http.Request) {
 		if err == pgx.ErrNoRows {
 			log.Printf("[INFO] No Nuclei config found for scope target %s", scopeTargetID)
 			defaultTemplates := []string{"cves", "vulnerabilities", "exposures", "technologies", "misconfiguration", "takeovers", "network", "dns", "headless"}
+			defaultSeverities := []string{"critical", "high", "medium", "low", "info"}
 			json.NewEncoder(w).Encode(map[string]interface{}{
 				"targets":            []string{},
 				"templates":          defaultTemplates,
+				"severities":         defaultSeverities,
 				"uploaded_templates": []interface{}{},
 				"created_at":         nil,
 			})
@@ -2878,6 +2880,7 @@ func getNucleiConfig(w http.ResponseWriter, r *http.Request) {
 	response := map[string]interface{}{
 		"targets":            targets,
 		"templates":          templates,
+		"severities":         severities,
 		"uploaded_templates": uploadedTemplatesData,
 		"created_at":         createdAt,
 	}

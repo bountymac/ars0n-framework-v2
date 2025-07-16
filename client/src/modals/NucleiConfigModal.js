@@ -281,6 +281,10 @@ const NucleiConfigModal = ({
   };
 
   const handleSelectNone = () => {
+    setSelectedTargets(new Set());
+  };
+
+  const handleSelectNoneCurrentCategory = () => {
     const categoryAssets = getFilteredAssets();
     const newSelected = new Set(selectedTargets);
     categoryAssets.forEach(asset => newSelected.delete(asset.id));
@@ -443,8 +447,11 @@ const NucleiConfigModal = ({
             <Button variant="outline-success" size="sm" onClick={handleSelectAll}>
               Select All
             </Button>
-            <Button variant="outline-secondary" size="sm" onClick={handleSelectNone}>
-              Select None
+            <Button variant="outline-secondary" size="sm" onClick={handleSelectNoneCurrentCategory}>
+              Select None (Category)
+            </Button>
+            <Button variant="outline-danger" size="sm" onClick={handleSelectNone}>
+              Clear All Targets
             </Button>
             <Button variant="outline-info" size="sm" onClick={handleSelectScanned}>
               Select Scanned
@@ -487,7 +494,7 @@ const NucleiConfigModal = ({
                         if (e.target.checked) {
                           handleSelectAll();
                         } else {
-                          handleSelectNone();
+                          handleSelectNoneCurrentCategory();
                         }
                       }}
                     />
