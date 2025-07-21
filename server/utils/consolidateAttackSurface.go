@@ -2312,6 +2312,13 @@ func consolidateFQDNs(scopeTargetID string) (int, error) {
 			last_dns_scan, last_ssl_scan, last_whois_scan
 		FROM enhanced_fqdn_sources
 		WHERE fqdn IS NOT NULL
+		AND fqdn NOT IN (
+			SELECT DISTINCT asset_identifier 
+			FROM consolidated_attack_surface_assets 
+			WHERE scope_target_id = $1::uuid 
+			AND asset_type = 'cloud_asset'
+			AND asset_identifier IS NOT NULL
+		)
 		ORDER BY fqdn, 
 			CASE 
 				WHEN registrar IS NOT NULL THEN 1
@@ -2365,6 +2372,22 @@ func consolidateFQDNs(scopeTargetID string) (int, error) {
 	}
 
 	insertedCount := int(result.RowsAffected())
+
+	cloudFilteredQuery := `
+		SELECT COUNT(DISTINCT asset_identifier) 
+		FROM consolidated_attack_surface_assets 
+		WHERE scope_target_id = $1::uuid 
+		AND asset_type = 'cloud_asset'
+		AND asset_identifier IS NOT NULL
+	`
+	var cloudAssetCount int
+	err = dbPool.QueryRow(context.Background(), cloudFilteredQuery, scopeTargetID).Scan(&cloudAssetCount)
+	if err != nil {
+		log.Printf("[FQDN CONSOLIDATION] Error counting cloud assets: %v", err)
+	} else {
+		log.Printf("[FQDN CONSOLIDATION] Filtered out %d cloud asset domains from FQDN consolidation", cloudAssetCount)
+	}
+
 	log.Printf("[FQDN CONSOLIDATION] ✅ Successfully inserted/updated %d FQDN records", insertedCount)
 
 	return insertedCount, nil

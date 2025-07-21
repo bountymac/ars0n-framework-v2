@@ -482,7 +482,7 @@ const NucleiConfigModal = ({
           </div>
         ) : (
           <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-            <Table striped bordered hover variant="dark" size="sm">
+            <Table striped bordered hover variant="dark" size="sm" responsive>
               <thead>
                 <tr>
                   <th width="40">
@@ -515,7 +515,7 @@ const NucleiConfigModal = ({
                       />
                     </td>
                     <td>
-                      <div className="text-truncate" style={{ maxWidth: '300px' }}>
+                      <div style={{ wordBreak: 'break-all' }}>
                         {getAssetDisplayText(asset)}
                       </div>
                     </td>
@@ -668,7 +668,7 @@ const NucleiConfigModal = ({
         <div className="mt-4">
           <h6 className="text-danger mb-3">Uploaded Custom Templates</h6>
           <div className="table-responsive">
-            <Table striped bordered hover variant="dark" size="sm">
+            <Table striped bordered hover variant="dark" size="sm" responsive>
               <thead>
                 <tr>
                   <th>Template Name</th>
@@ -681,7 +681,7 @@ const NucleiConfigModal = ({
                 {uploadedTemplates.map(template => (
                   <tr key={template.id}>
                     <td>
-                      <div className="text-truncate" style={{ maxWidth: '300px' }}>
+                      <div style={{ wordBreak: 'break-all' }}>
                         {template.name}
                       </div>
                     </td>

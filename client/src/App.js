@@ -17,19 +17,19 @@ import Ars0nFrameworkHeader from './components/ars0nFrameworkHeader.js';
 import ManageScopeTargets from './components/manageScopeTargets.js';
 import fetchAmassScans from './utils/fetchAmassScans.js';
 import {
-  Container,
-  Fade,
-  Card,
-  Row,
-  Col,
-  Button,
-  ListGroup,
-  Accordion,
-  Modal,
-  Table,
-  Toast,
-  ToastContainer,
-  Spinner,
+    Container,
+    Fade,
+    Card,
+    Row,
+    Col,
+    Button,
+    ListGroup,
+    Accordion,
+    Modal,
+    Table,
+    Toast,
+    ToastContainer,
+    Spinner,
 } from 'react-bootstrap';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'bootstrap-icons/font/bootstrap-icons.css';
@@ -37,14 +37,14 @@ import initiateAmassScan from './utils/initiateAmassScan';
 import monitorScanStatus from './utils/monitorScanStatus';
 import validateInput from './utils/validateInput.js';
 import {
-  getTypeIcon,
-  getLastScanDate,
-  getLatestScanStatus,
-  getLatestScanTime,
-  getLatestScanId,
-  getExecutionTime,
-  getResultLength,
-  copyToClipboard,
+    getTypeIcon,
+    getLastScanDate,
+    getLatestScanStatus,
+    getLatestScanTime,
+    getLatestScanId,
+    getExecutionTime,
+    getResultLength,
+    copyToClipboard,
 } from './utils/miscUtils.js';
 import { MdCopyAll, MdCheckCircle } from 'react-icons/md';
 import initiateHttpxScan from './utils/initiateHttpxScan';
@@ -92,9 +92,9 @@ import fetchHttpxScans from './utils/fetchHttpxScans';
 import ROIReport from './components/ROIReport';
 import HelpMeLearn from './components/HelpMeLearn';
 import {
-  AUTO_SCAN_STEPS,
-  resumeAutoScan as resumeAutoScanUtil,
-  startAutoScan as startAutoScanUtil
+    AUTO_SCAN_STEPS,
+    resumeAutoScan as resumeAutoScanUtil,
+    startAutoScan as startAutoScanUtil
 } from './utils/wildcardAutoScan';
 import getAutoScanSteps from './utils/autoScanSteps';
 import fetchAmassIntelScans from './utils/fetchAmassIntelScans';
@@ -4587,6 +4587,7 @@ function App() {
               <div className="mb-4">
                 <h3 className="text-danger mb-3">Company</h3>
                 <h4 className="text-secondary mb-3 fs-5">ASN (On-Prem) Network Ranges</h4>
+                <HelpMeLearn section="companyNetworkRanges" />
                 <Row className="mb-4">
                   {[
                     {
@@ -4680,6 +4681,7 @@ function App() {
                 </Row>
                 
                 <h4 className="text-secondary mb-3 fs-5">Discover Live Web Servers (On-Prem)</h4>
+                <HelpMeLearn section="companyLiveWebServers" />
                 <Row className="mb-4">
                   <Col>
                     <Card className="shadow-sm h-100 text-center" style={{ minHeight: '200px' }}>
@@ -4766,6 +4768,7 @@ function App() {
                   </Col>
                 </Row>
                 <h4 className="text-secondary mb-3 fs-5">Root Domain Discovery (No API Key)</h4>
+                <HelpMeLearn section="companyRootDomainDiscovery" />
                 <Row className="row-cols-3 g-3 mb-4">
                   {[
                     { 
@@ -4903,6 +4906,7 @@ function App() {
                     Configure API Keys
                   </Button>
                 </div>
+                <HelpMeLearn section="companyRootDomainDiscoveryAPI" />
                 <Row className="row-cols-4 g-3 mb-4">
                   {[
                     { 
@@ -5067,6 +5071,7 @@ function App() {
                 </Row>
                 
                 <h4 className="text-secondary mb-3 fs-5">Consolidate Root Domains</h4>
+                <HelpMeLearn section="companyConsolidateRootDomains" />
                 <Row className="mb-4">
                   <Col>
                     <Card className="shadow-sm h-100 text-center" style={{ minHeight: '200px' }}>
@@ -5157,6 +5162,7 @@ function App() {
                 </Row>
                 
                 <h4 className="text-secondary mb-3 fs-5">Cloud Asset Enumeration (DNS)</h4>
+                <HelpMeLearn section="companySubdomainEnumeration" />
                 <Row className="row-cols-2 g-3 mb-4">
                   <Col>
                     <Card className="shadow-sm h-100 text-center" style={{ minHeight: '300px' }}>
@@ -5263,6 +5269,7 @@ function App() {
                 </Row>
 
                 <h4 className="text-secondary mb-3 fs-5">Cloud Asset Enumeration (Brute-Force & Crawl)</h4>
+                <HelpMeLearn section="companyBruteForceCrawl" />
                 <Row className="row-cols-2 g-3 mb-4">
                   <Col>
                     <Card className="shadow-sm h-100 text-center" style={{ minHeight: '300px' }}>
@@ -5385,6 +5392,7 @@ function App() {
                 </Row>
 
                 <h4 className="text-secondary mb-3 fs-5">{activeTarget.scope_target}'s Full Attack Surface</h4>
+                <HelpMeLearn section="companyDecisionPoint" />
                 <Row className="mb-4">
                   <Col>
                   <Card className="shadow-sm h-100 text-center" style={{ minHeight: '200px' }}>
@@ -5443,6 +5451,7 @@ function App() {
                 </Row>
 
                 <h4 className="text-secondary mb-3 fs-5">Nuclei Scanning</h4>
+                <HelpMeLearn section="companyNucleiScanning" />
                 <Row className="mb-4">
                   <Col>
                   <Card className="shadow-sm h-100 text-center" style={{ minHeight: '200px' }}>
