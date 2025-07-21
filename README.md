@@ -22,16 +22,33 @@ Ars0n Framework v2
 
 ## About
 
+Howdy!  My name is Harrison Richardson, or `rs0n` (arson) when I want to feel cooler than I really am.  The code in this repository started as a small collection of scripts to help automate many of the common Bug Bounty hunting processes I found myself repeating.  Over time, I built these scripts into an open-source framework that helped thousands of people around the world begin their bug bounty hunting journey.  However, the first implementation of the framework had a wide range of issues, the majority of which are a result of the tool never being designed with the intent of being shared as an open-source project.  So I got to work on a version 2 that would solve these problems and bring my vision to life!
+
+**The Ars0n Framework V2** is designed to be a tool that allows people to start REAL bug bounty hunting against actual targets on day one!  The framework acts as a wrapper around 20+ widely used bug bounty hunting tools and a clever UI design forces the user into a correct hunting methodology.  It is literally impossible to use this tool without going through rs0n's process!  
+
+The results of each tool are stored in a central database and can be used for understanding/visualizing the target company's attack surface.  Each section also includes a "Help Me Learn!" dropdown that includes a lession plan to help the user understand what part of the methodology they are at, what they are trying to acheive, and most importantly the "Why?" behind it.
+
+My hope is that this modular framework will act as a canvas to help share what I've learned over my career to the next generation of Security Engineers!  Trust me, we need all the help we can get!!
+
+<h4 align="center">
+🤠 Did you know that over 95% of scientists believe there is a direct correlation between the amount of coffee I drink and how quickly I can build new features?  Crazy, right?!  Well, now you can test their hypothesis and Buy Me a Coffee through this fancy button!!  🤯
+<br>
+<br>
+<a href="https://www.buymeacoffee.com/rs0n.evolv3" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="41" width="174"></a>
+</h4>
+
+<p align="center"><b>Pre-Alpha Demo Videos</b></p>
+
 <div align="center">
-  <p>Walkthrough of Pre-Alpha Release</p>
   <a href="https://www.youtube.com/watch?v=u-yPpd0UH8w">
-    <img src="thumbnail.png" width="600px" alt="Youtube Thumbnail" style="border-radius: 12px;">
-  </a>
-  <p>New Features Added to Pre-Alpha Release</p>
+    <img src="thumbnail.png" width="250px" alt="Youtube Thumbnail" style="border-radius: 12px;">
+  </a>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
   <a href="https://www.youtube.com/watch?v=kAO0stO-hBg">
-    <img src="thumbnail2.png" width="600px" alt="Youtube Thumbnail" style="border-radius: 12px;">
+    <img src="thumbnail2.png" width="250px" alt="Youtube Thumbnail" style="border-radius: 12px;">
   </a>
-</div>
+</div><br>
+
+<p align="center"><b>The Ars0n Framework v2 Includes All These Tools And More!</b></p>
 
 <p align="center">
     <a href="https://github.com/owasp-amass/amass">Amass</a> - Advanced attack surface mapping and asset discovery tool for security research<br>
