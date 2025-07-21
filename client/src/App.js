@@ -12,6 +12,7 @@ import { ShuffleDNSResultsModal } from './modals/shuffleDNSModals.js';
 import ScreenshotResultsModal from './modals/ScreenshotResultsModal.js';
 import SettingsModal from './modals/SettingsModal.js';
 import ExportModal from './modals/ExportModal.js';
+import ImportModal from './modals/ImportModal.js';
 import GoogleDorkingModal from './modals/GoogleDorkingModal.js';
 import Ars0nFrameworkHeader from './components/ars0nFrameworkHeader.js';
 import ManageScopeTargets from './components/manageScopeTargets.js';
@@ -322,6 +323,7 @@ function App() {
   const [showModal, setShowModal] = useState(false);
   const [showActiveModal, setShowActiveModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   const [selections, setSelections] = useState({
     type: '',
     inputText: '',
@@ -2908,6 +2910,14 @@ function App() {
     setShowExportModal(true);
   };
 
+  const handleOpenImportModal = () => {
+    setShowImportModal(true);
+  };
+
+  const handleCloseImportModal = () => {
+    setShowImportModal(false);
+  };
+
   const handleOpenSettingsOnAPIKeysTab = () => {
     setShowAPIKeysConfigModal(false);
     setSettingsModalInitialTab('api-keys');
@@ -4266,6 +4276,7 @@ function App() {
       <Ars0nFrameworkHeader 
         onSettingsClick={handleOpenSettingsModal} 
         onExportClick={handleOpenExportModal}
+        onImportClick={handleOpenImportModal}
       />
 
       <ToastContainer 
@@ -4336,6 +4347,11 @@ function App() {
       <ExportModal
         show={showExportModal}
         handleClose={handleCloseExportModal}
+      />
+
+      <ImportModal
+        show={showImportModal}
+        handleClose={handleCloseImportModal}
       />
 
       <Modal data-bs-theme="dark" show={showScanHistoryModal} onHide={handleCloseScanHistoryModal} size="xl">
