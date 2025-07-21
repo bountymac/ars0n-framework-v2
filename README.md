@@ -87,6 +87,72 @@ This framework consists of 20+ Docker containers along w/ a Docker Compose Manif
 
 *HINT: If you get a docker error, the problem is probably w/ docker, not my framework*
 
+### Windows
+
+**Step 1:** Download the framework
+```powershell
+Invoke-WebRequest -Uri "https://github.com/R-s0n/ars0n-framework-v2/releases/download/beta-0.0.0/ars0n-framework-v2-beta-0.0.0.zip" -OutFile "ars0n-framework-v2.zip"
+```
+
+**Step 2:** Extract the zip file
+```powershell
+Expand-Archive -Path "ars0n-framework-v2.zip" -DestinationPath "."
+```
+
+**Step 3:** Navigate to the framework directory
+```powershell
+cd ars0n-framework-v2-beta-0.0.0
+```
+
+**Step 4:** Start the framework
+```powershell
+docker-compose up --build
+```
+
+### Mac
+
+**Step 1:** Download the framework
+```bash
+curl -L -o ars0n-framework-v2.zip "https://github.com/R-s0n/ars0n-framework-v2/releases/download/beta-0.0.0/ars0n-framework-v2-beta-0.0.0.zip"
+```
+
+**Step 2:** Extract the zip file
+```bash
+unzip ars0n-framework-v2.zip
+```
+
+**Step 3:** Navigate to the framework directory
+```bash
+cd ars0n-framework-v2-beta-0.0.0
+```
+
+**Step 4:** Start the framework
+```bash
+docker-compose up --build
+```
+
+### Linux
+
+**Step 1:** Download the framework
+```bash
+wget "https://github.com/R-s0n/ars0n-framework-v2/releases/download/beta-0.0.0/ars0n-framework-v2-beta-0.0.0.zip"
+```
+
+**Step 2:** Extract the zip file
+```bash
+unzip ars0n-framework-v2-beta-0.0.0.zip
+```
+
+**Step 3:** Navigate to the framework directory
+```bash
+cd ars0n-framework-v2-beta-0.0.0
+```
+
+**Step 4:** Start the framework
+```bash
+docker-compose up --build
+```
+
 ## How To Use
 
 Coming Soon...
