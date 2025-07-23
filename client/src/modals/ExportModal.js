@@ -6,8 +6,31 @@ function ExportModal({ show, handleClose }) {
   
   const [selectedOptions, setSelectedOptions] = useState({
     amass: true,
+    httpx: true,
+    gau: true,
+    sublist3r: true,
+    assetfinder: true,
+    ctl: true,
+    subfinder: true,
+    shuffledns: true,
+    gospider: true,
+    subdomainizer: true,
+    roi: true,
     subdomains: true,
-    roi: true
+    cloud_enum: true,
+    metabigor_company: true,
+    katana_company: true,
+    dnsx_company: true,
+    securitytrails_company: true,
+    github_recon: true,
+    shodan_company: true,
+    censys_company: true,
+    amass_enum_company: true,
+    amass_intel: true,
+    nuclei: true,
+    cewl: true,
+    ip_port_scans: true,
+    consolidated_attack_surface: true
   });
   
   const [isExporting, setIsExporting] = useState(false);
@@ -163,18 +186,133 @@ function ExportModal({ show, handleClose }) {
   const exportOptions = [
     {
       id: 'amass',
-      label: 'Amass Results',
-      description: 'Exports comprehensive scan data including subdomains, DNS records, IP addresses, ASNs, subnets, service providers, and cloud assets (AWS, Azure, GCP). Each record includes scan metadata, execution time, and command details.'
+      label: 'Amass (Wildcard)',
+      description: 'Comprehensive wildcard subdomain discovery including DNS records, IP addresses, ASNs, subnets, service providers, and cloud assets.'
+    },
+    {
+      id: 'httpx',
+      label: 'HTTPX',
+      description: 'HTTP probing results for discovered domains and subdomains.'
+    },
+    {
+      id: 'gau',
+      label: 'GAU (Get All URLs)',
+      description: 'URL discovery from archived sources like Wayback Machine and CommonCrawl.'
+    },
+    {
+      id: 'sublist3r',
+      label: 'Sublist3r',
+      description: 'Subdomain enumeration using search engines and public APIs.'
+    },
+    {
+      id: 'assetfinder',
+      label: 'Assetfinder',
+      description: 'Asset discovery tool for finding domains and subdomains.'
+    },
+    {
+      id: 'ctl',
+      label: 'Certificate Transparency Logs',
+      description: 'Subdomain discovery through SSL certificate transparency logs.'
+    },
+    {
+      id: 'subfinder',
+      label: 'Subfinder',
+      description: 'Passive subdomain discovery using multiple data sources.'
+    },
+    {
+      id: 'shuffledns',
+      label: 'ShuffleDNS',
+      description: 'DNS bruteforce tool for subdomain enumeration.'
+    },
+    {
+      id: 'gospider',
+      label: 'GoSpider',
+      description: 'Web crawler for discovering URLs and endpoints.'
+    },
+    {
+      id: 'subdomainizer',
+      label: 'Subdomainizer',
+      description: 'Subdomain discovery through JavaScript files and external sources.'
+    },
+    {
+      id: 'cewl',
+      label: 'CeWL',
+      description: 'Custom word list generation from web crawling.'
+    },
+    {
+      id: 'cloud_enum',
+      label: 'Cloud Enum',
+      description: 'Multi-cloud asset enumeration for AWS, Azure, and Google Cloud platforms.'
+    },
+    {
+      id: 'metabigor_company',
+      label: 'Metabigor Company',
+      description: 'Network intelligence gathering including ASN and IP range discovery for companies.'
+    },
+    {
+      id: 'katana_company',
+      label: 'Katana Company',
+      description: 'Advanced web crawling for cloud asset discovery and endpoint enumeration.'
+    },
+    {
+      id: 'dnsx_company',
+      label: 'DNSx Company',
+      description: 'Advanced DNS toolkit for company domain resolution and record discovery.'
+    },
+    {
+      id: 'securitytrails_company',
+      label: 'SecurityTrails Company',
+      description: 'Historical DNS data and passive domain intelligence.'
+    },
+    {
+      id: 'github_recon',
+      label: 'GitHub Recon',
+      description: 'GitHub organization reconnaissance for domain and asset discovery.'
+    },
+    {
+      id: 'shodan_company',
+      label: 'Shodan Company',
+      description: 'Internet-connected device and service discovery for companies.'
+    },
+    {
+      id: 'censys_company',
+      label: 'Censys Company',
+      description: 'Internet-wide scanning platform for asset discovery and monitoring.'
+    },
+    {
+      id: 'amass_enum_company',
+      label: 'Amass Enum Company',
+      description: 'Company-focused subdomain enumeration with cloud asset discovery.'
+    },
+    {
+      id: 'amass_intel',
+      label: 'Amass Intel',
+      description: 'Network intelligence gathering for ASN and IP range discovery.'
+    },
+    {
+      id: 'nuclei',
+      label: 'Nuclei',
+      description: 'Vulnerability scanning with customizable templates.'
+    },
+    {
+      id: 'ip_port_scans',
+      label: 'IP/Port Scans',
+      description: 'Network range scanning for live IPs and open ports.'
+    },
+    {
+      id: 'consolidated_attack_surface',
+      label: 'Consolidated Attack Surface',
+      description: 'Comprehensive attack surface mapping including all discovered assets.'
     },
     {
       id: 'subdomains',
-      label: 'Subdomain Discovery Results',
-      description: 'Consolidated export of all subdomain discovery tools including results from Sublist3r, Assetfinder, GAU, CTL, Subfinder, ShuffleDNS, GoSpider, and Subdomainizer. Also includes consolidated unique subdomains and live web servers.'
+      label: 'Consolidated Subdomains',
+      description: 'All subdomain discovery results consolidated across multiple tools.'
     },
     {
       id: 'roi',
       label: 'ROI Analysis',
-      description: 'Exports target analysis data including vulnerability indicators, SSL/TLS issues, HTTP response details, DNS records, technologies, content length, and ROI scores. Each record includes comprehensive target metadata and security assessment metrics.'
+      description: 'Target analysis with vulnerability indicators, SSL/TLS issues, and security metrics.'
     }
   ];
 

@@ -48,6 +48,11 @@ func createTables() {
 			nuclei_screenshot_rate_limit INTEGER DEFAULT 20,
 			custom_user_agent TEXT,
 			custom_header TEXT,
+			burp_proxy_ip TEXT DEFAULT '127.0.0.1',
+			burp_proxy_port INTEGER DEFAULT 8080,
+			burp_api_ip TEXT DEFAULT '127.0.0.1',
+			burp_api_port INTEGER DEFAULT 1337,
+			burp_api_key TEXT DEFAULT '',
 			created_at TIMESTAMP DEFAULT NOW(),
 			updated_at TIMESTAMP DEFAULT NOW()
 		);`,
@@ -64,6 +69,16 @@ func createTables() {
 			created_at TIMESTAMP DEFAULT NOW(),
 			updated_at TIMESTAMP DEFAULT NOW(),
 			UNIQUE(tool_name, api_key_name)
+		);`,
+
+		`CREATE TABLE IF NOT EXISTS ai_api_keys (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			provider VARCHAR(100) NOT NULL,
+			api_key_name VARCHAR(200) NOT NULL,
+			key_values JSONB NOT NULL,
+			created_at TIMESTAMP DEFAULT NOW(),
+			updated_at TIMESTAMP DEFAULT NOW(),
+			UNIQUE(provider, api_key_name)
 		);`,
 
 		`CREATE TABLE IF NOT EXISTS auto_scan_config (
@@ -1106,6 +1121,13 @@ func createTables() {
 			created_at TIMESTAMP DEFAULT NOW(),
 			UNIQUE(asset_id, metadata_type, metadata_key)
 		);`,
+
+		// Add missing columns to user_settings table for existing installations
+		`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS burp_proxy_ip TEXT DEFAULT '127.0.0.1';`,
+		`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS burp_proxy_port INTEGER DEFAULT 8080;`,
+		`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS burp_api_ip TEXT DEFAULT '127.0.0.1';`,
+		`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS burp_api_port INTEGER DEFAULT 1337;`,
+		`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS burp_api_key TEXT DEFAULT '';`,
 
 		// Create indexes for performance
 		`CREATE INDEX IF NOT EXISTS target_urls_url_idx ON target_urls (url);`,

@@ -18,18 +18,32 @@ import (
 )
 
 type ExportRequest struct {
-	Amass         bool `json:"amass"`
-	Httpx         bool `json:"httpx"`
-	Gau           bool `json:"gau"`
-	Sublist3r     bool `json:"sublist3r"`
-	Assetfinder   bool `json:"assetfinder"`
-	Ctl           bool `json:"ctl"`
-	Subfinder     bool `json:"subfinder"`
-	Shuffledns    bool `json:"shuffledns"`
-	Gospider      bool `json:"gospider"`
-	Subdomainizer bool `json:"subdomainizer"`
-	Roi           bool `json:"roi"`
-	Subdomains    bool `json:"subdomains"`
+	Amass                     bool `json:"amass"`
+	Httpx                     bool `json:"httpx"`
+	Gau                       bool `json:"gau"`
+	Sublist3r                 bool `json:"sublist3r"`
+	Assetfinder               bool `json:"assetfinder"`
+	Ctl                       bool `json:"ctl"`
+	Subfinder                 bool `json:"subfinder"`
+	Shuffledns                bool `json:"shuffledns"`
+	Gospider                  bool `json:"gospider"`
+	Subdomainizer             bool `json:"subdomainizer"`
+	Roi                       bool `json:"roi"`
+	Subdomains                bool `json:"subdomains"`
+	CloudEnum                 bool `json:"cloud_enum"`
+	MetabigorCompany          bool `json:"metabigor_company"`
+	KatanaCompany             bool `json:"katana_company"`
+	DNSxCompany               bool `json:"dnsx_company"`
+	SecurityTrailsCompany     bool `json:"securitytrails_company"`
+	GitHubRecon               bool `json:"github_recon"`
+	ShodanCompany             bool `json:"shodan_company"`
+	CensysCompany             bool `json:"censys_company"`
+	AmassEnumCompany          bool `json:"amass_enum_company"`
+	AmassIntel                bool `json:"amass_intel"`
+	Nuclei                    bool `json:"nuclei"`
+	CeWL                      bool `json:"cewl"`
+	IPPortScans               bool `json:"ip_port_scans"`
+	ConsolidatedAttackSurface bool `json:"consolidated_attack_surface"`
 }
 
 type AmassRecord struct {
@@ -208,6 +222,146 @@ func HandleExportData(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		log.Println("[INFO] Completed Subdomains data export")
+	}
+
+	if req.CloudEnum {
+		log.Println("[INFO] Starting Cloud Enum data export")
+		if err := exportCloudEnumData(zipWriter, tempDir); err != nil {
+			log.Printf("[ERROR] Failed to export Cloud Enum data: %v", err)
+			http.Error(w, fmt.Sprintf("Failed to export Cloud Enum data: %v", err), http.StatusInternalServerError)
+			return
+		}
+		log.Println("[INFO] Completed Cloud Enum data export")
+	}
+
+	if req.MetabigorCompany {
+		log.Println("[INFO] Starting Metabigor Company data export")
+		if err := exportMetabigorCompanyData(zipWriter, tempDir); err != nil {
+			log.Printf("[ERROR] Failed to export Metabigor Company data: %v", err)
+			http.Error(w, fmt.Sprintf("Failed to export Metabigor Company data: %v", err), http.StatusInternalServerError)
+			return
+		}
+		log.Println("[INFO] Completed Metabigor Company data export")
+	}
+
+	if req.KatanaCompany {
+		log.Println("[INFO] Starting Katana Company data export")
+		if err := exportKatanaCompanyData(zipWriter, tempDir); err != nil {
+			log.Printf("[ERROR] Failed to export Katana Company data: %v", err)
+			http.Error(w, fmt.Sprintf("Failed to export Katana Company data: %v", err), http.StatusInternalServerError)
+			return
+		}
+		log.Println("[INFO] Completed Katana Company data export")
+	}
+
+	if req.DNSxCompany {
+		log.Println("[INFO] Starting DNSx Company data export")
+		if err := exportDNSxCompanyData(zipWriter, tempDir); err != nil {
+			log.Printf("[ERROR] Failed to export DNSx Company data: %v", err)
+			http.Error(w, fmt.Sprintf("Failed to export DNSx Company data: %v", err), http.StatusInternalServerError)
+			return
+		}
+		log.Println("[INFO] Completed DNSx Company data export")
+	}
+
+	if req.SecurityTrailsCompany {
+		log.Println("[INFO] Starting SecurityTrails Company data export")
+		if err := exportSecurityTrailsCompanyData(zipWriter, tempDir); err != nil {
+			log.Printf("[ERROR] Failed to export SecurityTrails Company data: %v", err)
+			http.Error(w, fmt.Sprintf("Failed to export SecurityTrails Company data: %v", err), http.StatusInternalServerError)
+			return
+		}
+		log.Println("[INFO] Completed SecurityTrails Company data export")
+	}
+
+	if req.GitHubRecon {
+		log.Println("[INFO] Starting GitHub Recon data export")
+		if err := exportGitHubReconData(zipWriter, tempDir); err != nil {
+			log.Printf("[ERROR] Failed to export GitHub Recon data: %v", err)
+			http.Error(w, fmt.Sprintf("Failed to export GitHub Recon data: %v", err), http.StatusInternalServerError)
+			return
+		}
+		log.Println("[INFO] Completed GitHub Recon data export")
+	}
+
+	if req.ShodanCompany {
+		log.Println("[INFO] Starting Shodan Company data export")
+		if err := exportShodanCompanyData(zipWriter, tempDir); err != nil {
+			log.Printf("[ERROR] Failed to export Shodan Company data: %v", err)
+			http.Error(w, fmt.Sprintf("Failed to export Shodan Company data: %v", err), http.StatusInternalServerError)
+			return
+		}
+		log.Println("[INFO] Completed Shodan Company data export")
+	}
+
+	if req.CensysCompany {
+		log.Println("[INFO] Starting Censys Company data export")
+		if err := exportCensysCompanyData(zipWriter, tempDir); err != nil {
+			log.Printf("[ERROR] Failed to export Censys Company data: %v", err)
+			http.Error(w, fmt.Sprintf("Failed to export Censys Company data: %v", err), http.StatusInternalServerError)
+			return
+		}
+		log.Println("[INFO] Completed Censys Company data export")
+	}
+
+	if req.AmassEnumCompany {
+		log.Println("[INFO] Starting Amass Enum Company data export")
+		if err := exportAmassEnumCompanyData(zipWriter, tempDir); err != nil {
+			log.Printf("[ERROR] Failed to export Amass Enum Company data: %v", err)
+			http.Error(w, fmt.Sprintf("Failed to export Amass Enum Company data: %v", err), http.StatusInternalServerError)
+			return
+		}
+		log.Println("[INFO] Completed Amass Enum Company data export")
+	}
+
+	if req.AmassIntel {
+		log.Println("[INFO] Starting Amass Intel data export")
+		if err := exportAmassIntelData(zipWriter, tempDir); err != nil {
+			log.Printf("[ERROR] Failed to export Amass Intel data: %v", err)
+			http.Error(w, fmt.Sprintf("Failed to export Amass Intel data: %v", err), http.StatusInternalServerError)
+			return
+		}
+		log.Println("[INFO] Completed Amass Intel data export")
+	}
+
+	if req.Nuclei {
+		log.Println("[INFO] Starting Nuclei data export")
+		if err := exportNucleiData(zipWriter, tempDir); err != nil {
+			log.Printf("[ERROR] Failed to export Nuclei data: %v", err)
+			http.Error(w, fmt.Sprintf("Failed to export Nuclei data: %v", err), http.StatusInternalServerError)
+			return
+		}
+		log.Println("[INFO] Completed Nuclei data export")
+	}
+
+	if req.CeWL {
+		log.Println("[INFO] Starting CeWL data export")
+		if err := exportCeWLData(zipWriter, tempDir); err != nil {
+			log.Printf("[ERROR] Failed to export CeWL data: %v", err)
+			http.Error(w, fmt.Sprintf("Failed to export CeWL data: %v", err), http.StatusInternalServerError)
+			return
+		}
+		log.Println("[INFO] Completed CeWL data export")
+	}
+
+	if req.IPPortScans {
+		log.Println("[INFO] Starting IP/Port Scans data export")
+		if err := exportIPPortScansData(zipWriter, tempDir); err != nil {
+			log.Printf("[ERROR] Failed to export IP/Port Scans data: %v", err)
+			http.Error(w, fmt.Sprintf("Failed to export IP/Port Scans data: %v", err), http.StatusInternalServerError)
+			return
+		}
+		log.Println("[INFO] Completed IP/Port Scans data export")
+	}
+
+	if req.ConsolidatedAttackSurface {
+		log.Println("[INFO] Starting Consolidated Attack Surface data export")
+		if err := exportConsolidatedAttackSurfaceData(zipWriter, tempDir); err != nil {
+			log.Printf("[ERROR] Failed to export Consolidated Attack Surface data: %v", err)
+			http.Error(w, fmt.Sprintf("Failed to export Consolidated Attack Surface data: %v", err), http.StatusInternalServerError)
+			return
+		}
+		log.Println("[INFO] Completed Consolidated Attack Surface data export")
 	}
 
 	// Close the zip writer
@@ -1373,11 +1527,726 @@ func addFileToZip(zipWriter *zip.Writer, filePath, zipPath string) error {
 	}
 	defer file.Close()
 
-	writer, err := zipWriter.Create(zipPath)
+	zipFile, err := zipWriter.Create(zipPath)
 	if err != nil {
 		return err
 	}
 
-	_, err = io.Copy(writer, file)
+	_, err = io.Copy(zipFile, file)
 	return err
+}
+
+func exportCloudEnumData(zipWriter *zip.Writer, tempDir string) error {
+	cloudEnumFile := filepath.Join(tempDir, "cloud_enum_data.csv")
+	file, err := os.Create(cloudEnumFile)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	headers := []string{"Scan ID", "Company Name", "Status", "Result", "Error", "Execution Time", "Command"}
+	if err := writer.Write(headers); err != nil {
+		return err
+	}
+
+	rows, err := dbPool.Query(context.Background(), `
+		SELECT 
+			s.scan_id,
+			s.company_name,
+			s.status,
+			COALESCE(s.result, ''),
+			COALESCE(s.error, ''),
+			COALESCE(s.execution_time, ''),
+			COALESCE(s.command, '')
+		FROM cloud_enum_scans s
+		JOIN scope_targets st ON s.scope_target_id = st.id
+		ORDER BY s.scan_id
+	`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var scanID, companyName, status, result, errorMsg, execTime, cmd string
+		if err := rows.Scan(&scanID, &companyName, &status, &result, &errorMsg, &execTime, &cmd); err != nil {
+			return fmt.Errorf("error scanning cloud enum row: %v", err)
+		}
+
+		record := []string{scanID, companyName, status, result, errorMsg, execTime, cmd}
+		if err := writer.Write(record); err != nil {
+			return err
+		}
+	}
+
+	return addFileToZip(zipWriter, cloudEnumFile, "cloud_enum_data.csv")
+}
+
+func exportMetabigorCompanyData(zipWriter *zip.Writer, tempDir string) error {
+	metabigorFile := filepath.Join(tempDir, "metabigor_company_data.csv")
+	file, err := os.Create(metabigorFile)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	headers := []string{"Scan ID", "Company Name", "Status", "Result", "Error", "Execution Time", "Command"}
+	if err := writer.Write(headers); err != nil {
+		return err
+	}
+
+	rows, err := dbPool.Query(context.Background(), `
+		SELECT 
+			s.scan_id,
+			s.company_name,
+			s.status,
+			COALESCE(s.result, ''),
+			COALESCE(s.error, ''),
+			COALESCE(s.execution_time, ''),
+			COALESCE(s.command, '')
+		FROM metabigor_company_scans s
+		JOIN scope_targets st ON s.scope_target_id = st.id
+		ORDER BY s.scan_id
+	`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var scanID, companyName, status, result, errorMsg, execTime, cmd string
+		if err := rows.Scan(&scanID, &companyName, &status, &result, &errorMsg, &execTime, &cmd); err != nil {
+			return fmt.Errorf("error scanning metabigor company row: %v", err)
+		}
+
+		record := []string{scanID, companyName, status, result, errorMsg, execTime, cmd}
+		if err := writer.Write(record); err != nil {
+			return err
+		}
+	}
+
+	return addFileToZip(zipWriter, metabigorFile, "metabigor_company_data.csv")
+}
+
+func exportKatanaCompanyData(zipWriter *zip.Writer, tempDir string) error {
+	katanaFile := filepath.Join(tempDir, "katana_company_data.csv")
+	file, err := os.Create(katanaFile)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	headers := []string{"Scan ID", "Scope Target ID", "Domains", "Status", "Result", "Error", "Execution Time", "Command"}
+	if err := writer.Write(headers); err != nil {
+		return err
+	}
+
+	rows, err := dbPool.Query(context.Background(), `
+		SELECT 
+			s.scan_id,
+			s.scope_target_id,
+			COALESCE(s.domains::text, ''),
+			s.status,
+			COALESCE(s.result, ''),
+			COALESCE(s.error, ''),
+			COALESCE(s.execution_time, ''),
+			COALESCE(s.command, '')
+		FROM katana_company_scans s
+		JOIN scope_targets st ON s.scope_target_id = st.id
+		ORDER BY s.scan_id
+	`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var scanID, scopeTargetID, domains, status, result, errorMsg, execTime, cmd string
+		if err := rows.Scan(&scanID, &scopeTargetID, &domains, &status, &result, &errorMsg, &execTime, &cmd); err != nil {
+			return fmt.Errorf("error scanning katana company row: %v", err)
+		}
+
+		record := []string{scanID, scopeTargetID, domains, status, result, errorMsg, execTime, cmd}
+		if err := writer.Write(record); err != nil {
+			return err
+		}
+	}
+
+	return addFileToZip(zipWriter, katanaFile, "katana_company_data.csv")
+}
+
+func exportDNSxCompanyData(zipWriter *zip.Writer, tempDir string) error {
+	dnsxFile := filepath.Join(tempDir, "dnsx_company_data.csv")
+	file, err := os.Create(dnsxFile)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	headers := []string{"Scan ID", "Scope Target ID", "Domains", "Status", "Result", "Error", "Execution Time", "Command"}
+	if err := writer.Write(headers); err != nil {
+		return err
+	}
+
+	rows, err := dbPool.Query(context.Background(), `
+		SELECT 
+			s.scan_id,
+			s.scope_target_id,
+			COALESCE(s.domains::text, ''),
+			s.status,
+			COALESCE(s.result, ''),
+			COALESCE(s.error, ''),
+			COALESCE(s.execution_time, ''),
+			COALESCE(s.command, '')
+		FROM dnsx_company_scans s
+		JOIN scope_targets st ON s.scope_target_id = st.id
+		ORDER BY s.scan_id
+	`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var scanID, scopeTargetID, domains, status, result, errorMsg, execTime, cmd string
+		if err := rows.Scan(&scanID, &scopeTargetID, &domains, &status, &result, &errorMsg, &execTime, &cmd); err != nil {
+			return fmt.Errorf("error scanning dnsx company row: %v", err)
+		}
+
+		record := []string{scanID, scopeTargetID, domains, status, result, errorMsg, execTime, cmd}
+		if err := writer.Write(record); err != nil {
+			return err
+		}
+	}
+
+	return addFileToZip(zipWriter, dnsxFile, "dnsx_company_data.csv")
+}
+
+func exportSecurityTrailsCompanyData(zipWriter *zip.Writer, tempDir string) error {
+	securityTrailsFile := filepath.Join(tempDir, "securitytrails_company_data.csv")
+	file, err := os.Create(securityTrailsFile)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	headers := []string{"Scan ID", "Company Name", "Status", "Result", "Error", "Execution Time", "Command"}
+	if err := writer.Write(headers); err != nil {
+		return err
+	}
+
+	rows, err := dbPool.Query(context.Background(), `
+		SELECT 
+			s.scan_id,
+			s.company_name,
+			s.status,
+			COALESCE(s.result, ''),
+			COALESCE(s.error, ''),
+			COALESCE(s.execution_time, ''),
+			COALESCE(s.command, '')
+		FROM securitytrails_company_scans s
+		JOIN scope_targets st ON s.scope_target_id = st.id
+		ORDER BY s.scan_id
+	`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var scanID, companyName, status, result, errorMsg, execTime, cmd string
+		if err := rows.Scan(&scanID, &companyName, &status, &result, &errorMsg, &execTime, &cmd); err != nil {
+			return fmt.Errorf("error scanning securitytrails company row: %v", err)
+		}
+
+		record := []string{scanID, companyName, status, result, errorMsg, execTime, cmd}
+		if err := writer.Write(record); err != nil {
+			return err
+		}
+	}
+
+	return addFileToZip(zipWriter, securityTrailsFile, "securitytrails_company_data.csv")
+}
+
+func exportGitHubReconData(zipWriter *zip.Writer, tempDir string) error {
+	githubFile := filepath.Join(tempDir, "github_recon_data.csv")
+	file, err := os.Create(githubFile)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	headers := []string{"Scan ID", "Company Name", "Status", "Result", "Error", "Execution Time", "Command"}
+	if err := writer.Write(headers); err != nil {
+		return err
+	}
+
+	rows, err := dbPool.Query(context.Background(), `
+		SELECT 
+			s.scan_id,
+			s.company_name,
+			s.status,
+			COALESCE(s.result, ''),
+			COALESCE(s.error, ''),
+			COALESCE(s.execution_time, ''),
+			COALESCE(s.command, '')
+		FROM github_recon_scans s
+		JOIN scope_targets st ON s.scope_target_id = st.id
+		ORDER BY s.scan_id
+	`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var scanID, companyName, status, result, errorMsg, execTime, cmd string
+		if err := rows.Scan(&scanID, &companyName, &status, &result, &errorMsg, &execTime, &cmd); err != nil {
+			return fmt.Errorf("error scanning github recon row: %v", err)
+		}
+
+		record := []string{scanID, companyName, status, result, errorMsg, execTime, cmd}
+		if err := writer.Write(record); err != nil {
+			return err
+		}
+	}
+
+	return addFileToZip(zipWriter, githubFile, "github_recon_data.csv")
+}
+
+func exportShodanCompanyData(zipWriter *zip.Writer, tempDir string) error {
+	shodanFile := filepath.Join(tempDir, "shodan_company_data.csv")
+	file, err := os.Create(shodanFile)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	headers := []string{"Scan ID", "Company Name", "Status", "Result", "Error", "Execution Time", "Command"}
+	if err := writer.Write(headers); err != nil {
+		return err
+	}
+
+	rows, err := dbPool.Query(context.Background(), `
+		SELECT 
+			s.scan_id,
+			s.company_name,
+			s.status,
+			COALESCE(s.result, ''),
+			COALESCE(s.error, ''),
+			COALESCE(s.execution_time, ''),
+			COALESCE(s.command, '')
+		FROM shodan_company_scans s
+		JOIN scope_targets st ON s.scope_target_id = st.id
+		ORDER BY s.scan_id
+	`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var scanID, companyName, status, result, errorMsg, execTime, cmd string
+		if err := rows.Scan(&scanID, &companyName, &status, &result, &errorMsg, &execTime, &cmd); err != nil {
+			return fmt.Errorf("error scanning shodan company row: %v", err)
+		}
+
+		record := []string{scanID, companyName, status, result, errorMsg, execTime, cmd}
+		if err := writer.Write(record); err != nil {
+			return err
+		}
+	}
+
+	return addFileToZip(zipWriter, shodanFile, "shodan_company_data.csv")
+}
+
+func exportCensysCompanyData(zipWriter *zip.Writer, tempDir string) error {
+	censysFile := filepath.Join(tempDir, "censys_company_data.csv")
+	file, err := os.Create(censysFile)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	headers := []string{"Scan ID", "Company Name", "Status", "Result", "Error", "Execution Time", "Command"}
+	if err := writer.Write(headers); err != nil {
+		return err
+	}
+
+	rows, err := dbPool.Query(context.Background(), `
+		SELECT 
+			s.scan_id,
+			s.company_name,
+			s.status,
+			COALESCE(s.result, ''),
+			COALESCE(s.error, ''),
+			COALESCE(s.execution_time, ''),
+			COALESCE(s.command, '')
+		FROM censys_company_scans s
+		JOIN scope_targets st ON s.scope_target_id = st.id
+		ORDER BY s.scan_id
+	`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var scanID, companyName, status, result, errorMsg, execTime, cmd string
+		if err := rows.Scan(&scanID, &companyName, &status, &result, &errorMsg, &execTime, &cmd); err != nil {
+			return fmt.Errorf("error scanning censys company row: %v", err)
+		}
+
+		record := []string{scanID, companyName, status, result, errorMsg, execTime, cmd}
+		if err := writer.Write(record); err != nil {
+			return err
+		}
+	}
+
+	return addFileToZip(zipWriter, censysFile, "censys_company_data.csv")
+}
+
+func exportAmassEnumCompanyData(zipWriter *zip.Writer, tempDir string) error {
+	amassEnumFile := filepath.Join(tempDir, "amass_enum_company_data.csv")
+	file, err := os.Create(amassEnumFile)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	headers := []string{"Scan ID", "Scope Target ID", "Domains", "Status", "Result", "Error", "Execution Time", "Command"}
+	if err := writer.Write(headers); err != nil {
+		return err
+	}
+
+	rows, err := dbPool.Query(context.Background(), `
+		SELECT 
+			s.scan_id,
+			s.scope_target_id,
+			COALESCE(s.domains::text, ''),
+			s.status,
+			COALESCE(s.result, ''),
+			COALESCE(s.error, ''),
+			COALESCE(s.execution_time, ''),
+			COALESCE(s.command, '')
+		FROM amass_enum_company_scans s
+		JOIN scope_targets st ON s.scope_target_id = st.id
+		ORDER BY s.scan_id
+	`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var scanID, scopeTargetID, domains, status, result, errorMsg, execTime, cmd string
+		if err := rows.Scan(&scanID, &scopeTargetID, &domains, &status, &result, &errorMsg, &execTime, &cmd); err != nil {
+			return fmt.Errorf("error scanning amass enum company row: %v", err)
+		}
+
+		record := []string{scanID, scopeTargetID, domains, status, result, errorMsg, execTime, cmd}
+		if err := writer.Write(record); err != nil {
+			return err
+		}
+	}
+
+	return addFileToZip(zipWriter, amassEnumFile, "amass_enum_company_data.csv")
+}
+
+func exportAmassIntelData(zipWriter *zip.Writer, tempDir string) error {
+	amassIntelFile := filepath.Join(tempDir, "amass_intel_data.csv")
+	file, err := os.Create(amassIntelFile)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	headers := []string{"Scan ID", "Company Name", "Status", "Result", "Error", "Execution Time", "Command"}
+	if err := writer.Write(headers); err != nil {
+		return err
+	}
+
+	rows, err := dbPool.Query(context.Background(), `
+		SELECT 
+			s.scan_id,
+			s.company_name,
+			s.status,
+			COALESCE(s.result, ''),
+			COALESCE(s.error, ''),
+			COALESCE(s.execution_time, ''),
+			COALESCE(s.command, '')
+		FROM amass_intel_scans s
+		JOIN scope_targets st ON s.scope_target_id = st.id
+		ORDER BY s.scan_id
+	`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var scanID, companyName, status, result, errorMsg, execTime, cmd string
+		if err := rows.Scan(&scanID, &companyName, &status, &result, &errorMsg, &execTime, &cmd); err != nil {
+			return fmt.Errorf("error scanning amass intel row: %v", err)
+		}
+
+		record := []string{scanID, companyName, status, result, errorMsg, execTime, cmd}
+		if err := writer.Write(record); err != nil {
+			return err
+		}
+	}
+
+	return addFileToZip(zipWriter, amassIntelFile, "amass_intel_data.csv")
+}
+
+func exportNucleiData(zipWriter *zip.Writer, tempDir string) error {
+	nucleiFile := filepath.Join(tempDir, "nuclei_data.csv")
+	file, err := os.Create(nucleiFile)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	headers := []string{"Scan ID", "Scope Target ID", "Targets", "Templates", "Status", "Result", "Error", "Execution Time", "Command"}
+	if err := writer.Write(headers); err != nil {
+		return err
+	}
+
+	rows, err := dbPool.Query(context.Background(), `
+		SELECT 
+			s.scan_id,
+			s.scope_target_id,
+			COALESCE(array_to_string(s.targets, ','), ''),
+			COALESCE(array_to_string(s.templates, ','), ''),
+			s.status,
+			COALESCE(s.result, ''),
+			COALESCE(s.error, ''),
+			COALESCE(s.execution_time, ''),
+			COALESCE(s.command, '')
+		FROM nuclei_scans s
+		JOIN scope_targets st ON s.scope_target_id = st.id
+		ORDER BY s.scan_id
+	`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var scanID, scopeTargetID, targets, templates, status, result, errorMsg, execTime, cmd string
+		if err := rows.Scan(&scanID, &scopeTargetID, &targets, &templates, &status, &result, &errorMsg, &execTime, &cmd); err != nil {
+			return fmt.Errorf("error scanning nuclei row: %v", err)
+		}
+
+		record := []string{scanID, scopeTargetID, targets, templates, status, result, errorMsg, execTime, cmd}
+		if err := writer.Write(record); err != nil {
+			return err
+		}
+	}
+
+	return addFileToZip(zipWriter, nucleiFile, "nuclei_data.csv")
+}
+
+func exportCeWLData(zipWriter *zip.Writer, tempDir string) error {
+	cewlFile := filepath.Join(tempDir, "cewl_data.csv")
+	file, err := os.Create(cewlFile)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	headers := []string{"Scan ID", "URL", "Status", "Result", "Error", "Execution Time", "Command"}
+	if err := writer.Write(headers); err != nil {
+		return err
+	}
+
+	rows, err := dbPool.Query(context.Background(), `
+		SELECT 
+			s.scan_id,
+			s.url,
+			s.status,
+			COALESCE(s.result, ''),
+			COALESCE(s.error, ''),
+			COALESCE(s.execution_time, ''),
+			COALESCE(s.command, '')
+		FROM cewl_scans s
+		JOIN scope_targets st ON s.scope_target_id = st.id
+		ORDER BY s.scan_id
+	`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var scanID, url, status, result, errorMsg, execTime, cmd string
+		if err := rows.Scan(&scanID, &url, &status, &result, &errorMsg, &execTime, &cmd); err != nil {
+			return fmt.Errorf("error scanning cewl row: %v", err)
+		}
+
+		record := []string{scanID, url, status, result, errorMsg, execTime, cmd}
+		if err := writer.Write(record); err != nil {
+			return err
+		}
+	}
+
+	return addFileToZip(zipWriter, cewlFile, "cewl_data.csv")
+}
+
+func exportIPPortScansData(zipWriter *zip.Writer, tempDir string) error {
+	ipPortFile := filepath.Join(tempDir, "ip_port_scans_data.csv")
+	file, err := os.Create(ipPortFile)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	headers := []string{"Scan ID", "Scope Target ID", "Status", "Total Network Ranges", "Processed Network Ranges", "Total IPs Discovered", "Total Ports Scanned", "Live Web Servers Found", "Error Message", "Execution Time"}
+	if err := writer.Write(headers); err != nil {
+		return err
+	}
+
+	rows, err := dbPool.Query(context.Background(), `
+		SELECT 
+			s.scan_id,
+			s.scope_target_id,
+			s.status,
+			COALESCE(s.total_network_ranges, 0),
+			COALESCE(s.processed_network_ranges, 0),
+			COALESCE(s.total_ips_discovered, 0),
+			COALESCE(s.total_ports_scanned, 0),
+			COALESCE(s.live_web_servers_found, 0),
+			COALESCE(s.error_message, ''),
+			COALESCE(s.execution_time, '')
+		FROM ip_port_scans s
+		JOIN scope_targets st ON s.scope_target_id = st.id
+		ORDER BY s.scan_id
+	`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var scanID, scopeTargetID, status, errorMsg, execTime string
+		var totalNetworkRanges, processedNetworkRanges, totalIPsDiscovered, totalPortsScanned, liveWebServersFound int
+		if err := rows.Scan(&scanID, &scopeTargetID, &status, &totalNetworkRanges, &processedNetworkRanges, &totalIPsDiscovered, &totalPortsScanned, &liveWebServersFound, &errorMsg, &execTime); err != nil {
+			return fmt.Errorf("error scanning ip port scan row: %v", err)
+		}
+
+		record := []string{
+			scanID, scopeTargetID, status,
+			fmt.Sprintf("%d", totalNetworkRanges),
+			fmt.Sprintf("%d", processedNetworkRanges),
+			fmt.Sprintf("%d", totalIPsDiscovered),
+			fmt.Sprintf("%d", totalPortsScanned),
+			fmt.Sprintf("%d", liveWebServersFound),
+			errorMsg, execTime,
+		}
+		if err := writer.Write(record); err != nil {
+			return err
+		}
+	}
+
+	return addFileToZip(zipWriter, ipPortFile, "ip_port_scans_data.csv")
+}
+
+func exportConsolidatedAttackSurfaceData(zipWriter *zip.Writer, tempDir string) error {
+	attackSurfaceFile := filepath.Join(tempDir, "consolidated_attack_surface_data.csv")
+	file, err := os.Create(attackSurfaceFile)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	headers := []string{"Asset ID", "Scope Target ID", "Asset Type", "Asset Identifier", "Asset Subtype", "Domain", "URL", "IP Address", "Port", "Protocol", "Status Code", "Title", "Cloud Provider", "Cloud Service Type", "Last Updated"}
+	if err := writer.Write(headers); err != nil {
+		return err
+	}
+
+	rows, err := dbPool.Query(context.Background(), `
+		SELECT 
+			casa.id,
+			casa.scope_target_id,
+			casa.asset_type,
+			casa.asset_identifier,
+			COALESCE(casa.asset_subtype, ''),
+			COALESCE(casa.domain, ''),
+			COALESCE(casa.url, ''),
+			COALESCE(casa.ip_address, ''),
+			COALESCE(casa.port, 0),
+			COALESCE(casa.protocol, ''),
+			COALESCE(casa.status_code, 0),
+			COALESCE(casa.title, ''),
+			COALESCE(casa.cloud_provider, ''),
+			COALESCE(casa.cloud_service_type, ''),
+			casa.last_updated
+		FROM consolidated_attack_surface_assets casa
+		JOIN scope_targets st ON casa.scope_target_id = st.id
+		ORDER BY casa.id
+	`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var assetID, scopeTargetID, assetType, assetIdentifier, assetSubtype, domain, url, ipAddress, protocol, title, cloudProvider, cloudServiceType, lastUpdated string
+		var port, statusCode int
+		if err := rows.Scan(&assetID, &scopeTargetID, &assetType, &assetIdentifier, &assetSubtype, &domain, &url, &ipAddress, &port, &protocol, &statusCode, &title, &cloudProvider, &cloudServiceType, &lastUpdated); err != nil {
+			return fmt.Errorf("error scanning consolidated attack surface row: %v", err)
+		}
+
+		record := []string{
+			assetID, scopeTargetID, assetType, assetIdentifier, assetSubtype, domain, url, ipAddress,
+			fmt.Sprintf("%d", port), protocol, fmt.Sprintf("%d", statusCode), title, cloudProvider, cloudServiceType, lastUpdated,
+		}
+		if err := writer.Write(record); err != nil {
+			return err
+		}
+	}
+
+	return addFileToZip(zipWriter, attackSurfaceFile, "consolidated_attack_surface_data.csv")
 }

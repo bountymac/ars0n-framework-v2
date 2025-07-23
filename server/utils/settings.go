@@ -3,7 +3,9 @@ package utils
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"log"
+	"time"
 )
 
 // GetRateLimit retrieves the rate limit for a specific tool from the database
@@ -114,4 +116,202 @@ func GetCustomHTTPSettings() (string, string) {
 	}
 
 	return customUserAgent.String, customHeader.String
+}
+
+func GetBurpSuiteProxySettings() (string, int) {
+	var burpProxyIP sql.NullString
+	var burpProxyPort int
+
+	err := dbPool.QueryRow(context.Background(), `
+		SELECT burp_proxy_ip, burp_proxy_port
+		FROM user_settings
+		LIMIT 1
+	`).Scan(&burpProxyIP, &burpProxyPort)
+
+	if err != nil {
+		log.Printf("[ERROR] Failed to fetch Burp Suite proxy settings: %v", err)
+		return "127.0.0.1", 8080
+	}
+
+	ip := burpProxyIP.String
+	if ip == "" {
+		ip = "127.0.0.1"
+	}
+
+	if burpProxyPort == 0 {
+		burpProxyPort = 8080
+	}
+
+	return ip, burpProxyPort
+}
+
+func GetBurpSuiteAPISettings() (string, int, string) {
+	var burpAPIIP, burpAPIKey sql.NullString
+	var burpAPIPort int
+
+	err := dbPool.QueryRow(context.Background(), `
+		SELECT burp_api_ip, burp_api_port, burp_api_key
+		FROM user_settings
+		LIMIT 1
+	`).Scan(&burpAPIIP, &burpAPIPort, &burpAPIKey)
+
+	if err != nil {
+		log.Printf("[ERROR] Failed to fetch Burp Suite API settings: %v", err)
+		return "127.0.0.1", 1337, ""
+	}
+
+	ip := burpAPIIP.String
+	if ip == "" {
+		ip = "127.0.0.1"
+	}
+
+	if burpAPIPort == 0 {
+		burpAPIPort = 1337
+	}
+
+	return ip, burpAPIPort, burpAPIKey.String
+}
+
+func GetBurpSuiteSettings() (string, int, string, int, string) {
+	var burpProxyIP, burpAPIIP, burpAPIKey sql.NullString
+	var burpProxyPort, burpAPIPort int
+
+	err := dbPool.QueryRow(context.Background(), `
+		SELECT burp_proxy_ip, burp_proxy_port, burp_api_ip, burp_api_port, burp_api_key
+		FROM user_settings
+		LIMIT 1
+	`).Scan(&burpProxyIP, &burpProxyPort, &burpAPIIP, &burpAPIPort, &burpAPIKey)
+
+	if err != nil {
+		log.Printf("[ERROR] Failed to fetch Burp Suite settings: %v", err)
+		return "127.0.0.1", 8080, "127.0.0.1", 1337, ""
+	}
+
+	proxyIP := burpProxyIP.String
+	if proxyIP == "" {
+		proxyIP = "127.0.0.1"
+	}
+
+	apiIP := burpAPIIP.String
+	if apiIP == "" {
+		apiIP = "127.0.0.1"
+	}
+
+	if burpProxyPort == 0 {
+		burpProxyPort = 8080
+	}
+
+	if burpAPIPort == 0 {
+		burpAPIPort = 1337
+	}
+
+	return proxyIP, burpProxyPort, apiIP, burpAPIPort, burpAPIKey.String
+}
+
+func GetAiAPIKeyByProvider(provider string) (string, map[string]interface{}, error) {
+	var apiKeyName, keyValuesJSON string
+
+	err := dbPool.QueryRow(context.Background(), `
+		SELECT api_key_name, key_values
+		FROM ai_api_keys
+		WHERE provider = $1
+		LIMIT 1
+	`, provider).Scan(&apiKeyName, &keyValuesJSON)
+
+	if err != nil {
+		log.Printf("[ERROR] Failed to fetch AI API key for provider %s: %v", provider, err)
+		return "", nil, err
+	}
+
+	var keyValues map[string]interface{}
+	if err := json.Unmarshal([]byte(keyValuesJSON), &keyValues); err != nil {
+		log.Printf("[ERROR] Failed to parse AI API key values for provider %s: %v", provider, err)
+		return "", nil, err
+	}
+
+	return apiKeyName, keyValues, nil
+}
+
+func GetAllAiAPIKeys() ([]map[string]interface{}, error) {
+	rows, err := dbPool.Query(context.Background(), `
+		SELECT id, provider, api_key_name, key_values, created_at, updated_at
+		FROM ai_api_keys
+		ORDER BY provider, api_key_name
+	`)
+	if err != nil {
+		log.Printf("[ERROR] Failed to fetch AI API keys: %v", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var aiApiKeys []map[string]interface{}
+	for rows.Next() {
+		var id, provider, apiKeyName, keyValuesJSON string
+		var createdAt, updatedAt time.Time
+
+		err := rows.Scan(&id, &provider, &apiKeyName, &keyValuesJSON, &createdAt, &updatedAt)
+		if err != nil {
+			log.Printf("[ERROR] Error scanning AI API key row: %v", err)
+			continue
+		}
+
+		var keyValues map[string]interface{}
+		if err := json.Unmarshal([]byte(keyValuesJSON), &keyValues); err != nil {
+			log.Printf("[ERROR] Error parsing AI key values: %v", err)
+			continue
+		}
+
+		aiApiKeys = append(aiApiKeys, map[string]interface{}{
+			"id":           id,
+			"provider":     provider,
+			"api_key_name": apiKeyName,
+			"key_values":   keyValues,
+			"created_at":   createdAt,
+			"updated_at":   updatedAt,
+		})
+	}
+
+	return aiApiKeys, nil
+}
+
+func GetAiAPIKeysByProvider(provider string) ([]map[string]interface{}, error) {
+	rows, err := dbPool.Query(context.Background(), `
+		SELECT id, api_key_name, key_values, created_at, updated_at
+		FROM ai_api_keys
+		WHERE provider = $1
+		ORDER BY api_key_name
+	`, provider)
+	if err != nil {
+		log.Printf("[ERROR] Failed to fetch AI API keys for provider %s: %v", provider, err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var aiApiKeys []map[string]interface{}
+	for rows.Next() {
+		var id, apiKeyName, keyValuesJSON string
+		var createdAt, updatedAt time.Time
+
+		err := rows.Scan(&id, &apiKeyName, &keyValuesJSON, &createdAt, &updatedAt)
+		if err != nil {
+			log.Printf("[ERROR] Error scanning AI API key row: %v", err)
+			continue
+		}
+
+		var keyValues map[string]interface{}
+		if err := json.Unmarshal([]byte(keyValuesJSON), &keyValues); err != nil {
+			log.Printf("[ERROR] Error parsing AI key values: %v", err)
+			continue
+		}
+
+		aiApiKeys = append(aiApiKeys, map[string]interface{}{
+			"id":           id,
+			"api_key_name": apiKeyName,
+			"key_values":   keyValues,
+			"created_at":   createdAt,
+			"updated_at":   updatedAt,
+		})
+	}
+
+	return aiApiKeys, nil
 }

@@ -206,6 +206,288 @@ var exportTableQueries = map[string]string{
 		       command, execution_time, created_at, auto_scan_session_id
 		FROM ip_port_scans 
 		WHERE scope_target_id = ANY($1)`,
+
+	// Missing Company scanning tools
+	"cloud_enum_scans": `
+		SELECT id, scan_id, company_name, status, result, error, stdout, stderr, command,
+		       execution_time, created_at, scope_target_id, auto_scan_session_id
+		FROM cloud_enum_scans 
+		WHERE scope_target_id = ANY($1)`,
+
+	"metabigor_company_scans": `
+		SELECT id, scan_id, company_name, status, result, error, stdout, stderr, command,
+		       execution_time, created_at, scope_target_id, auto_scan_session_id
+		FROM metabigor_company_scans 
+		WHERE scope_target_id = ANY($1)`,
+
+	"katana_company_scans": `
+		SELECT id, scan_id, scope_target_id, domains, status, result, error, stdout, stderr,
+		       command, execution_time, created_at, auto_scan_session_id
+		FROM katana_company_scans 
+		WHERE scope_target_id = ANY($1)`,
+
+	"dnsx_company_scans": `
+		SELECT id, scan_id, scope_target_id, domains, status, result, error, stdout, stderr,
+		       command, execution_time, created_at
+		FROM dnsx_company_scans 
+		WHERE scope_target_id = ANY($1)`,
+
+	"securitytrails_company_scans": `
+		SELECT id, scan_id, company_name, status, result, error, stdout, stderr, command,
+		       execution_time, created_at, scope_target_id, auto_scan_session_id
+		FROM securitytrails_company_scans 
+		WHERE scope_target_id = ANY($1)`,
+
+	"github_recon_scans": `
+		SELECT id, scan_id, company_name, status, result, error, stdout, stderr, command,
+		       execution_time, created_at, scope_target_id, auto_scan_session_id
+		FROM github_recon_scans 
+		WHERE scope_target_id = ANY($1)`,
+
+	"shodan_company_scans": `
+		SELECT id, scan_id, company_name, status, result, error, stdout, stderr, command,
+		       execution_time, created_at, scope_target_id, auto_scan_session_id
+		FROM shodan_company_scans 
+		WHERE scope_target_id = ANY($1)`,
+
+	"censys_company_scans": `
+		SELECT id, scan_id, company_name, status, result, error, stdout, stderr, command,
+		       execution_time, created_at, scope_target_id, auto_scan_session_id
+		FROM censys_company_scans 
+		WHERE scope_target_id = ANY($1)`,
+
+	"company_metadata_scans": `
+		SELECT id, scan_id, scope_target_id, ip_port_scan_id, status, error_message,
+		       execution_time, created_at, updated_at
+		FROM company_metadata_scans 
+		WHERE scope_target_id = ANY($1)`,
+
+	"investigate_scans": `
+		SELECT id, scan_id, scope_target_id, status, result, error, stdout, stderr,
+		       command, execution_time, created_at
+		FROM investigate_scans 
+		WHERE scope_target_id = ANY($1)`,
+
+	"shufflednscustom_scans": `
+		SELECT id, scan_id, domain, status, result, error, stdout, stderr, command,
+		       execution_time, created_at, scope_target_id, auto_scan_session_id
+		FROM shufflednscustom_scans 
+		WHERE scope_target_id = ANY($1)`,
+
+	// Child tables and relationship tables that need to be exported with their parent scans
+	"discovered_live_ips": `
+		SELECT dli.id, dli.scan_id, dli.ip_address, dli.hostname, dli.network_range, 
+		       dli.ping_time_ms, dli.discovered_at
+		FROM discovered_live_ips dli
+		JOIN ip_port_scans ips ON dli.scan_id = ips.scan_id
+		WHERE ips.scope_target_id = ANY($1)`,
+
+	"live_web_servers": `
+		SELECT lws.id, lws.scan_id, lws.ip_address, lws.hostname, lws.port, lws.protocol,
+		       lws.url, lws.status_code, lws.title, lws.server_header, lws.content_length,
+		       lws.technologies, lws.response_time_ms, lws.screenshot_path, lws.ssl_info,
+		       lws.http_response_headers, lws.findings_json, lws.last_checked
+		FROM live_web_servers lws
+		JOIN ip_port_scans ips ON lws.scan_id = ips.scan_id
+		WHERE ips.scope_target_id = ANY($1)`,
+
+	"metabigor_network_ranges": `
+		SELECT mnr.id, mnr.scan_id, mnr.cidr_block, mnr.asn, mnr.organization, 
+		       mnr.country, mnr.scan_type, mnr.created_at
+		FROM metabigor_network_ranges mnr
+		JOIN metabigor_company_scans mcs ON mnr.scan_id = mcs.scan_id
+		WHERE mcs.scope_target_id = ANY($1)`,
+
+	"amass_enum_cloud_domains": `
+		SELECT aecd.id, aecd.scan_id, aecd.domain, aecd.type, aecd.created_at
+		FROM amass_enum_cloud_domains aecd
+		JOIN amass_enum_company_scans aecs ON aecd.scan_id = aecs.scan_id
+		WHERE aecs.scope_target_id = ANY($1)`,
+
+	"amass_enum_dns_records": `
+		SELECT aedr.id, aedr.scan_id, aedr.record, aedr.record_type, aedr.created_at
+		FROM amass_enum_dns_records aedr
+		JOIN amass_enum_company_scans aecs ON aedr.scan_id = aecs.scan_id
+		WHERE aecs.scope_target_id = ANY($1)`,
+
+	"amass_enum_raw_results": `
+		SELECT aerr.id, aerr.scan_id, aerr.domain, aerr.raw_output, aerr.created_at
+		FROM amass_enum_raw_results aerr
+		JOIN amass_enum_company_scans aecs ON aerr.scan_id = aecs.scan_id
+		WHERE aecs.scope_target_id = ANY($1)`,
+
+	"dnsx_dns_records": `
+		SELECT ddr.id, ddr.scan_id, ddr.domain, ddr.record, ddr.record_type, ddr.created_at
+		FROM dnsx_dns_records ddr
+		JOIN dnsx_company_scans dcs ON ddr.scan_id = dcs.scan_id
+		WHERE dcs.scope_target_id = ANY($1)`,
+
+	"dnsx_raw_results": `
+		SELECT drr.id, drr.scan_id, drr.domain, drr.raw_output, drr.created_at
+		FROM dnsx_raw_results drr
+		JOIN dnsx_company_scans dcs ON drr.scan_id = dcs.scan_id
+		WHERE dcs.scope_target_id = ANY($1)`,
+
+	"katana_company_cloud_assets": `
+		SELECT id, scope_target_id, root_domain, asset_domain, asset_url, asset_type,
+		       service, description, source_url, region, last_scanned_at, created_at
+		FROM katana_company_cloud_assets 
+		WHERE scope_target_id = ANY($1)`,
+
+	"katana_company_cloud_findings": `
+		SELECT id, scope_target_id, root_domain, finding_domain, finding_url, finding_type,
+		       content, description, cloud_service, context_before, context_after,
+		       match_position, last_scanned_at, created_at
+		FROM katana_company_cloud_findings 
+		WHERE scope_target_id = ANY($1)`,
+
+	"katana_company_domain_results": `
+		SELECT id, scope_target_id, domain, last_scanned_at, last_scan_id, raw_output,
+		       created_at, updated_at
+		FROM katana_company_domain_results 
+		WHERE scope_target_id = ANY($1)`,
+
+	"dnsx_company_domain_results": `
+		SELECT id, scope_target_id, domain, last_scanned_at, last_scan_id, raw_output,
+		       created_at, updated_at
+		FROM dnsx_company_domain_results 
+		WHERE scope_target_id = ANY($1)`,
+
+	"dnsx_company_dns_records": `
+		SELECT id, scope_target_id, root_domain, record, record_type, last_scanned_at, created_at
+		FROM dnsx_company_dns_records 
+		WHERE scope_target_id = ANY($1)`,
+
+	"amass_enum_company_domain_results": `
+		SELECT id, scope_target_id, domain, last_scanned_at, last_scan_id, raw_output,
+		       created_at, updated_at
+		FROM amass_enum_company_domain_results 
+		WHERE scope_target_id = ANY($1)`,
+
+	"amass_enum_company_cloud_domains": `
+		SELECT id, scope_target_id, root_domain, cloud_domain, type, last_scanned_at, created_at
+		FROM amass_enum_company_cloud_domains 
+		WHERE scope_target_id = ANY($1)`,
+
+	"amass_enum_company_dns_records": `
+		SELECT id, scope_target_id, root_domain, record, record_type, last_scanned_at, created_at
+		FROM amass_enum_company_dns_records 
+		WHERE scope_target_id = ANY($1)`,
+
+	// Configuration tables
+	"amass_enum_configs": `
+		SELECT id, scope_target_id, selected_domains, include_wildcard_results, wildcard_domains,
+		       created_at, updated_at
+		FROM amass_enum_configs 
+		WHERE scope_target_id = ANY($1)`,
+
+	"amass_intel_configs": `
+		SELECT id, scope_target_id, selected_network_ranges, created_at, updated_at
+		FROM amass_intel_configs 
+		WHERE scope_target_id = ANY($1)`,
+
+	"dnsx_configs": `
+		SELECT id, scope_target_id, selected_domains, include_wildcard_results, wildcard_domains,
+		       created_at, updated_at
+		FROM dnsx_configs 
+		WHERE scope_target_id = ANY($1)`,
+
+	"katana_company_configs": `
+		SELECT id, scope_target_id, selected_domains, include_wildcard_results, selected_wildcard_domains,
+		       selected_live_web_servers, created_at, updated_at
+		FROM katana_company_configs 
+		WHERE scope_target_id = ANY($1)`,
+
+	"cloud_enum_configs": `
+		SELECT id, scope_target_id, keywords, threads, enabled_platforms, custom_dns_server,
+		       dns_resolver_mode, resolver_config, additional_resolvers, mutations_file_path,
+		       brute_file_path, resolver_file_path, selected_services, selected_regions,
+		       created_at, updated_at
+		FROM cloud_enum_configs 
+		WHERE scope_target_id = ANY($1)`,
+
+	"nuclei_configs": `
+		SELECT id, scope_target_id, targets, templates, severities, uploaded_templates, created_at
+		FROM nuclei_configs 
+		WHERE scope_target_id = ANY($1)`,
+
+	// Basic scan data tables (dns_records, ips, subdomains, etc. are linked to scans by scan_id)
+	"dns_records": `
+		SELECT dr.id, dr.scan_id, dr.record, dr.record_type, dr.created_at
+		FROM dns_records dr
+		JOIN amass_scans a ON dr.scan_id = a.scan_id
+		WHERE a.scope_target_id = ANY($1)`,
+
+	"ips": `
+		SELECT i.id, i.scan_id, i.ip_address, i.created_at
+		FROM ips i
+		JOIN amass_scans a ON i.scan_id = a.scan_id
+		WHERE a.scope_target_id = ANY($1)`,
+
+	"subdomains": `
+		SELECT s.id, s.scan_id, s.subdomain, s.created_at
+		FROM subdomains s
+		JOIN amass_scans a ON s.scan_id = a.scan_id
+		WHERE a.scope_target_id = ANY($1)`,
+
+	"cloud_domains": `
+		SELECT cd.id, cd.scan_id, cd.domain, cd.type, cd.created_at
+		FROM cloud_domains cd
+		JOIN amass_scans a ON cd.scan_id = a.scan_id
+		WHERE a.scope_target_id = ANY($1)`,
+
+	"asns": `
+		SELECT asn.id, asn.scan_id, asn.number, asn.raw_data, asn.created_at
+		FROM asns asn
+		JOIN amass_scans a ON asn.scan_id = a.scan_id
+		WHERE a.scope_target_id = ANY($1)`,
+
+	"subnets": `
+		SELECT sub.id, sub.scan_id, sub.cidr, sub.raw_data, sub.created_at
+		FROM subnets sub
+		JOIN amass_scans a ON sub.scan_id = a.scan_id
+		WHERE a.scope_target_id = ANY($1)`,
+
+	"service_providers": `
+		SELECT sp.id, sp.scan_id, sp.provider, sp.raw_data, sp.created_at
+		FROM service_providers sp
+		JOIN amass_scans a ON sp.scan_id = a.scan_id
+		WHERE a.scope_target_id = ANY($1)`,
+
+	"intel_network_ranges": `
+		SELECT inr.id, inr.scan_id, inr.cidr_block, inr.asn, inr.organization, 
+		       inr.description, inr.country, inr.created_at
+		FROM intel_network_ranges inr
+		JOIN amass_intel_scans ais ON inr.scan_id = ais.scan_id
+		WHERE ais.scope_target_id = ANY($1)`,
+
+	"intel_asn_data": `
+		SELECT iad.id, iad.scan_id, iad.asn_number, iad.organization, 
+		       iad.description, iad.country, iad.created_at
+		FROM intel_asn_data iad
+		JOIN amass_intel_scans ais ON iad.scan_id = ais.scan_id
+		WHERE ais.scope_target_id = ANY($1)`,
+
+	// Attack surface relationship tables
+	"consolidated_attack_surface_relationships": `
+		SELECT casr.id, casr.parent_asset_id, casr.child_asset_id, casr.relationship_type,
+		       casr.relationship_data, casr.created_at
+		FROM consolidated_attack_surface_relationships casr
+		JOIN consolidated_attack_surface_assets casa_parent ON casr.parent_asset_id = casa_parent.id
+		WHERE casa_parent.scope_target_id = ANY($1)`,
+
+	"consolidated_attack_surface_dns_records": `
+		SELECT casdr.id, casdr.asset_id, casdr.record_type, casdr.record_value, casdr.ttl, casdr.created_at
+		FROM consolidated_attack_surface_dns_records casdr
+		JOIN consolidated_attack_surface_assets casa ON casdr.asset_id = casa.id
+		WHERE casa.scope_target_id = ANY($1)`,
+
+	"consolidated_attack_surface_metadata": `
+		SELECT casm.id, casm.asset_id, casm.metadata_type, casm.metadata_key, 
+		       casm.metadata_value, casm.metadata_json, casm.created_at
+		FROM consolidated_attack_surface_metadata casm
+		JOIN consolidated_attack_surface_assets casa ON casm.asset_id = casa.id
+		WHERE casa.scope_target_id = ANY($1)`,
 }
 
 func HandleDatabaseExport(w http.ResponseWriter, r *http.Request) {
@@ -547,13 +829,55 @@ func importScopeTargets(tx pgx.Tx, scopeTargets []map[string]interface{}) error 
 
 func importTableData(tx pgx.Tx, tableData map[string][]map[string]interface{}) error {
 	tableOrder := []string{
-		"auto_scan_sessions", "auto_scan_state", "amass_scans", "amass_intel_scans",
-		"amass_enum_company_scans", "httpx_scans", "gau_scans", "sublist3r_scans",
-		"assetfinder_scans", "ctl_scans", "subfinder_scans", "shuffledns_scans",
-		"cewl_scans", "gospider_scans", "subdomainizer_scans", "nuclei_screenshots",
-		"metadata_scans", "target_urls", "consolidated_subdomains", "consolidated_company_domains",
-		"consolidated_network_ranges", "google_dorking_domains", "reverse_whois_domains",
-		"consolidated_attack_surface_assets", "nuclei_scans", "ip_port_scans",
+		// Parent tables first
+		"auto_scan_sessions", "auto_scan_state",
+
+		// Basic scan tables
+		"amass_scans", "amass_intel_scans", "amass_enum_company_scans",
+		"httpx_scans", "gau_scans", "sublist3r_scans", "assetfinder_scans",
+		"ctl_scans", "subfinder_scans", "shuffledns_scans", "shufflednscustom_scans",
+		"cewl_scans", "gospider_scans", "subdomainizer_scans",
+		"nuclei_screenshots", "metadata_scans", "nuclei_scans",
+
+		// Company scanning tools
+		"cloud_enum_scans", "metabigor_company_scans", "katana_company_scans",
+		"dnsx_company_scans", "securitytrails_company_scans", "github_recon_scans",
+		"shodan_company_scans", "censys_company_scans", "company_metadata_scans",
+		"investigate_scans",
+
+		// IP/Port scanning
+		"ip_port_scans",
+
+		// Child tables of scan tables (must come after parent scans)
+		"dns_records", "ips", "subdomains", "cloud_domains", "asns", "subnets", "service_providers",
+		"intel_network_ranges", "intel_asn_data",
+		"metabigor_network_ranges",
+		"amass_enum_cloud_domains", "amass_enum_dns_records", "amass_enum_raw_results",
+		"dnsx_dns_records", "dnsx_raw_results",
+		"discovered_live_ips", "live_web_servers",
+
+		// Domain-centric result tables
+		"katana_company_domain_results", "dnsx_company_domain_results", "amass_enum_company_domain_results",
+
+		// Child tables of domain result tables
+		"katana_company_cloud_assets", "katana_company_cloud_findings",
+		"dnsx_company_dns_records", "amass_enum_company_cloud_domains", "amass_enum_company_dns_records",
+
+		// Target URLs and consolidated data
+		"target_urls",
+		"consolidated_subdomains", "consolidated_company_domains", "consolidated_network_ranges",
+		"google_dorking_domains", "reverse_whois_domains",
+
+		// Attack surface assets (parent)
+		"consolidated_attack_surface_assets",
+
+		// Attack surface child tables
+		"consolidated_attack_surface_relationships", "consolidated_attack_surface_dns_records",
+		"consolidated_attack_surface_metadata",
+
+		// Configuration tables (can be imported any time after scope_targets)
+		"amass_enum_configs", "amass_intel_configs", "dnsx_configs",
+		"katana_company_configs", "cloud_enum_configs", "nuclei_configs",
 	}
 
 	for _, tableName := range tableOrder {
@@ -564,6 +888,7 @@ func importTableData(tx pgx.Tx, tableData map[string][]map[string]interface{}) e
 		}
 	}
 
+	// Import any remaining tables not in the ordered list
 	for tableName, records := range tableData {
 		found := false
 		for _, orderedTable := range tableOrder {
@@ -589,12 +914,42 @@ func importTableRecords(tx pgx.Tx, tableName string, records []map[string]interf
 
 	log.Printf("[INFO] Importing %d records into table: %s", len(records), tableName)
 
-	for _, record := range records {
+	// Check if table exists first
+	var exists bool
+	err := tx.QueryRow(context.Background(), `
+		SELECT EXISTS (
+			SELECT FROM information_schema.tables 
+			WHERE table_schema = 'public' 
+			AND table_name = $1
+		)`, tableName).Scan(&exists)
+
+	if err != nil {
+		log.Printf("[ERROR] Failed to check if table %s exists: %v", tableName, err)
+		return fmt.Errorf("failed to check if table %s exists: %v", tableName, err)
+	}
+
+	if !exists {
+		log.Printf("[WARN] Table %s does not exist, skipping import", tableName)
+		return nil
+	}
+
+	successCount := 0
+	for i, record := range records {
 		if err := importSingleRecord(tx, tableName, record); err != nil {
-			log.Printf("[WARN] Failed to import record in table %s: %v", tableName, err)
+			log.Printf("[WARN] Failed to import record %d in table %s: %v", i+1, tableName, err)
+			log.Printf("[WARN] Record data: %+v", record)
+
+			// For foreign key constraint violations, this is expected if parent doesn't exist
+			if strings.Contains(err.Error(), "foreign key constraint") ||
+				strings.Contains(err.Error(), "violates foreign key constraint") {
+				log.Printf("[WARN] Skipping record due to foreign key constraint - parent record may not exist")
+			}
+		} else {
+			successCount++
 		}
 	}
 
+	log.Printf("[INFO] Successfully imported %d/%d records into table: %s", successCount, len(records), tableName)
 	return nil
 }
 
@@ -616,16 +971,75 @@ func importSingleRecord(tx pgx.Tx, tableName string, record map[string]interface
 		i++
 	}
 
+	// Use savepoint to handle constraint violations gracefully
+	savepointName := fmt.Sprintf("sp_%s_%d", tableName, time.Now().UnixNano())
+
+	_, err := tx.Exec(context.Background(), fmt.Sprintf("SAVEPOINT %s", savepointName))
+	if err != nil {
+		return fmt.Errorf("failed to create savepoint: %v", err)
+	}
+
+	// Special handling for tables that have foreign key constraints on scan_id
+	var conflictColumn string
+	switch tableName {
+	case "dnsx_dns_records", "dnsx_raw_results", "amass_enum_dns_records", "amass_enum_raw_results",
+		"amass_enum_cloud_domains", "metabigor_network_ranges", "discovered_live_ips", "live_web_servers",
+		"dns_records", "ips", "subdomains", "cloud_domains", "asns", "subnets", "service_providers",
+		"intel_network_ranges", "intel_asn_data":
+		// These tables might have unique constraints on combinations of fields rather than just id
+		// Use INSERT without ON CONFLICT to let foreign key constraints work properly
+		query := fmt.Sprintf(`INSERT INTO %s (%s) VALUES (%s)`,
+			tableName,
+			strings.Join(columns, ", "),
+			strings.Join(placeholders, ", "))
+
+		_, err := tx.Exec(context.Background(), query, values...)
+		if err != nil {
+			// Rollback to savepoint on error
+			_, rollbackErr := tx.Exec(context.Background(), fmt.Sprintf("ROLLBACK TO SAVEPOINT %s", savepointName))
+			if rollbackErr != nil {
+				return fmt.Errorf("failed to rollback savepoint: %v", rollbackErr)
+			}
+
+			// If it's a constraint violation, that's expected - continue
+			if strings.Contains(err.Error(), "duplicate key") ||
+				strings.Contains(err.Error(), "already exists") ||
+				strings.Contains(err.Error(), "foreign key constraint") ||
+				strings.Contains(err.Error(), "violates") {
+				_, _ = tx.Exec(context.Background(), fmt.Sprintf("RELEASE SAVEPOINT %s", savepointName))
+				return nil
+			}
+			return fmt.Errorf("failed to insert into %s: %v", tableName, err)
+		}
+
+		_, _ = tx.Exec(context.Background(), fmt.Sprintf("RELEASE SAVEPOINT %s", savepointName))
+		return nil
+	default:
+		conflictColumn = "id"
+	}
+
 	query := fmt.Sprintf(`
 		INSERT INTO %s (%s) VALUES (%s)
-		ON CONFLICT (id) DO UPDATE SET %s`,
+		ON CONFLICT (%s) DO UPDATE SET %s`,
 		tableName,
 		strings.Join(columns, ", "),
 		strings.Join(placeholders, ", "),
+		conflictColumn,
 		strings.Join(updateClauses, ", "))
 
-	_, err := tx.Exec(context.Background(), query, values...)
-	return err
+	_, err = tx.Exec(context.Background(), query, values...)
+	if err != nil {
+		// Rollback to savepoint on error
+		_, rollbackErr := tx.Exec(context.Background(), fmt.Sprintf("ROLLBACK TO SAVEPOINT %s", savepointName))
+		if rollbackErr != nil {
+			return fmt.Errorf("failed to rollback savepoint: %v", rollbackErr)
+		}
+		_, _ = tx.Exec(context.Background(), fmt.Sprintf("RELEASE SAVEPOINT %s", savepointName))
+		return fmt.Errorf("failed to insert/update %s record: %v", tableName, err)
+	}
+
+	_, _ = tx.Exec(context.Background(), fmt.Sprintf("RELEASE SAVEPOINT %s", savepointName))
+	return nil
 }
 
 func GetScopeTargetsForExport(w http.ResponseWriter, r *http.Request) {

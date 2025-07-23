@@ -184,6 +184,12 @@ func main() {
 	r.HandleFunc("/api/api-keys", createAPIKey).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/api-keys/{id}", updateAPIKey).Methods("PUT", "OPTIONS")
 	r.HandleFunc("/api/api-keys/{id}", deleteAPIKey).Methods("DELETE", "OPTIONS")
+
+	// AI API Keys routes
+	r.HandleFunc("/api/ai-api-keys", getAiAPIKeys).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/ai-api-keys", createAiAPIKey).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/ai-api-keys/{id}", updateAiAPIKey).Methods("PUT", "OPTIONS")
+	r.HandleFunc("/api/ai-api-keys/{id}", deleteAiAPIKey).Methods("DELETE", "OPTIONS")
 	r.HandleFunc("/securitytrails-company/run", utils.RunSecurityTrailsCompanyScan).Methods("POST", "OPTIONS")
 	r.HandleFunc("/securitytrails-company/status/{scan_id}", utils.GetSecurityTrailsCompanyScanStatus).Methods("GET", "OPTIONS")
 	r.HandleFunc("/scopetarget/{id}/scans/securitytrails-company", utils.GetSecurityTrailsCompanyScansForScopeTarget).Methods("GET", "OPTIONS")
@@ -304,15 +310,21 @@ func getUserSettings(w http.ResponseWriter, r *http.Request) {
 			subdomainizer_rate_limit,
 			nuclei_screenshot_rate_limit,
 			custom_user_agent,
-			custom_header
+			custom_header,
+			burp_proxy_ip,
+			burp_proxy_port,
+			burp_api_ip,
+			burp_api_port,
+			burp_api_key
 		FROM user_settings
 		LIMIT 1
 	`)
 
 	var amassRateLimit, httpxRateLimit, subfinderRateLimit, gauRateLimit,
 		sublist3rRateLimit, ctlRateLimit, shufflednsRateLimit,
-		cewlRateLimit, gospiderRateLimit, subdomainizerRateLimit, nucleiScreenshotRateLimit int
-	var customUserAgent, customHeader sql.NullString
+		cewlRateLimit, gospiderRateLimit, subdomainizerRateLimit, nucleiScreenshotRateLimit,
+		burpProxyPort, burpApiPort int
+	var customUserAgent, customHeader, burpProxyIP, burpApiIP, burpApiKey sql.NullString
 
 	err := row.Scan(
 		&amassRateLimit,
@@ -328,6 +340,11 @@ func getUserSettings(w http.ResponseWriter, r *http.Request) {
 		&nucleiScreenshotRateLimit,
 		&customUserAgent,
 		&customHeader,
+		&burpProxyIP,
+		&burpProxyPort,
+		&burpApiIP,
+		&burpApiPort,
+		&burpApiKey,
 	)
 
 	if err != nil {
@@ -347,6 +364,11 @@ func getUserSettings(w http.ResponseWriter, r *http.Request) {
 			"nuclei_screenshot_rate_limit": 20,
 			"custom_user_agent":            "",
 			"custom_header":                "",
+			"burp_proxy_ip":                "127.0.0.1",
+			"burp_proxy_port":              8080,
+			"burp_api_ip":                  "127.0.0.1",
+			"burp_api_port":                1337,
+			"burp_api_key":                 "",
 		}
 	} else {
 		settings = map[string]interface{}{
@@ -363,6 +385,11 @@ func getUserSettings(w http.ResponseWriter, r *http.Request) {
 			"nuclei_screenshot_rate_limit": nucleiScreenshotRateLimit,
 			"custom_user_agent":            customUserAgent.String,
 			"custom_header":                customHeader.String,
+			"burp_proxy_ip":                burpProxyIP.String,
+			"burp_proxy_port":              burpProxyPort,
+			"burp_api_ip":                  burpApiIP.String,
+			"burp_api_port":                burpApiPort,
+			"burp_api_key":                 burpApiKey.String,
 		}
 	}
 
@@ -400,6 +427,11 @@ func updateUserSettings(w http.ResponseWriter, r *http.Request) {
 			nuclei_screenshot_rate_limit = $11,
 			custom_user_agent = $12,
 			custom_header = $13,
+			burp_proxy_ip = $14,
+			burp_proxy_port = $15,
+			burp_api_ip = $16,
+			burp_api_port = $17,
+			burp_api_key = $18,
 			updated_at = NOW()
 	`,
 		getIntSetting(settings, "amass_rate_limit", 10),
@@ -415,6 +447,11 @@ func updateUserSettings(w http.ResponseWriter, r *http.Request) {
 		getIntSetting(settings, "nuclei_screenshot_rate_limit", 20),
 		settings["custom_user_agent"],
 		settings["custom_header"],
+		getStringSetting(settings, "burp_proxy_ip", "127.0.0.1"),
+		getIntSetting(settings, "burp_proxy_port", 8080),
+		getStringSetting(settings, "burp_api_ip", "127.0.0.1"),
+		getIntSetting(settings, "burp_api_port", 1337),
+		getStringSetting(settings, "burp_api_key", ""),
 	)
 
 	if err != nil {
@@ -441,6 +478,16 @@ func getIntSetting(settings map[string]interface{}, key string, defaultValue int
 			if intVal, err := strconv.Atoi(v); err == nil {
 				return intVal
 			}
+		}
+	}
+	return defaultValue
+}
+
+// Helper function to get string settings with default values
+func getStringSetting(settings map[string]interface{}, key string, defaultValue string) string {
+	if val, ok := settings[key]; ok {
+		if strVal, ok := val.(string); ok {
+			return strVal
 		}
 	}
 	return defaultValue
@@ -1535,6 +1582,200 @@ func deleteAPIKey(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"message": "API key deleted successfully"})
+}
+
+func getAiAPIKeys(w http.ResponseWriter, r *http.Request) {
+	rows, err := dbPool.Query(context.Background(), `
+		SELECT id, provider, api_key_name, key_values, created_at, updated_at
+		FROM ai_api_keys
+		ORDER BY provider, api_key_name
+	`)
+	if err != nil {
+		log.Printf("Error fetching AI API keys: %v", err)
+		http.Error(w, "Failed to fetch AI API keys", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var aiApiKeys []map[string]interface{}
+	for rows.Next() {
+		var id, provider, apiKeyName, keyValuesJSON string
+		var createdAt, updatedAt time.Time
+
+		err := rows.Scan(&id, &provider, &apiKeyName, &keyValuesJSON, &createdAt, &updatedAt)
+		if err != nil {
+			log.Printf("Error scanning AI API key row: %v", err)
+			continue
+		}
+
+		// Parse the key_values JSON
+		var keyValues map[string]interface{}
+		if err := json.Unmarshal([]byte(keyValuesJSON), &keyValues); err != nil {
+			log.Printf("Error parsing AI key values: %v", err)
+			continue
+		}
+
+		// Mask sensitive values
+		maskedKeyValues := make(map[string]interface{})
+		for key, value := range keyValues {
+			if strValue, ok := value.(string); ok && strValue != "" {
+				if len(strValue) > 4 {
+					maskedKeyValues[key] = strings.Repeat("*", len(strValue)-4) + strValue[len(strValue)-4:]
+				} else {
+					maskedKeyValues[key] = strings.Repeat("*", len(strValue))
+				}
+			} else {
+				maskedKeyValues[key] = value
+			}
+		}
+
+		aiApiKeys = append(aiApiKeys, map[string]interface{}{
+			"id":           id,
+			"provider":     provider,
+			"api_key_name": apiKeyName,
+			"key_values":   maskedKeyValues,
+			"created_at":   createdAt,
+			"updated_at":   updatedAt,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(aiApiKeys)
+}
+
+func createAiAPIKey(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		Provider  string                 `json:"provider"`
+		KeyName   string                 `json:"api_key_name"`
+		KeyValues map[string]interface{} `json:"key_values"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		log.Printf("[ERROR] Failed to decode AI API key request: %v", err)
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Log the incoming request data
+	log.Printf("[DEBUG] Incoming AI API key request:")
+	log.Printf("  Provider: %s", request.Provider)
+	log.Printf("  Key Name: %s", request.KeyName)
+
+	// Validate required fields
+	if request.Provider == "" || request.KeyName == "" {
+		log.Printf("[ERROR] Missing required fields - Provider: %v, Key Name: %v", request.Provider == "", request.KeyName == "")
+		http.Error(w, "Missing required fields", http.StatusBadRequest)
+		return
+	}
+
+	// Validate that API key is provided for all providers
+	if apiKey, ok := request.KeyValues["api_key"].(string); !ok || apiKey == "" {
+		log.Printf("[ERROR] Missing API key for provider: %s", request.Provider)
+		http.Error(w, "Missing API key", http.StatusBadRequest)
+		return
+	}
+
+	// Convert key_values to JSON string
+	keyValuesJSON, err := json.Marshal(request.KeyValues)
+	if err != nil {
+		log.Printf("[ERROR] Failed to marshal AI key values: %v", err)
+		http.Error(w, "Failed to process key values", http.StatusInternalServerError)
+		return
+	}
+
+	// Log the data being stored
+	log.Printf("[DEBUG] Storing AI API key in database:")
+	log.Printf("  Provider: %s", request.Provider)
+	log.Printf("  Key Name: %s", request.KeyName)
+
+	// Try to insert the AI API key
+	_, err = dbPool.Exec(context.Background(), `
+		INSERT INTO ai_api_keys (provider, api_key_name, key_values)
+		VALUES ($1, $2, $3)
+	`, request.Provider, request.KeyName, string(keyValuesJSON))
+
+	if err != nil {
+		// Check if this is a unique constraint violation
+		if strings.Contains(err.Error(), "unique constraint") {
+			log.Printf("[ERROR] AI API key with name '%s' already exists for provider '%s'", request.KeyName, request.Provider)
+			http.Error(w, fmt.Sprintf("An API key with name '%s' already exists for %s", request.KeyName, request.Provider), http.StatusConflict)
+			return
+		}
+		// Any other database error
+		log.Printf("[ERROR] Failed to store AI API key: %v", err)
+		http.Error(w, "Failed to store AI API key", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("[DEBUG] AI API key stored successfully")
+	w.WriteHeader(http.StatusCreated)
+}
+
+func updateAiAPIKey(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id := vars["id"]
+
+	var request struct {
+		APIKeyName string                 `json:"api_key_name"`
+		KeyValues  map[string]interface{} `json:"key_values"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Convert key_values to JSON string
+	keyValuesJSON, err := json.Marshal(request.KeyValues)
+	if err != nil {
+		http.Error(w, "Failed to process key values", http.StatusInternalServerError)
+		return
+	}
+
+	result, err := dbPool.Exec(context.Background(), `
+		UPDATE ai_api_keys 
+		SET api_key_name = $1, key_values = $2, updated_at = NOW()
+		WHERE id = $3
+	`, request.APIKeyName, string(keyValuesJSON), id)
+
+	if err != nil {
+		log.Printf("Error updating AI API key: %v", err)
+		http.Error(w, "Failed to update AI API key", http.StatusInternalServerError)
+		return
+	}
+
+	rowsAffected := result.RowsAffected()
+	if rowsAffected == 0 {
+		http.Error(w, "AI API key not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"message": "AI API key updated successfully"})
+}
+
+func deleteAiAPIKey(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id := vars["id"]
+
+	result, err := dbPool.Exec(context.Background(), `
+		DELETE FROM ai_api_keys WHERE id = $1
+	`, id)
+
+	if err != nil {
+		log.Printf("Error deleting AI API key: %v", err)
+		http.Error(w, "Failed to delete AI API key", http.StatusInternalServerError)
+		return
+	}
+
+	rowsAffected := result.RowsAffected()
+	if rowsAffected == 0 {
+		http.Error(w, "AI API key not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"message": "AI API key deleted successfully"})
 }
 
 func getCompanyDomainsByTool(w http.ResponseWriter, r *http.Request) {

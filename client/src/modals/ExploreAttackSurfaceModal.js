@@ -274,7 +274,7 @@ const ExploreAttackSurfaceModal = ({
         return <span className="text-white-50">-</span>;
       case 'url':
         return (
-          <div style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <div>
             <a href={asset.url} target="_blank" rel="noopener noreferrer" className="text-info">
               {asset.url}
             </a>
@@ -368,7 +368,7 @@ const ExploreAttackSurfaceModal = ({
                 </Badge>
               )}
               {asset.title && (
-                <div className="small text-white-50 mt-1" style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <div className="small text-white-50 mt-1">
                   {asset.title}
                 </div>
               )}
