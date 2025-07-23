@@ -636,6 +636,7 @@ func exportDatabaseData(scopeTargetIDs []string) (*ExportData, error) {
 	totalRecords := len(scopeTargets)
 	var tablesExported []string
 
+	// First pass: export all regular tables
 	for tableName, query := range exportTableQueries {
 		log.Printf("[INFO] Exporting data from table: %s", tableName)
 
@@ -661,6 +662,12 @@ func exportDatabaseData(scopeTargetIDs []string) (*ExportData, error) {
 		}
 	}
 
+	// Second pass: ensure parent domain records exist for all child records
+	log.Printf("[INFO] Ensuring parent domain records are complete...")
+	if err := ensureParentDomainRecords(exportData, scopeTargetIDs); err != nil {
+		log.Printf("[WARN] Failed to ensure parent domain records: %v", err)
+	}
+
 	exportData.ExportMetadata = ExportMetadata{
 		ExportedAt:     time.Now(),
 		Version:        "1.0",
@@ -671,6 +678,162 @@ func exportDatabaseData(scopeTargetIDs []string) (*ExportData, error) {
 	}
 
 	return exportData, nil
+}
+
+func ensureParentDomainRecords(exportData *ExportData, scopeTargetIDs []string) error {
+	// Track which parent domain records we already have
+	existingParents := make(map[string]bool)
+
+	// Check amass_enum_company_domain_results
+	if amassParents, exists := exportData.TableData["amass_enum_company_domain_results"]; exists {
+		for _, record := range amassParents {
+			scopeTargetID, _ := record["scope_target_id"].(string)
+			domain, _ := record["domain"].(string)
+			key := scopeTargetID + "|" + domain
+			existingParents[key] = true
+		}
+	}
+
+	// Check dnsx_company_domain_results
+	if dnsxParents, exists := exportData.TableData["dnsx_company_domain_results"]; exists {
+		for _, record := range dnsxParents {
+			scopeTargetID, _ := record["scope_target_id"].(string)
+			domain, _ := record["domain"].(string)
+			key := scopeTargetID + "|" + domain
+			existingParents[key] = true
+		}
+	}
+
+	// Check katana_company_domain_results
+	if katanaParents, exists := exportData.TableData["katana_company_domain_results"]; exists {
+		for _, record := range katanaParents {
+			scopeTargetID, _ := record["scope_target_id"].(string)
+			domain, _ := record["domain"].(string)
+			key := scopeTargetID + "|" + domain
+			existingParents[key] = true
+		}
+	}
+
+	// Find missing parents and create them
+	missingParents := make(map[string]map[string]interface{})
+
+	// Check amass_enum child tables
+	for _, tableName := range []string{"amass_enum_company_dns_records", "amass_enum_company_cloud_domains"} {
+		if childRecords, exists := exportData.TableData[tableName]; exists {
+			for _, record := range childRecords {
+				scopeTargetID, _ := record["scope_target_id"].(string)
+				rootDomain, _ := record["root_domain"].(string)
+				key := scopeTargetID + "|" + rootDomain
+
+				if !existingParents[key] && rootDomain != "" && scopeTargetID != "" {
+					missingParents[key] = map[string]interface{}{
+						"id":              uuid.New().String(),
+						"scope_target_id": scopeTargetID,
+						"domain":          rootDomain,
+						"last_scanned_at": time.Now(),
+						"created_at":      time.Now(),
+						"updated_at":      time.Now(),
+						"last_scan_id":    nil,
+						"raw_output":      nil,
+					}
+					existingParents[key] = true
+					log.Printf("[INFO] Will create missing amass_enum parent for: %s", key)
+				}
+			}
+		}
+	}
+
+	// Add missing amass_enum parents
+	if len(missingParents) > 0 {
+		if exportData.TableData["amass_enum_company_domain_results"] == nil {
+			exportData.TableData["amass_enum_company_domain_results"] = []map[string]interface{}{}
+		}
+		for _, parent := range missingParents {
+			exportData.TableData["amass_enum_company_domain_results"] = append(
+				exportData.TableData["amass_enum_company_domain_results"], parent)
+		}
+		log.Printf("[INFO] Added %d missing amass_enum parent domain records", len(missingParents))
+	}
+
+	// Reset and check dnsx child tables
+	missingParents = make(map[string]map[string]interface{})
+	for _, tableName := range []string{"dnsx_company_dns_records"} {
+		if childRecords, exists := exportData.TableData[tableName]; exists {
+			for _, record := range childRecords {
+				scopeTargetID, _ := record["scope_target_id"].(string)
+				rootDomain, _ := record["root_domain"].(string)
+				key := scopeTargetID + "|" + rootDomain
+
+				if !existingParents[key] && rootDomain != "" && scopeTargetID != "" {
+					missingParents[key] = map[string]interface{}{
+						"id":              uuid.New().String(),
+						"scope_target_id": scopeTargetID,
+						"domain":          rootDomain,
+						"last_scanned_at": time.Now(),
+						"created_at":      time.Now(),
+						"updated_at":      time.Now(),
+						"last_scan_id":    nil,
+						"raw_output":      nil,
+					}
+					existingParents[key] = true
+					log.Printf("[INFO] Will create missing dnsx parent for: %s", key)
+				}
+			}
+		}
+	}
+
+	// Add missing dnsx parents
+	if len(missingParents) > 0 {
+		if exportData.TableData["dnsx_company_domain_results"] == nil {
+			exportData.TableData["dnsx_company_domain_results"] = []map[string]interface{}{}
+		}
+		for _, parent := range missingParents {
+			exportData.TableData["dnsx_company_domain_results"] = append(
+				exportData.TableData["dnsx_company_domain_results"], parent)
+		}
+		log.Printf("[INFO] Added %d missing dnsx parent domain records", len(missingParents))
+	}
+
+	// Reset and check katana child tables
+	missingParents = make(map[string]map[string]interface{})
+	for _, tableName := range []string{"katana_company_cloud_assets", "katana_company_cloud_findings"} {
+		if childRecords, exists := exportData.TableData[tableName]; exists {
+			for _, record := range childRecords {
+				scopeTargetID, _ := record["scope_target_id"].(string)
+				rootDomain, _ := record["root_domain"].(string)
+				key := scopeTargetID + "|" + rootDomain
+
+				if !existingParents[key] && rootDomain != "" && scopeTargetID != "" {
+					missingParents[key] = map[string]interface{}{
+						"id":              uuid.New().String(),
+						"scope_target_id": scopeTargetID,
+						"domain":          rootDomain,
+						"last_scanned_at": time.Now(),
+						"created_at":      time.Now(),
+						"updated_at":      time.Now(),
+						"last_scan_id":    nil,
+						"raw_output":      nil,
+					}
+					existingParents[key] = true
+					log.Printf("[INFO] Will create missing katana parent for: %s", key)
+				}
+			}
+		}
+	}
+
+	// Add missing katana parents
+	if len(missingParents) > 0 {
+		if exportData.TableData["katana_company_domain_results"] == nil {
+			exportData.TableData["katana_company_domain_results"] = []map[string]interface{}{}
+		}
+		for _, parent := range missingParents {
+			exportData.TableData["katana_company_domain_results"] = append(
+				exportData.TableData["katana_company_domain_results"], parent)
+		}
+		log.Printf("[INFO] Added %d missing katana parent domain records", len(missingParents))
+	}
+
+	return nil
 }
 
 func getScopeTargetsForExport(scopeTargetIDs []string) ([]map[string]interface{}, error) {
@@ -957,29 +1120,6 @@ func importSingleRecord(tx pgx.Tx, tableName string, record map[string]interface
 	// Convert UUID fields
 	record = convertRecordUUIDs(record)
 
-	// Log what we're trying to import for debugging
-	if tableName == "amass_enum_company_dns_records" || tableName == "amass_enum_company_cloud_domains" {
-		scopeTargetID, _ := record["scope_target_id"].(string)
-		rootDomain, _ := record["root_domain"].(string)
-		log.Printf("[DEBUG] Importing %s: scope_target_id=%s, root_domain=%s", tableName, scopeTargetID, rootDomain)
-
-		// Check if parent exists
-		var exists bool
-		err := tx.QueryRow(context.Background(),
-			`SELECT EXISTS(SELECT 1 FROM amass_enum_company_domain_results WHERE scope_target_id = $1 AND domain = $2)`,
-			scopeTargetID, rootDomain).Scan(&exists)
-
-		if err != nil {
-			log.Printf("[WARN] Failed to check parent record existence for %s: %v", tableName, err)
-		} else if !exists {
-			log.Printf("[WARN] Parent record missing in amass_enum_company_domain_results for scope_target_id=%s, domain=%s - SKIPPING child record",
-				scopeTargetID, rootDomain)
-			return nil // Skip this record
-		} else {
-			log.Printf("[DEBUG] Parent record exists for %s", tableName)
-		}
-	}
-
 	var columns []string
 	var placeholders []string
 	var values []interface{}
@@ -1020,7 +1160,6 @@ func importSingleRecord(tx pgx.Tx, tableName string, record map[string]interface
 			log.Printf("[WARN] Failed to rollback to savepoint for %s: %v", tableName, rollbackErr)
 		}
 		log.Printf("[WARN] Failed to insert record into %s: %v", tableName, err)
-		log.Printf("[WARN] Failed record data: %+v", record)
 		return nil // Continue with next record
 	} else {
 		// Release savepoint on success
