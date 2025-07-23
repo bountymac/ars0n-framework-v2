@@ -957,6 +957,29 @@ func importSingleRecord(tx pgx.Tx, tableName string, record map[string]interface
 	// Convert UUID fields
 	record = convertRecordUUIDs(record)
 
+	// Log what we're trying to import for debugging
+	if tableName == "amass_enum_company_dns_records" || tableName == "amass_enum_company_cloud_domains" {
+		scopeTargetID, _ := record["scope_target_id"].(string)
+		rootDomain, _ := record["root_domain"].(string)
+		log.Printf("[DEBUG] Importing %s: scope_target_id=%s, root_domain=%s", tableName, scopeTargetID, rootDomain)
+
+		// Check if parent exists
+		var exists bool
+		err := tx.QueryRow(context.Background(),
+			`SELECT EXISTS(SELECT 1 FROM amass_enum_company_domain_results WHERE scope_target_id = $1 AND domain = $2)`,
+			scopeTargetID, rootDomain).Scan(&exists)
+
+		if err != nil {
+			log.Printf("[WARN] Failed to check parent record existence for %s: %v", tableName, err)
+		} else if !exists {
+			log.Printf("[WARN] Parent record missing in amass_enum_company_domain_results for scope_target_id=%s, domain=%s - SKIPPING child record",
+				scopeTargetID, rootDomain)
+			return nil // Skip this record
+		} else {
+			log.Printf("[DEBUG] Parent record exists for %s", tableName)
+		}
+	}
+
 	var columns []string
 	var placeholders []string
 	var values []interface{}
@@ -976,55 +999,17 @@ func importSingleRecord(tx pgx.Tx, tableName string, record map[string]interface
 
 	_, err := tx.Exec(context.Background(), fmt.Sprintf("SAVEPOINT %s", savepointName))
 	if err != nil {
-		return fmt.Errorf("failed to create savepoint: %v", err)
+		log.Printf("[WARN] Failed to create savepoint for %s: %v", tableName, err)
+		return nil // Continue without savepoint
 	}
 
-	// Special handling for tables that have foreign key constraints on scan_id
-	var conflictColumn string
-	switch tableName {
-	case "dnsx_dns_records", "dnsx_raw_results", "amass_enum_dns_records", "amass_enum_raw_results",
-		"amass_enum_cloud_domains", "metabigor_network_ranges", "discovered_live_ips", "live_web_servers",
-		"dns_records", "ips", "subdomains", "cloud_domains", "asns", "subnets", "service_providers",
-		"intel_network_ranges", "intel_asn_data":
-		// These tables might have unique constraints on combinations of fields rather than just id
-		// Use INSERT without ON CONFLICT to let foreign key constraints work properly
-		query := fmt.Sprintf(`INSERT INTO %s (%s) VALUES (%s)`,
-			tableName,
-			strings.Join(columns, ", "),
-			strings.Join(placeholders, ", "))
-
-		_, err := tx.Exec(context.Background(), query, values...)
-		if err != nil {
-			// Rollback to savepoint on error
-			_, rollbackErr := tx.Exec(context.Background(), fmt.Sprintf("ROLLBACK TO SAVEPOINT %s", savepointName))
-			if rollbackErr != nil {
-				return fmt.Errorf("failed to rollback savepoint: %v", rollbackErr)
-			}
-
-			// If it's a constraint violation, that's expected - continue
-			if strings.Contains(err.Error(), "duplicate key") ||
-				strings.Contains(err.Error(), "already exists") ||
-				strings.Contains(err.Error(), "foreign key constraint") ||
-				strings.Contains(err.Error(), "violates") {
-				_, _ = tx.Exec(context.Background(), fmt.Sprintf("RELEASE SAVEPOINT %s", savepointName))
-				return nil
-			}
-			return fmt.Errorf("failed to insert into %s: %v", tableName, err)
-		}
-
-		_, _ = tx.Exec(context.Background(), fmt.Sprintf("RELEASE SAVEPOINT %s", savepointName))
-		return nil
-	default:
-		conflictColumn = "id"
-	}
-
+	// Build the upsert query
 	query := fmt.Sprintf(`
 		INSERT INTO %s (%s) VALUES (%s)
-		ON CONFLICT (%s) DO UPDATE SET %s`,
+		ON CONFLICT (id) DO UPDATE SET %s`,
 		tableName,
 		strings.Join(columns, ", "),
 		strings.Join(placeholders, ", "),
-		conflictColumn,
 		strings.Join(updateClauses, ", "))
 
 	_, err = tx.Exec(context.Background(), query, values...)
@@ -1032,13 +1017,16 @@ func importSingleRecord(tx pgx.Tx, tableName string, record map[string]interface
 		// Rollback to savepoint on error
 		_, rollbackErr := tx.Exec(context.Background(), fmt.Sprintf("ROLLBACK TO SAVEPOINT %s", savepointName))
 		if rollbackErr != nil {
-			return fmt.Errorf("failed to rollback savepoint: %v", rollbackErr)
+			log.Printf("[WARN] Failed to rollback to savepoint for %s: %v", tableName, rollbackErr)
 		}
+		log.Printf("[WARN] Failed to insert record into %s: %v", tableName, err)
+		log.Printf("[WARN] Failed record data: %+v", record)
+		return nil // Continue with next record
+	} else {
+		// Release savepoint on success
 		_, _ = tx.Exec(context.Background(), fmt.Sprintf("RELEASE SAVEPOINT %s", savepointName))
-		return fmt.Errorf("failed to insert/update %s record: %v", tableName, err)
 	}
 
-	_, _ = tx.Exec(context.Background(), fmt.Sprintf("RELEASE SAVEPOINT %s", savepointName))
 	return nil
 }
 
@@ -1078,4 +1066,100 @@ func GetScopeTargetsForExport(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(targets)
 
 	log.Printf("[INFO] Returned %d scope targets for export", len(targets))
+}
+
+func DebugExportFile(w http.ResponseWriter, r *http.Request) {
+	var req DatabaseImportRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Parse the export data
+	reader := bytes.NewReader(req.Data)
+	gzReader, err := gzip.NewReader(reader)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to create gzip reader: %v", err), http.StatusInternalServerError)
+		return
+	}
+	defer gzReader.Close()
+
+	var exportData ExportData
+	if err := json.NewDecoder(gzReader).Decode(&exportData); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to decode export data: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("[DEBUG] Export file contains %d scope targets and %d tables",
+		len(exportData.ScopeTargets), len(exportData.TableData))
+
+	debug := map[string]interface{}{
+		"metadata":            exportData.ExportMetadata,
+		"scope_targets":       len(exportData.ScopeTargets),
+		"tables":              make(map[string]int),
+		"amass_enum_analysis": analyzeAmassEnumData(exportData.TableData),
+	}
+
+	for tableName, records := range exportData.TableData {
+		debug["tables"].(map[string]int)[tableName] = len(records)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(debug)
+}
+
+func analyzeAmassEnumData(tableData map[string][]map[string]interface{}) map[string]interface{} {
+	analysis := map[string]interface{}{
+		"parent_domains":      []string{},
+		"child_dns_records":   []string{},
+		"child_cloud_domains": []string{},
+		"missing_parents":     []string{},
+	}
+
+	// Get all parent domain records
+	parentDomains := make(map[string]bool)
+	if parentRecords, exists := tableData["amass_enum_company_domain_results"]; exists {
+		for _, record := range parentRecords {
+			scopeTargetID, _ := record["scope_target_id"].(string)
+			domain, _ := record["domain"].(string)
+			key := scopeTargetID + "|" + domain
+			parentDomains[key] = true
+			analysis["parent_domains"] = append(analysis["parent_domains"].([]string), key)
+		}
+	}
+
+	// Check DNS records for missing parents
+	missingParents := make(map[string]bool)
+	if dnsRecords, exists := tableData["amass_enum_company_dns_records"]; exists {
+		for _, record := range dnsRecords {
+			scopeTargetID, _ := record["scope_target_id"].(string)
+			rootDomain, _ := record["root_domain"].(string)
+			key := scopeTargetID + "|" + rootDomain
+			analysis["child_dns_records"] = append(analysis["child_dns_records"].([]string), key)
+
+			if !parentDomains[key] {
+				missingParents[key] = true
+			}
+		}
+	}
+
+	// Check cloud domains for missing parents
+	if cloudDomains, exists := tableData["amass_enum_company_cloud_domains"]; exists {
+		for _, record := range cloudDomains {
+			scopeTargetID, _ := record["scope_target_id"].(string)
+			rootDomain, _ := record["root_domain"].(string)
+			key := scopeTargetID + "|" + rootDomain
+			analysis["child_cloud_domains"] = append(analysis["child_cloud_domains"].([]string), key)
+
+			if !parentDomains[key] {
+				missingParents[key] = true
+			}
+		}
+	}
+
+	for key := range missingParents {
+		analysis["missing_parents"] = append(analysis["missing_parents"].([]string), key)
+	}
+
+	return analysis
 }
