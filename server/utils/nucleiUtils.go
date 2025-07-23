@@ -4,12 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -120,22 +118,40 @@ func executeNucleiScan(targets []string, templates []string, severities []string
 	log.Printf("[DEBUG] Templates: %v", templates)
 	log.Printf("[DEBUG] Severities: %v", severities)
 
-	// Create targets file
-	targetsFile := outputFile + ".targets"
-	targetsContent := strings.Join(targets, "\n")
-	if err := ioutil.WriteFile(targetsFile, []byte(targetsContent), 0644); err != nil {
-		return fmt.Errorf("failed to write targets file: %v", err)
+	// Create a temporary targets file on the host
+	tempFile, err := os.CreateTemp("", "nuclei_targets_*.txt")
+	if err != nil {
+		return fmt.Errorf("failed to create temp targets file: %v", err)
 	}
-	defer os.Remove(targetsFile)
+	defer os.Remove(tempFile.Name())
+	defer tempFile.Close()
 
-	log.Printf("[DEBUG] Created targets file: %s", targetsFile)
+	// Write targets to the temp file
+	targetsContent := strings.Join(targets, "\n")
+	if _, err := tempFile.WriteString(targetsContent); err != nil {
+		return fmt.Errorf("failed to write targets to temp file: %v", err)
+	}
+	tempFile.Close()
+
+	log.Printf("[DEBUG] Created temp targets file: %s", tempFile.Name())
 	log.Printf("[DEBUG] Targets file content:\n%s", targetsContent)
 	log.Printf("[DEBUG] Number of targets: %d", len(targets))
-	log.Printf("[DEBUG] Targets array: %v", targets)
+
+	// Copy the targets file into the container
+	copyCmd := exec.Command(
+		"docker", "cp",
+		tempFile.Name(),
+		"ars0n-framework-v2-nuclei-1:/targets.txt",
+	)
+	if err := copyCmd.Run(); err != nil {
+		return fmt.Errorf("failed to copy targets file to container: %v", err)
+	}
+
+	log.Printf("[DEBUG] Successfully copied targets file to container")
 
 	// Prepare Nuclei command arguments
 	var args []string
-	args = append(args, "-l", targetsFile, "-jsonl", "-nh", "-o", outputFile)
+	args = append(args, "-list", "/targets.txt", "-jsonl", "-nh", "-o", "/output.jsonl")
 
 	// Add template categories
 	if len(templates) > 0 {
@@ -174,24 +190,42 @@ func executeNucleiScan(targets []string, templates []string, severities []string
 
 	// Handle custom templates
 	if len(uploadedTemplates) > 0 {
-		customTemplatesDir := filepath.Join(os.TempDir(), "nuclei_custom_"+strconv.FormatInt(time.Now().Unix(), 10))
-		if err := os.MkdirAll(customTemplatesDir, 0755); err != nil {
+		// Create custom templates directory in container
+		mkdirCmd := exec.Command("docker", "exec", "ars0n-framework-v2-nuclei-1", "mkdir", "-p", "/custom_templates")
+		if err := mkdirCmd.Run(); err != nil {
 			return fmt.Errorf("failed to create custom templates directory: %v", err)
 		}
-		defer os.RemoveAll(customTemplatesDir)
 
 		for i, template := range uploadedTemplates {
 			if content, ok := template["content"].(string); ok {
-				templateFile := filepath.Join(customTemplatesDir, fmt.Sprintf("custom_%d.yaml", i))
-				if err := ioutil.WriteFile(templateFile, []byte(content), 0644); err != nil {
-					log.Printf("[WARN] Failed to write custom template %d: %v", i, err)
+				// Create a temp file for this template
+				tempTemplateFile, err := os.CreateTemp("", fmt.Sprintf("nuclei_template_%d_*.yaml", i))
+				if err != nil {
+					log.Printf("[WARN] Failed to create temp template file %d: %v", i, err)
 					continue
 				}
+				
+				if _, err := tempTemplateFile.WriteString(content); err != nil {
+					log.Printf("[WARN] Failed to write template content %d: %v", i, err)
+					tempTemplateFile.Close()
+					os.Remove(tempTemplateFile.Name())
+					continue
+				}
+				tempTemplateFile.Close()
+
+				// Copy template to container
+				templatePath := fmt.Sprintf("/custom_templates/custom_%d.yaml", i)
+				copyTemplateCmd := exec.Command("docker", "cp", tempTemplateFile.Name(), "ars0n-framework-v2-nuclei-1:"+templatePath)
+				if err := copyTemplateCmd.Run(); err != nil {
+					log.Printf("[WARN] Failed to copy custom template %d to container: %v", i, err)
+				}
+				
+				os.Remove(tempTemplateFile.Name())
 			}
 		}
 
 		// Add custom templates directory to command
-		args = append(args, "-t", customTemplatesDir)
+		args = append(args, "-t", "/custom_templates")
 	}
 
 	// Build docker exec command
@@ -212,13 +246,34 @@ func executeNucleiScan(targets []string, templates []string, severities []string
 	}
 
 	log.Printf("[INFO] Nuclei scan completed successfully")
-	log.Printf("[DEBUG] Output file should be created at: %s", outputFile)
+
+	// Copy the output file from container to host
+	copyOutputCmd := exec.Command(
+		"docker", "cp",
+		"ars0n-framework-v2-nuclei-1:/output.jsonl",
+		outputFile,
+	)
+	if err := copyOutputCmd.Run(); err != nil {
+		log.Printf("[WARN] Failed to copy output file from container: %v", err)
+		// Try to read output directly from container
+		readOutputCmd := exec.Command("docker", "exec", "ars0n-framework-v2-nuclei-1", "cat", "/output.jsonl")
+		if outputContent, readErr := readOutputCmd.Output(); readErr == nil {
+			if writeErr := os.WriteFile(outputFile, outputContent, 0644); writeErr != nil {
+				return fmt.Errorf("failed to copy output from container and write to host: %v", writeErr)
+			}
+			log.Printf("[INFO] Successfully read output directly from container")
+		} else {
+			return fmt.Errorf("failed to copy output file from container: %v", err)
+		}
+	}
+
+	log.Printf("[DEBUG] Output file created at: %s", outputFile)
 
 	// Check if output file exists and has content
 	if fileInfo, err := os.Stat(outputFile); err == nil {
 		log.Printf("[DEBUG] Output file exists, size: %d bytes", fileInfo.Size())
 		if fileInfo.Size() > 0 {
-			content, _ := ioutil.ReadFile(outputFile)
+			content, _ := os.ReadFile(outputFile)
 			contentLen := len(content)
 			if contentLen > 500 {
 				contentLen = 500
@@ -229,6 +284,10 @@ func executeNucleiScan(targets []string, templates []string, severities []string
 		log.Printf("[DEBUG] Output file does not exist: %v", err)
 	}
 
+	// Clean up files in container
+	cleanupCmd := exec.Command("docker", "exec", "ars0n-framework-v2-nuclei-1", "rm", "-f", "/targets.txt", "/output.jsonl")
+	cleanupCmd.Run() // Ignore errors for cleanup
+
 	return nil
 }
 
@@ -238,7 +297,7 @@ func parseNucleiResults(outputFile string) ([]NucleiFinding, error) {
 
 	log.Printf("[DEBUG] Parsing Nuclei results from file: %s", outputFile)
 
-	content, err := ioutil.ReadFile(outputFile)
+	content, err := os.ReadFile(outputFile)
 	if err != nil {
 		log.Printf("[ERROR] Failed to read results file: %v", err)
 		return findings, fmt.Errorf("failed to read results file: %v", err)

@@ -31,12 +31,6 @@ function Ars0nFrameworkHeader({ onSettingsClick, onExportClick, onImportClick })
         >
           <i className="bi bi-cup-hot" style={{ fontSize: '1.5rem' }}></i>
         </Button>
-        <Button variant="link" className="text-white p-1">
-          <i className="bi bi-question-circle" style={{ fontSize: '1.5rem' }}></i>
-        </Button>
-        <Button variant="link" className="text-white p-1">
-          <i className="bi bi-person" style={{ fontSize: '1.5rem' }}></i>
-        </Button>
         <Button 
           variant="link" 
           className="text-white p-1"

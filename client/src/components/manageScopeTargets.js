@@ -500,178 +500,184 @@ function ManageScopeTargets({
                     <img src={getTypeIcon(activeTarget.type)} alt={activeTarget.type} style={{ width: '30px' }} />
                   </span>
                 </Card.Text>
-                {/* Auto Scan Status Section */}
-                <div className="mb-3">
-                  <div className="d-flex justify-content-between align-items-center mb-1 w-100">
-                    <div className="d-flex flex-column">
-                      <div className="d-flex align-items-center mb-1">
-                        <span className={`fw-bold text-${displayStatus === 'running' ? 'danger' : displayStatus === 'completed' ? 'success' : 'secondary'}`}>
-                          Auto Scan Status: {displayStatus === 'running' ? 'Running' : displayStatus === 'completed' ? 'Completed' : 'Idle'}
-                        </span>
-                        {displayStatus === 'running' && <Spinner animation="border" size="sm" variant="danger" className="ms-2" />}
-                      </div>
-                      <div className="mb-1">
-                        <span className="text-white-50">Start Time: </span>
-                        <span className="text-white">{scanStartTime ? new Date(scanStartTime).toLocaleTimeString() : '--:--:-- --'}</span>
-                      </div>
-                      {isAutoScanning ? (
-                        <div className="mb-1">
-                          <span className="text-white-50">Elapsed: </span>
-                          <span className="text-white">{elapsed || '0m 00s'}</span>
+                
+                {/* Only show auto scan UI for Wildcard targets */}
+                {activeTarget.type === 'Wildcard' && (
+                  <>
+                    {/* Auto Scan Status Section */}
+                    <div className="mb-3">
+                      <div className="d-flex justify-content-between align-items-center mb-1 w-100">
+                        <div className="d-flex flex-column">
+                          <div className="d-flex align-items-center mb-1">
+                            <span className={`fw-bold text-${displayStatus === 'running' ? 'danger' : displayStatus === 'completed' ? 'success' : 'secondary'}`}>
+                              Auto Scan Status: {displayStatus === 'running' ? 'Running' : displayStatus === 'completed' ? 'Completed' : 'Idle'}
+                            </span>
+                            {displayStatus === 'running' && <Spinner animation="border" size="sm" variant="danger" className="ms-2" />}
+                          </div>
+                          <div className="mb-1">
+                            <span className="text-white-50">Start Time: </span>
+                            <span className="text-white">{scanStartTime ? new Date(scanStartTime).toLocaleTimeString() : '--:--:-- --'}</span>
+                          </div>
+                          {isAutoScanning ? (
+                            <div className="mb-1">
+                              <span className="text-white-50">Elapsed: </span>
+                              <span className="text-white">{elapsed || '0m 00s'}</span>
+                            </div>
+                          ) : (
+                            <div className="mb-1">
+                              <span className="text-white-50">Duration: </span>
+                              <span className="text-white">{finalDuration || (scanEndTime ? '0m 00s' : '--')}</span>
+                            </div>
+                          )}
                         </div>
-                      ) : (
-                        <div className="mb-1">
-                          <span className="text-white-50">Duration: </span>
-                          <span className="text-white">{finalDuration || (scanEndTime ? '0m 00s' : '--')}</span>
+                        <div className="text-end" style={{ minWidth: 180 }}>
+                          <div className={
+                            isAutoScanPaused && 
+                            consolidatedSubdomains.length > (autoScanConfig?.maxConsolidatedSubdomains ?? 2500) 
+                              ? "text-danger mb-2 flashing-text" 
+                              : "text-white-50 mb-2"
+                          }>
+                            Consolidated Subdomains: {consolidatedSubdomains.length} / {autoScanConfig?.maxConsolidatedSubdomains ?? 2500}
+                          </div>
+                          <div className={
+                            isAutoScanPaused && 
+                            getHttpxResultsCount(mostRecentHttpxScan) > (autoScanConfig?.maxLiveWebServers ?? 500) 
+                              ? "text-danger mb-2 flashing-text" 
+                              : "text-white-50 mb-2"
+                          }>
+                            Live Web Servers: {getHttpxResultsCount(mostRecentHttpxScan)} / {autoScanConfig?.maxLiveWebServers ?? 500}
+                          </div>
                         </div>
-                      )}
-                    </div>
-                    <div className="text-end" style={{ minWidth: 180 }}>
-                      <div className={
-                        isAutoScanPaused && 
-                        consolidatedSubdomains.length > (autoScanConfig?.maxConsolidatedSubdomains ?? 2500) 
-                          ? "text-danger mb-2 flashing-text" 
-                          : "text-white-50 mb-2"
-                      }>
-                        Consolidated Subdomains: {consolidatedSubdomains.length} / {autoScanConfig?.maxConsolidatedSubdomains ?? 2500}
                       </div>
-                      <div className={
-                        isAutoScanPaused && 
-                        getHttpxResultsCount(mostRecentHttpxScan) > (autoScanConfig?.maxLiveWebServers ?? 500) 
-                          ? "text-danger mb-2 flashing-text" 
-                          : "text-white-50 mb-2"
-                      }>
-                        Live Web Servers: {getHttpxResultsCount(mostRecentHttpxScan)} / {autoScanConfig?.maxLiveWebServers ?? 500}
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {/* Auto Scan Status - Always shown */}
-                  <div className="mt-3">
-                    <div className="d-flex justify-content-between align-items-center mb-2">
-                      <div className="text-white-50 small">
-                        {displayStatus === 'running' ? (
-                          <>
-                            <span className="text-danger">●</span> Running {formatStepName(autoScanCurrentStep)}
-                          </>
-                        ) : displayStatus === 'completed' ? (
-                          <>
-                            <span className="text-success">●</span> Scan completed
-                          </>
-                        ) : displayStatus === 'paused' ? (
-                          <>
-                            <span className="text-warning">●</span> Scan paused {
-                              (isAutoScanPaused && 
-                               ((consolidatedSubdomains.length > (autoScanConfig?.maxConsolidatedSubdomains ?? 2500)) || 
-                                (getHttpxResultsCount(mostRecentHttpxScan) > (autoScanConfig?.maxLiveWebServers ?? 500)))) ? 
-                                <span className="text-warning ms-2">(Limits exceeded)</span> : 
-                                null
-                            }
-                          </>
-                        ) : (
-                          <>
-                            <span className="text-secondary">●</span> Ready to scan
-                          </>
-                        )}
-                      </div>
-                      <div className="text-white-50 small">
-                        {scanEndTime && (
-                          <>
-                            Duration: {finalDuration}
-                          </>
-                        )}
-                      </div>
-                    </div>
+                      
+                      {/* Auto Scan Status - Always shown */}
+                      <div className="mt-3">
+                        <div className="d-flex justify-content-between align-items-center mb-2">
+                          <div className="text-white-50 small">
+                            {displayStatus === 'running' ? (
+                              <>
+                                <span className="text-danger">●</span> Running {formatStepName(autoScanCurrentStep)}
+                              </>
+                            ) : displayStatus === 'completed' ? (
+                              <>
+                                <span className="text-success">●</span> Scan completed
+                              </>
+                            ) : displayStatus === 'paused' ? (
+                              <>
+                                <span className="text-warning">●</span> Scan paused {
+                                  (isAutoScanPaused && 
+                                   ((consolidatedSubdomains.length > (autoScanConfig?.maxConsolidatedSubdomains ?? 2500)) || 
+                                    (getHttpxResultsCount(mostRecentHttpxScan) > (autoScanConfig?.maxLiveWebServers ?? 500)))) ? 
+                                    <span className="text-warning ms-2">(Limits exceeded)</span> : 
+                                    null
+                                }
+                              </>
+                            ) : (
+                              <>
+                                <span className="text-secondary">●</span> Ready to scan
+                              </>
+                            )}
+                          </div>
+                          <div className="text-white-50 small">
+                            {scanEndTime && (
+                              <>
+                                Duration: {finalDuration}
+                              </>
+                            )}
+                          </div>
+                        </div>
 
-                    {/* Progress Bar - Always shown */}
-                    <div className="mt-2">
-                      <div className="d-flex justify-content-between mb-1">
-                        <span className="text-white-50 small">Progress</span>
-                        <span className="text-white small">
-                          {displayStatus === 'idle' ? '0' : calculateProgress()}%
-                        </span>
-                      </div>
-                      <ProgressBar 
-                        now={calculateProgress()} 
-                        variant="danger" 
-                        className="bg-dark" 
-                        style={{ height: '8px' }}
-                      />
-                    </div>
-                  </div>
-                </div>
-                <div className="d-flex justify-content-between gap-2 mt-3">
-                  <Button 
-                    variant="outline-danger" 
-                    className="flex-fill" 
-                    onClick={onOpenAutoScanHistory}
-                    disabled={activeTarget?.type !== 'Wildcard'}
-                  >
-                    Scan History
-                  </Button>
-                  <Button 
-                    variant="outline-danger" 
-                    className="flex-fill" 
-                    onClick={handleConfigure}
-                    disabled={activeTarget?.type !== 'Wildcard'}
-                  >
-                    Configure
-                  </Button>
-                  <Button 
-                    variant="outline-danger" 
-                    className="flex-fill" 
-                    onClick={onAutoScan}
-                    disabled={isAutoScanning || activeTarget?.type !== 'Wildcard'}
-                  >
-                    <div className="btn-content">
-                      {isAutoScanning ? (
-                        <Spinner animation="border" size="sm" variant="danger" />
-                      ) : 'Auto Scan'}
-                    </div>
-                  </Button>
-                  {isAutoScanPaused ? (
-                    <Button 
-                      variant="outline-danger" 
-                      className="flex-fill" 
-                      onClick={handlePause}
-                      disabled={!isAutoScanning || isResuming}
-                    >
-                      {isResuming ? (
-                        <div className="btn-content">
-                          <span className="me-1">Resuming</span>
-                          <Spinner animation="border" size="sm" />
+                        {/* Progress Bar - Always shown */}
+                        <div className="mt-2">
+                          <div className="d-flex justify-content-between mb-1">
+                            <span className="text-white-50 small">Progress</span>
+                            <span className="text-white small">
+                              {displayStatus === 'idle' ? '0' : calculateProgress()}%
+                            </span>
+                          </div>
+                          <ProgressBar 
+                            now={calculateProgress()} 
+                            variant="danger" 
+                            className="bg-dark" 
+                            style={{ height: '8px' }}
+                          />
                         </div>
-                      ) : 'Resume'}
-                    </Button>
-                  ) : (
-                    <Button 
-                      variant="outline-danger" 
-                      className="flex-fill" 
-                      onClick={handlePause}
-                      disabled={!isAutoScanning || isAutoScanCancelling}
-                    >
-                      {isAutoScanPausing ? (
-                        <div className="btn-content">
-                          <span className="me-1">Pausing</span>
-                          <Spinner animation="border" size="sm" />
-                        </div>
-                      ) : 'Pause'}
-                    </Button>
-                  )}
-                  <Button 
-                    variant="outline-danger" 
-                    className="flex-fill" 
-                    onClick={handleCancel}
-                    disabled={!isAutoScanning || isAutoScanPaused}
-                  >
-                    {isAutoScanCancelling ? (
-                      <div className="btn-content">
-                        <span className="me-1">Cancelling</span>
-                        <Spinner animation="border" size="sm" />
                       </div>
-                    ) : 'Cancel'}
-                  </Button>
-                </div>
+                    </div>
+                    <div className="d-flex justify-content-between gap-2 mt-3">
+                      <Button 
+                        variant="outline-danger" 
+                        className="flex-fill" 
+                        onClick={onOpenAutoScanHistory}
+                        disabled={activeTarget?.type !== 'Wildcard'}
+                      >
+                        Scan History
+                      </Button>
+                      <Button 
+                        variant="outline-danger" 
+                        className="flex-fill" 
+                        onClick={handleConfigure}
+                        disabled={activeTarget?.type !== 'Wildcard'}
+                      >
+                        Configure
+                      </Button>
+                      <Button 
+                        variant="outline-danger" 
+                        className="flex-fill" 
+                        onClick={onAutoScan}
+                        disabled={isAutoScanning || activeTarget?.type !== 'Wildcard'}
+                      >
+                        <div className="btn-content">
+                          {isAutoScanning ? (
+                            <Spinner animation="border" size="sm" variant="danger" />
+                          ) : 'Auto Scan'}
+                        </div>
+                      </Button>
+                      {isAutoScanPaused ? (
+                        <Button 
+                          variant="outline-danger" 
+                          className="flex-fill" 
+                          onClick={handlePause}
+                          disabled={!isAutoScanning || isResuming}
+                        >
+                          {isResuming ? (
+                            <div className="btn-content">
+                              <span className="me-1">Resuming</span>
+                              <Spinner animation="border" size="sm" />
+                            </div>
+                          ) : 'Resume'}
+                        </Button>
+                      ) : (
+                        <Button 
+                          variant="outline-danger" 
+                          className="flex-fill" 
+                          onClick={handlePause}
+                          disabled={!isAutoScanning || isAutoScanCancelling}
+                        >
+                          {isAutoScanPausing ? (
+                            <div className="btn-content">
+                              <span className="me-1">Pausing</span>
+                              <Spinner animation="border" size="sm" />
+                            </div>
+                          ) : 'Pause'}
+                        </Button>
+                      )}
+                      <Button 
+                        variant="outline-danger" 
+                        className="flex-fill" 
+                        onClick={handleCancel}
+                        disabled={!isAutoScanning || isAutoScanPaused}
+                      >
+                        {isAutoScanCancelling ? (
+                          <div className="btn-content">
+                            <span className="me-1">Cancelling</span>
+                            <Spinner animation="border" size="sm" />
+                          </div>
+                        ) : 'Cancel'}
+                      </Button>
+                    </div>
+                  </>
+                )}
               </Card.Body>
             </Card>
           )}
