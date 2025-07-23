@@ -760,10 +760,20 @@ func convertUUIDValue(value interface{}) interface{} {
 			// Convert []interface{} to []byte
 			byteArray := make([]byte, 16)
 			for i, b := range bytes {
-				if num, ok := b.(float64); ok {
-					byteArray[i] = byte(num)
-				} else {
-					return value // Return original if conversion fails
+				switch v := b.(type) {
+				case float64:
+					byteArray[i] = byte(v)
+				case int:
+					byteArray[i] = byte(v)
+				case int32:
+					byteArray[i] = byte(v)
+				case int64:
+					byteArray[i] = byte(v)
+				case uint8:
+					byteArray[i] = v
+				default:
+					// If we can't convert, return original value
+					return value
 				}
 			}
 
@@ -791,6 +801,7 @@ func convertRecordUUIDs(record map[string]interface{}) map[string]interface{} {
 	uuidFields := []string{
 		"id", "scope_target_id", "scan_id", "auto_scan_session_id",
 		"ip_port_scan_id", "parent_asset_id", "child_asset_id", "asset_id",
+		"last_scan_id",
 	}
 
 	for _, field := range uuidFields {
@@ -934,51 +945,27 @@ func importTableRecords(tx pgx.Tx, tableName string, records []map[string]interf
 	}
 
 	successCount := 0
+	errorCount := 0
 	for i, record := range records {
 		if err := importSingleRecord(tx, tableName, record); err != nil {
+			errorCount++
 			log.Printf("[WARN] Failed to import record %d in table %s: %v", i+1, tableName, err)
-			log.Printf("[WARN] Record data: %+v", record)
-
-			// For foreign key constraint violations, this is expected if parent doesn't exist
-			if strings.Contains(err.Error(), "foreign key constraint") ||
-				strings.Contains(err.Error(), "violates foreign key constraint") {
-				log.Printf("[WARN] Skipping record due to foreign key constraint - parent record may not exist")
-			}
+			
+			// Continue processing even if individual records fail
+			// This allows the import to proceed despite some foreign key constraint violations
 		} else {
 			successCount++
 		}
 	}
 
-	log.Printf("[INFO] Successfully imported %d/%d records into table: %s", successCount, len(records), tableName)
+	log.Printf("[INFO] Successfully imported %d/%d records into table: %s (%d errors)", 
+		successCount, len(records), tableName, errorCount)
 	return nil
 }
 
 func importSingleRecord(tx pgx.Tx, tableName string, record map[string]interface{}) error {
 	// Convert UUID fields
 	record = convertRecordUUIDs(record)
-
-	// Log what we're trying to import for debugging
-	if tableName == "amass_enum_company_dns_records" || tableName == "amass_enum_company_cloud_domains" {
-		scopeTargetID, _ := record["scope_target_id"].(string)
-		rootDomain, _ := record["root_domain"].(string)
-		log.Printf("[DEBUG] Importing %s: scope_target_id=%s, root_domain=%s", tableName, scopeTargetID, rootDomain)
-
-		// Check if parent exists
-		var exists bool
-		err := tx.QueryRow(context.Background(),
-			`SELECT EXISTS(SELECT 1 FROM amass_enum_company_domain_results WHERE scope_target_id = $1 AND domain = $2)`,
-			scopeTargetID, rootDomain).Scan(&exists)
-
-		if err != nil {
-			log.Printf("[WARN] Failed to check parent record existence for %s: %v", tableName, err)
-		} else if !exists {
-			log.Printf("[WARN] Parent record missing in amass_enum_company_domain_results for scope_target_id=%s, domain=%s - SKIPPING child record",
-				scopeTargetID, rootDomain)
-			return nil // Skip this record
-		} else {
-			log.Printf("[DEBUG] Parent record exists for %s", tableName)
-		}
-	}
 
 	var columns []string
 	var placeholders []string
@@ -994,13 +981,13 @@ func importSingleRecord(tx pgx.Tx, tableName string, record map[string]interface
 		i++
 	}
 
-	// Use savepoint to handle constraint violations gracefully
+	// Use savepoint to handle individual record failures
 	savepointName := fmt.Sprintf("sp_%s_%d", tableName, time.Now().UnixNano())
-
+	
 	_, err := tx.Exec(context.Background(), fmt.Sprintf("SAVEPOINT %s", savepointName))
 	if err != nil {
 		log.Printf("[WARN] Failed to create savepoint for %s: %v", tableName, err)
-		return nil // Continue without savepoint
+		// Continue without savepoint protection
 	}
 
 	// Build the upsert query
@@ -1012,19 +999,30 @@ func importSingleRecord(tx pgx.Tx, tableName string, record map[string]interface
 		strings.Join(placeholders, ", "),
 		strings.Join(updateClauses, ", "))
 
-	_, err = tx.Exec(context.Background(), query, values...)
-	if err != nil {
+	_, execErr := tx.Exec(context.Background(), query, values...)
+	if execErr != nil {
 		// Rollback to savepoint on error
-		_, rollbackErr := tx.Exec(context.Background(), fmt.Sprintf("ROLLBACK TO SAVEPOINT %s", savepointName))
-		if rollbackErr != nil {
-			log.Printf("[WARN] Failed to rollback to savepoint for %s: %v", tableName, rollbackErr)
+		if err == nil { // Only rollback if savepoint was created successfully
+			_, rollbackErr := tx.Exec(context.Background(), fmt.Sprintf("ROLLBACK TO SAVEPOINT %s", savepointName))
+			if rollbackErr != nil {
+				log.Printf("[WARN] Failed to rollback to savepoint for %s: %v", tableName, rollbackErr)
+			}
 		}
-		log.Printf("[WARN] Failed to insert record into %s: %v", tableName, err)
-		log.Printf("[WARN] Failed record data: %+v", record)
-		return nil // Continue with next record
+		
+		log.Printf("[WARN] Failed to insert record into %s: %v", tableName, execErr)
+		
+		// For foreign key constraint violations, log the details but don't fail the transaction
+		if strings.Contains(execErr.Error(), "foreign key constraint") ||
+			strings.Contains(execErr.Error(), "violates foreign key constraint") {
+			log.Printf("[WARN] Foreign key constraint violation in %s - this may indicate missing parent record", tableName)
+		}
+		
+		return execErr
 	} else {
 		// Release savepoint on success
-		_, _ = tx.Exec(context.Background(), fmt.Sprintf("RELEASE SAVEPOINT %s", savepointName))
+		if err == nil { // Only release if savepoint was created successfully
+			_, _ = tx.Exec(context.Background(), fmt.Sprintf("RELEASE SAVEPOINT %s", savepointName))
+		}
 	}
 
 	return nil
