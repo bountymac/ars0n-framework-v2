@@ -103,7 +103,7 @@ Expand-Archive -Path "ars0n-framework-v2.zip" -DestinationPath "."
 
 **Step 3:** Navigate to the framework directory
 ```powershell
-cd ars0n-framework-v2-beta-0.0.0
+cd ars0n-framework-v2
 ```
 
 **Step 4:** Start the framework
@@ -125,7 +125,7 @@ unzip ars0n-framework-v2.zip
 
 **Step 3:** Navigate to the framework directory
 ```bash
-cd ars0n-framework-v2-beta-0.0.0
+cd ars0n-framework-v2
 ```
 
 **Step 4:** Start the framework
@@ -147,7 +147,7 @@ unzip ars0n-framework-v2-beta-0.0.0.zip
 
 **Step 3:** Navigate to the framework directory
 ```bash
-cd ars0n-framework-v2-beta-0.0.0
+cd ars0n-framework-v2
 ```
 
 **Step 4:** Start the framework

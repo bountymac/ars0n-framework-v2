@@ -1,7 +1,22 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Accordion, ListGroup } from 'react-bootstrap';
+import LearnMoreModal from '../modals/LearnMoreModal';
+import { lessons } from '../data/lessons';
 
 const HelpMeLearn = ({ section }) => {
+  const [showLearnMoreModal, setShowLearnMoreModal] = useState(false);
+  const [currentLesson, setCurrentLesson] = useState(null);
+
+  const handleLearnMoreClick = (lessonKey) => {
+    setCurrentLesson(lessons[lessonKey]);
+    setShowLearnMoreModal(true);
+  };
+
+  const handleCloseLearnMoreModal = () => {
+    setShowLearnMoreModal(false);
+    setCurrentLesson(null);
+  };
+
   const sections = {
     amass: {
       title: "Help Me Learn!",
@@ -107,80 +122,98 @@ const HelpMeLearn = ({ section }) => {
         }
       ]
     },
-    companyNetworkRanges: {
-      title: "Help Me Learn!",
-      items: [
-        {
-          question: "What stage of the methodology are we at and what are we trying to accomplish?",
-          answers: [
-            "This workflow is part of the Reconnaissance (Recon) phase of the Bug Bounty Hunting methodology, specifically focused on company-wide asset discovery.",
-            "We have identified a target company and now our goal is to discover their complete attack surface, including on-premises infrastructure, network ranges, and all associated domains. This approach is more comprehensive than targeting a single domain and helps identify the full scope of the organization's digital assets."
-          ]
-        },
-        {
-          question: "What are ASN and network range discovery tools and why are they important?",
-          answers: [
-            "ASN (Autonomous System Number) and network range discovery tools help identify the complete network infrastructure belonging to a target organization. These tools discover IP ranges, subnets, and network blocks that the company owns or controls.",
-            "This information is crucial because it reveals the organization's on-premises infrastructure, data centers, and network boundaries. Understanding the full network scope helps identify potential entry points and attack vectors that might not be visible through domain-based reconnaissance alone."
-          ]
-        },
-        {
-          question: "How do I use Amass Intel and Metabigor effectively?",
-          answers: [
-            "Start with Amass Intel to gather comprehensive intelligence about the target organization's network infrastructure, including ASN information, IP ranges, and associated domains. This provides a broad overview of the organization's digital footprint.",
-            "Follow up with Metabigor to perform additional OSINT gathering and discover additional network ranges, subnets, and infrastructure details. After running both tools, use the Consolidate button to combine all discovered network ranges into a single list for further processing."
-          ]
-        }
-      ]
-    },
-    companyLiveWebServers: {
-      title: "Help Me Learn!",
-      items: [
-        {
-          question: "What is the purpose of discovering live web servers in company infrastructure?",
-          answers: [
-            "Discovering live web servers within a company's infrastructure helps identify potential attack vectors and entry points that might not be publicly advertised. These servers could include internal applications, development environments, admin panels, or legacy systems.",
-            "This step is crucial for understanding the organization's complete attack surface, as on-premises infrastructure often contains critical business applications, sensitive data, or systems that may have weaker security controls than public-facing assets."
-          ]
-        },
-        {
-          question: "How does the network range processing workflow work?",
-          answers: [
-            "First, use Trim Network Ranges to remove any invalid or overly broad ranges that might cause scanning issues. This helps focus the scan on legitimate company infrastructure and reduces false positives.",
-            "Next, use Consolidate to combine all discovered network ranges into a single list. Then run IP/Port Scan to identify live hosts and open ports within these ranges. Finally, use Gather Metadata to collect detailed information about discovered web servers, including technology stack, headers, and potential vulnerabilities."
-          ]
-        },
-        {
-          question: "What should I look for in the results?",
-          answers: [
-            "Focus on web servers that might contain sensitive information, such as admin panels, development environments, or internal applications. Look for servers with unusual ports, outdated technology stacks, or missing security headers.",
-            "Pay attention to servers that might be misconfigured, such as those exposing internal services, development tools, or administrative interfaces. These often represent high-value targets for bug bounty testing."
-          ]
-        }
-      ]
-    },
+         companyNetworkRanges: {
+       title: "Help Me Learn!",
+       items: [
+         {
+           question: "What stage of the methodology are we at and what are we trying to accomplish?",
+           lessonKey: "reconnaissancePhase",
+           answers: [
+             "This workflow is part of the Reconnaissance (Recon) phase of the Bug Bounty Hunting methodology, specifically focused on discovering on-premises infrastructure and network assets.",
+             "We have identified a target company and now our goal is to find bug bounty targets (web servers or other services) that are running on on-premises assets. We're going from a company name to a list of network ranges that we can use to find live IP addresses later.",
+             "This approach helps us discover the organization's complete on-premises attack surface, including data centers, internal networks, and infrastructure components that might contain vulnerable services or applications not visible through public domain reconnaissance."
+           ]
+         },
+         {
+           question: "How do ASNs and network ranges help us understand an organization's complete attack surface?",
+           lessonKey: "asnNetworkRanges",
+           answers: [
+             "Autonomous System Numbers (ASNs) are unique identifiers assigned to networks that operate under a single administrative domain. They represent routing domains on the internet and help identify which organization controls specific IP address ranges.",
+             "Network ranges are blocks of IP addresses that belong to an organization, typically defined by CIDR notation (e.g., 192.168.1.0/24). These ranges represent the organization's on-premises infrastructure, data centers, and network boundaries.",
+             "In bug bounty hunting, understanding ASNs and network ranges is crucial because they reveal the complete attack surface beyond just public-facing domains. This includes internal services, development environments, admin interfaces, and infrastructure components that might be vulnerable but not publicly advertised."
+           ]
+         },
+         {
+           question: "What are Amass Intel and Metabigor, and how do they discover network infrastructure?",
+           lessonKey: "amassIntelMetabigor",
+           answers: [
+             "Amass Intel is a specialized module of the Amass framework that focuses on gathering intelligence about organizations' network infrastructure. It queries various data sources including WHOIS records, DNS databases, and routing registries to discover ASN information, IP address ranges, and associated domains that belong to the target organization.",
+             "Metabigor is an OSINT tool that specializes in discovering network ranges and infrastructure information through multiple techniques. It searches through public databases, routing registries, and internet registries to find IP ranges, subnets, and network blocks associated with target organizations, often uncovering infrastructure that isn't publicly advertised.",
+             "Both tools work by querying authoritative sources like Regional Internet Registries (RIRs), routing databases, and public records to map out an organization's complete network footprint. They complement each other by using different data sources and discovery methods to ensure comprehensive coverage of the target's infrastructure."
+           ]
+         }
+       ]
+     },
+         companyLiveWebServers: {
+       title: "Help Me Learn!",
+       items: [
+         {
+           question: "Where are we in the bug bounty methodology and what's our objective?",
+           lessonKey: "liveWebServersMethodology",
+           answers: [
+             "We're in the Network Infrastructure Discovery phase, specifically focused on converting discovered network ranges into live, accessible web servers that could be bug bounty targets.",
+             "Our goal is to find active web services running on IP addresses within the organization's network ranges. We're looking for web servers, APIs, admin panels, and other HTTP/HTTPS services that weren't discovered through domain-based reconnaissance.",
+             "This phase bridges the gap between having network ranges (IP blocks) and having specific targets (URLs) that can be tested for vulnerabilities. We're essentially scanning the organization's on-premises infrastructure for live web services."
+           ]
+         },
+         {
+           question: "How does the IP/Port scanning workflow discover live web servers from network ranges?",
+           lessonKey: "ipPortScanningProcess",
+           answers: [
+             "The process starts by taking consolidated network ranges (CIDR blocks) and systematically probing each IP address within those ranges to identify live hosts using TCP connect probes on common ports like 80, 443, 22, and others.",
+             "Once live IP addresses are identified, the system performs targeted port scanning on web-specific ports (80, 443, 8080, 8443, 3000, etc.) to discover which hosts are running web services.",
+             "For each discovered web service, the system makes HTTP/HTTPS requests to gather metadata including status codes, page titles, server headers, technologies, and response characteristics to build a comprehensive inventory of live web servers."
+           ]
+         },
+         {
+           question: "What tools and techniques are used in this discovery process?",
+           lessonKey: "liveWebServerTools",
+           answers: [
+             "The workflow uses custom IP/Port scanning tools that perform TCP connect scans across network ranges, testing both host discovery ports and web service ports to identify active services.",
+             "After discovering live web servers, the Gather Metadata function uses tools like Katana for web crawling and content analysis to extract additional information about the discovered services, including page content, links, and potential entry points.",
+             "The entire process is designed to be efficient and respectful, using rate limiting, timeouts, and concurrent connection limits to avoid overwhelming target infrastructure while still providing comprehensive coverage."
+           ]
+         }
+       ]
+     },
     companyRootDomainDiscovery: {
       title: "Help Me Learn!",
       items: [
         {
-          question: "What is root domain discovery and why is it important for company reconnaissance?",
+          question: "Where are we in the bug bounty methodology and what are we trying to discover?",
+          lessonKey: "rootDomainMethodology",
           answers: [
-            "Root domain discovery involves finding all the primary domains that belong to a target organization. This is crucial because companies often own multiple domains for different purposes, subsidiaries, or acquisitions that may not be immediately obvious.",
-            "Discovering all root domains helps build a comprehensive picture of the organization's digital presence and identifies potential attack surfaces that might be overlooked when focusing on a single domain."
+            "We're in the Root Domain Discovery phase of the reconnaissance methodology, specifically focused on identifying all primary domains owned or controlled by the target organization without requiring premium API access.",
+            "Our goal is to discover the complete domain portfolio of the organization, including primary business domains, subsidiary domains, acquisition-related domains, and alternative domains used for different business units or purposes.",
+            "This phase expands our attack surface beyond any single domain provided in the scope, helping us discover forgotten domains, development environments, or subsidiary assets that might have weaker security controls."
           ]
         },
         {
-          question: "How do the no-API-key tools work and what are their strengths?",
+          question: "How do Google Dorking, CRT, and Reverse WHOIS discover organizational domains?",
+          lessonKey: "noApiKeyTools",
           answers: [
-            "Google Dorking uses advanced search operators to find company domains, subdomains, and exposed information through search engine results. This technique can discover domains mentioned in public documents, job postings, or other online content.",
-            "CRT (Certificate Transparency) searches certificate transparency logs to find domains that have SSL certificates, revealing domains that might not be publicly advertised. Reverse WHOIS looks up domain registration information to find other domains registered by the same entity or contact information."
+            "Google Dorking uses sophisticated search operators to query search engines for domains, subdomains, and organizational mentions in public documents, job postings, news articles, and other indexed content that might reveal additional domains owned by the organization.",
+            "Certificate Transparency (CRT) searches public certificate logs that record all SSL/TLS certificates issued for domains. This reveals domains that have obtained certificates, including internal or non-public domains that organizations might not advertise but still secure with SSL.",
+            "Reverse WHOIS performs lookups using organizational information like company names, email addresses, or phone numbers from domain registration records to find other domains registered by the same entity or using the same contact information."
           ]
         },
         {
-          question: "How do I use these tools effectively?",
+          question: "What types of domains should we prioritize and investigate further?",
+          lessonKey: "rootDomainPrioritization",
           answers: [
-            "Start with Google Dorking using company-specific search terms and operators to find domains mentioned in public sources. Follow up with CRT to discover domains with SSL certificates, and use Reverse WHOIS to find domains registered by the same organization.",
-            "After running each tool, review the results and add legitimate company domains to your scope. Use the Consolidate button to combine all discovered domains, then proceed to subdomain enumeration for each root domain to build a comprehensive attack surface."
+            "Focus on domains that might represent forgotten or legacy infrastructure, subsidiary companies, development environments, or alternative business units that could have different security postures than the main corporate domains.",
+            "Prioritize domains with unusual naming conventions, geographical indicators, or technology-specific patterns that might indicate internal tools, admin interfaces, or specialized business functions.",
+            "Look for domains that might be less monitored or maintained, such as acquisition-related domains, legacy brand domains, or domains used for specific business initiatives that might have been deprioritized over time."
           ]
         }
       ]
@@ -379,30 +412,46 @@ const HelpMeLearn = ({ section }) => {
   const currentSection = sections[section];
 
   return (
-    <Accordion data-bs-theme="dark" className="mb-3">
-      <Accordion.Item eventKey="0">
-        <Accordion.Header className="fs-5">{currentSection.title}</Accordion.Header>
-        <Accordion.Body className="bg-dark">
-          <ListGroup as="ul" variant="flush">
-            {currentSection.items.map((item, index) => (
-              <ListGroup.Item key={index} as="li" className="bg-dark text-danger 5">
-                {item.question}
-                <ListGroup as="ul" variant="flush" className="mt-2">
-                  {item.answers.map((answer, answerIndex) => (
-                    <ListGroup.Item key={answerIndex} as="li" className="bg-dark text-white fst-italic fs-6">
-                      {answer}{' '}
-                      <a href="#" className="text-danger text-decoration-none">
-                        Learn More
-                      </a>
-                    </ListGroup.Item>
-                  ))}
-                </ListGroup>
-              </ListGroup.Item>
-            ))}
-          </ListGroup>
-        </Accordion.Body>
-      </Accordion.Item>
-    </Accordion>
+    <>
+      <Accordion data-bs-theme="dark" className="mb-3">
+        <Accordion.Item eventKey="0">
+          <Accordion.Header className="fs-5">{currentSection.title}</Accordion.Header>
+          <Accordion.Body className="bg-dark">
+            <ListGroup as="ul" variant="flush">
+              {currentSection.items.map((item, index) => (
+                <ListGroup.Item key={index} as="li" className="bg-dark text-danger">
+                  <span className="fs-5">
+                    {item.question}
+                    {item.lessonKey && lessons[item.lessonKey] && (
+                      <span 
+                        className="text-white ms-2"
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => handleLearnMoreClick(item.lessonKey)}
+                      >
+                        [Learn More]
+                      </span>
+                    )}
+                  </span>
+                  <ListGroup as="ul" variant="flush" className="mt-2">
+                    {item.answers.map((answer, answerIndex) => (
+                      <ListGroup.Item key={answerIndex} as="li" className="bg-dark text-white fst-italic fs-6">
+                        {answer}
+                      </ListGroup.Item>
+                    ))}
+                  </ListGroup>
+                </ListGroup.Item>
+              ))}
+            </ListGroup>
+          </Accordion.Body>
+        </Accordion.Item>
+      </Accordion>
+
+      <LearnMoreModal
+        show={showLearnMoreModal}
+        handleClose={handleCloseLearnMoreModal}
+        lesson={currentLesson}
+      />
+    </>
   );
 };
 
