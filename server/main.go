@@ -164,6 +164,7 @@ func main() {
 	r.HandleFunc("/api/export-data", utils.HandleExportData).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/database-export", utils.HandleDatabaseExport).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/database-import", utils.HandleDatabaseImport).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/database-import-url", utils.HandleDatabaseImportURL).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/debug-export-file", utils.DebugExportFile).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/scope-targets-for-export", utils.GetScopeTargetsForExport).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/auto-scan-state/{target_id}", getAutoScanState).Methods("GET", "OPTIONS")

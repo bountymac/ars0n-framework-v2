@@ -13,6 +13,7 @@ import ScreenshotResultsModal from './modals/ScreenshotResultsModal.js';
 import SettingsModal from './modals/SettingsModal.js';
 import ExportModal from './modals/ExportModal.js';
 import ImportModal from './modals/ImportModal.js';
+import WelcomeModal from './modals/WelcomeModal.js';
 import GoogleDorkingModal from './modals/GoogleDorkingModal.js';
 import Ars0nFrameworkHeader from './components/ars0nFrameworkHeader.js';
 import ManageScopeTargets from './components/manageScopeTargets.js';
@@ -325,6 +326,7 @@ function App() {
   const [showActiveModal, setShowActiveModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showWelcomeModal, setShowWelcomeModal] = useState(false);
   const [selections, setSelections] = useState({
     type: '',
     inputText: '',
@@ -1659,7 +1661,7 @@ function App() {
           }
         }
       } else {
-        setShowModal(true);
+        setShowWelcomeModal(true);
       }
     } catch (error) {
       console.error('Error fetching scope targets:', error);
@@ -2917,6 +2919,30 @@ function App() {
 
   const handleCloseImportModal = () => {
     setShowImportModal(false);
+  };
+
+  const handleCloseWelcomeModal = () => {
+    setShowWelcomeModal(false);
+  };
+
+  const handleWelcomeAddScopeTarget = () => {
+    setShowWelcomeModal(false);
+    setShowModal(true);
+  };
+
+  const handleWelcomeImportData = () => {
+    setShowWelcomeModal(false);
+    setShowImportModal(true);
+  };
+
+  const handleImportSuccess = async (result) => {
+    await fetchScopeTargets();
+  };
+
+  const handleBackToWelcome = () => {
+    setShowModal(false);
+    setShowImportModal(false);
+    setShowWelcomeModal(true);
   };
 
   const handleOpenSettingsOnAPIKeysTab = () => {
@@ -4340,6 +4366,8 @@ function App() {
         handleSelect={handleSelect}
         handleFormSubmit={handleSubmit}
         errorMessage={errorMessage}
+        showBackButton={scopeTargets.length === 0}
+        onBackClick={handleBackToWelcome}
       />
 
       <SelectActiveScopeTargetModal
@@ -4366,6 +4394,16 @@ function App() {
       <ImportModal
         show={showImportModal}
         handleClose={handleCloseImportModal}
+        onSuccess={handleImportSuccess}
+        showBackButton={scopeTargets.length === 0}
+        onBackClick={handleBackToWelcome}
+      />
+
+      <WelcomeModal
+        show={showWelcomeModal}
+        handleClose={handleCloseWelcomeModal}
+        onAddScopeTarget={handleWelcomeAddScopeTarget}
+        onImportData={handleWelcomeImportData}
       />
 
       <Modal data-bs-theme="dark" show={showScanHistoryModal} onHide={handleCloseScanHistoryModal} size="xl">

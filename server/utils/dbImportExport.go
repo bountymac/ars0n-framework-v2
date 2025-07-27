@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -22,6 +23,10 @@ type DatabaseExportRequest struct {
 
 type DatabaseImportRequest struct {
 	Data []byte `json:"data"`
+}
+
+type DatabaseImportURLRequest struct {
+	URL string `json:"url"`
 }
 
 type ExportData struct {
@@ -600,6 +605,127 @@ func HandleDatabaseImport(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 
 	log.Printf("[INFO] Database import completed successfully. Imported %d scope targets", len(exportData.ScopeTargets))
+}
+
+func HandleDatabaseImportURL(w http.ResponseWriter, r *http.Request) {
+	log.Println("[INFO] Starting database import from URL process")
+
+	var request DatabaseImportURLRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		log.Printf("[ERROR] Failed to decode request body: %v", err)
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if request.URL == "" {
+		http.Error(w, "URL is required", http.StatusBadRequest)
+		return
+	}
+
+	// Validate URL format
+	parsedURL, err := url.Parse(request.URL)
+	if err != nil {
+		log.Printf("[ERROR] Invalid URL format: %v", err)
+		http.Error(w, "Invalid URL format", http.StatusBadRequest)
+		return
+	}
+
+	// Only allow HTTP and HTTPS schemes
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		http.Error(w, "Only HTTP and HTTPS URLs are supported", http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("[INFO] Downloading file from URL: %s", request.URL)
+
+	// Download the file from the URL with timeout
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+
+	resp, err := client.Get(request.URL)
+	if err != nil {
+		log.Printf("[ERROR] Failed to download file from URL: %v", err)
+		http.Error(w, "Failed to download file from URL", http.StatusBadRequest)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("[ERROR] Failed to download file, status code: %d", resp.StatusCode)
+		http.Error(w, fmt.Sprintf("Failed to download file, status code: %d", resp.StatusCode), http.StatusBadRequest)
+		return
+	}
+
+	// Check Content-Length if available (500MB limit)
+	if resp.ContentLength > 500*1024*1024 {
+		http.Error(w, "File is too large. Maximum size is 500MB", http.StatusBadRequest)
+		return
+	}
+
+	// Read file with size limit
+	limitedReader := io.LimitReader(resp.Body, 500*1024*1024+1) // 500MB + 1 byte
+	compressedData, err := io.ReadAll(limitedReader)
+	if err != nil {
+		log.Printf("[ERROR] Failed to read downloaded file: %v", err)
+		http.Error(w, "Failed to read downloaded file", http.StatusInternalServerError)
+		return
+	}
+
+	// Check if we hit the size limit
+	if len(compressedData) > 500*1024*1024 {
+		http.Error(w, "File is too large. Maximum size is 500MB", http.StatusBadRequest)
+		return
+	}
+
+	// Validate file extension from URL path
+	if !strings.HasSuffix(strings.ToLower(parsedURL.Path), ".rs0n") {
+		http.Error(w, "Invalid file type. Only .rs0n files are supported", http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("[INFO] Downloaded %d bytes, processing import", len(compressedData))
+
+	// Process the downloaded file (same as HandleDatabaseImport)
+	gzipReader, err := gzip.NewReader(bytes.NewReader(compressedData))
+	if err != nil {
+		log.Printf("[ERROR] Failed to create gzip reader: %v", err)
+		http.Error(w, "Invalid file format", http.StatusBadRequest)
+		return
+	}
+	defer gzipReader.Close()
+
+	jsonData, err := io.ReadAll(gzipReader)
+	if err != nil {
+		log.Printf("[ERROR] Failed to decompress data: %v", err)
+		http.Error(w, "Failed to decompress data", http.StatusInternalServerError)
+		return
+	}
+
+	var exportData ExportData
+	if err := json.Unmarshal(jsonData, &exportData); err != nil {
+		log.Printf("[ERROR] Failed to unmarshal export data: %v", err)
+		http.Error(w, "Invalid export data format", http.StatusBadRequest)
+		return
+	}
+
+	if err := importDatabaseData(&exportData); err != nil {
+		log.Printf("[ERROR] Failed to import database data: %v", err)
+		http.Error(w, fmt.Sprintf("Failed to import data: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]interface{}{
+		"message":                "Database import from URL completed successfully",
+		"imported_scope_targets": len(exportData.ScopeTargets),
+		"imported_tables":        len(exportData.TableData),
+		"total_records":          exportData.ExportMetadata.TotalRecords,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+
+	log.Printf("[INFO] Database import from URL completed successfully. Imported %d scope targets", len(exportData.ScopeTargets))
 }
 
 func exportDatabaseData(scopeTargetIDs []string) (*ExportData, error) {
