@@ -1,4 +1,90 @@
 const monitorKatanaCompanyScanStatus = async (
+  activeTarget,
+  setKatanaCompanyScans,
+  setMostRecentKatanaCompanyScan,
+  setIsKatanaCompanyScanning,
+  setMostRecentKatanaCompanyScanStatus,
+  setKatanaCompanyCloudAssets = null
+) => {
+  if (!activeTarget) return;
+
+  try {
+    console.log('[KATANA-COMPANY] Monitoring scan status for target:', activeTarget.id);
+    
+    const response = await fetch(
+      `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/scopetarget/${activeTarget.id}/scans/katana-company`
+    );
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch Katana Company scans');
+    }
+
+    const scans = await response.json();
+    if (!Array.isArray(scans)) {
+      setKatanaCompanyScans([]);
+      setMostRecentKatanaCompanyScan(null);
+      setMostRecentKatanaCompanyScanStatus(null);
+      setIsKatanaCompanyScanning(false);
+      if (setKatanaCompanyCloudAssets) {
+        setKatanaCompanyCloudAssets([]);
+      }
+      return;
+    }
+
+    console.log('[KATANA-COMPANY] Retrieved', scans.length, 'scans');
+    setKatanaCompanyScans(scans);
+
+    if (scans.length > 0) {
+      const mostRecentScan = scans.reduce((latest, scan) => {
+        const scanDate = new Date(scan.created_at);
+        return scanDate > new Date(latest.created_at) ? scan : latest;
+      }, scans[0]);
+
+      console.log('[KATANA-COMPANY] Most recent scan status:', mostRecentScan.status);
+      setMostRecentKatanaCompanyScan(mostRecentScan);
+      setMostRecentKatanaCompanyScanStatus(mostRecentScan.status);
+
+      // Check if the most recent scan is currently running
+      if (mostRecentScan.status === 'pending' || mostRecentScan.status === 'running') {
+        console.log('[KATANA-COMPANY] Active scan detected, setting scanning state to true');
+        setIsKatanaCompanyScanning(true);
+      } else {
+        setIsKatanaCompanyScanning(false);
+        
+        // Fetch cloud assets for completed scans
+        if (setKatanaCompanyCloudAssets && mostRecentScan.status === 'success') {
+          try {
+            const assetsResponse = await fetch(
+              `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/katana-company/target/${activeTarget.id}/cloud-assets`
+            );
+            if (assetsResponse.ok) {
+              const assets = await assetsResponse.json();
+              setKatanaCompanyCloudAssets(assets || []);
+            } else {
+              setKatanaCompanyCloudAssets([]);
+            }
+          } catch (error) {
+            console.error('[KATANA-COMPANY] Error fetching cloud assets:', error);
+            setKatanaCompanyCloudAssets([]);
+          }
+        }
+      }
+    } else {
+      setMostRecentKatanaCompanyScan(null);
+      setMostRecentKatanaCompanyScanStatus(null);
+      setIsKatanaCompanyScanning(false);
+      if (setKatanaCompanyCloudAssets) {
+        setKatanaCompanyCloudAssets([]);
+      }
+    }
+  } catch (error) {
+    console.error('[KATANA-COMPANY] Error monitoring scan status:', error);
+    setIsKatanaCompanyScanning(false);
+  }
+};
+
+// For active scan monitoring during scan execution
+export const monitorActiveScan = async (
   scanId, 
   setIsKatanaCompanyScanning, 
   setKatanaCompanyScans, 
@@ -7,9 +93,6 @@ const monitorKatanaCompanyScanStatus = async (
   setKatanaCompanyCloudAssets = null,
   activeTarget = null
 ) => {
-  let attempts = 0;
-  const maxAttempts = 600; // 10 minutes with 1-second intervals
-  
   const poll = async () => {
     try {
       const response = await fetch(
@@ -44,10 +127,10 @@ const monitorKatanaCompanyScanStatus = async (
         setIsKatanaCompanyScanning(false);
         
         // Fetch accumulated cloud assets from the backend API
-        if (setKatanaCompanyCloudAssets) {
+        if (setKatanaCompanyCloudAssets && activeTarget) {
           try {
             const assetsResponse = await fetch(
-              `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/katana-company/${scanId}/cloud-assets`
+              `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/katana-company/target/${activeTarget.id}/cloud-assets`
             );
             if (assetsResponse.ok) {
               const assets = await assetsResponse.json();
@@ -94,28 +177,12 @@ const monitorKatanaCompanyScanStatus = async (
         console.error('Katana Company scan failed:', scanStatus.error);
         return scanStatus;
       } else if (scanStatus.status === 'pending' || scanStatus.status === 'running') {
-        attempts++;
-        
-        if (attempts >= maxAttempts) {
-          console.error('Katana Company scan monitoring timed out');
-          setIsKatanaCompanyScanning(false);
-          return scanStatus;
-        }
-        
-        // Continue polling
+        // Continue polling - no timeout limits for long-running scans
         setTimeout(poll, 1000);
       }
     } catch (error) {
       console.error('Error monitoring Katana Company scan:', error);
-      attempts++;
-      
-      if (attempts >= maxAttempts) {
-        console.error('Katana Company scan monitoring failed after maximum attempts');
-        setIsKatanaCompanyScanning(false);
-        return null;
-      }
-      
-      // Retry after error
+      // Retry after error - no timeout limits
       setTimeout(poll, 2000);
     }
   };

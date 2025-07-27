@@ -1,4 +1,4 @@
-import monitorKatanaCompanyScanStatus from './monitorKatanaCompanyScanStatus.js';
+import { monitorActiveScan } from './monitorKatanaCompanyScanStatus.js';
 
 export const initiateKatanaCompanyScan = async (
   activeTarget, 
@@ -37,7 +37,7 @@ export const initiateKatanaCompanyScan = async (
     console.log('[KATANA-COMPANY] Katana Company scan initiated with ID:', scanId);
 
     // Start monitoring the scan status
-    monitorKatanaCompanyScanStatus(
+    monitorActiveScan(
       scanId,
       setIsKatanaCompanyScanning,
       setKatanaCompanyScans,

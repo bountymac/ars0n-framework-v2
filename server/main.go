@@ -262,14 +262,9 @@ func main() {
 	r.HandleFunc("/katana-company/run/{scope_target_id}", utils.RunKatanaCompanyScan).Methods("POST", "OPTIONS")
 	r.HandleFunc("/katana-company/status/{scan_id}", utils.GetKatanaCompanyScanStatus).Methods("GET", "OPTIONS")
 	r.HandleFunc("/scopetarget/{id}/scans/katana-company", utils.GetKatanaCompanyScansForScopeTarget).Methods("GET", "OPTIONS")
-	r.HandleFunc("/katana-company/{scan_id}/cloud-assets", utils.GetKatanaCompanyCloudAssets).Methods("GET", "OPTIONS")
-	r.HandleFunc("/katana-company/{scan_id}/cloud-findings", utils.GetKatanaCompanyCloudFindings).Methods("GET", "OPTIONS")
-	r.HandleFunc("/katana-company/{scan_id}/raw-results", utils.GetKatanaCompanyRawResults).Methods("GET", "OPTIONS")
 
 	// Katana Company scope target-based routes (all scans)
 	r.HandleFunc("/katana-company/target/{scope_target_id}/cloud-assets", utils.GetKatanaCompanyCloudAssetsByTarget).Methods("GET", "OPTIONS")
-	r.HandleFunc("/katana-company/target/{scope_target_id}/cloud-findings", utils.GetKatanaCompanyCloudFindingsByTarget).Methods("GET", "OPTIONS")
-	r.HandleFunc("/katana-company/target/{scope_target_id}/raw-results", utils.GetKatanaCompanyRawResultsByTarget).Methods("GET", "OPTIONS")
 
 	// Live web servers count route
 	r.HandleFunc("/scope-target/{scope_target_id}/live-web-servers-count", getLiveWebServersCount).Methods("GET", "OPTIONS")

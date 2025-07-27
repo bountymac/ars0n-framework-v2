@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"math"
 	"net/http"
 	"os/exec"
 	"regexp"
@@ -41,18 +40,6 @@ type KatanaCloudAsset struct {
 	Type        string `json:"type"`
 	Service     string `json:"service"`
 	Description string `json:"description"`
-}
-
-type KatanaCloudFinding struct {
-	Domain        string `json:"domain"`
-	URL           string `json:"url"`
-	Type          string `json:"type"`
-	Content       string `json:"content"`
-	Description   string `json:"description"`
-	CloudService  string `json:"cloud_service"`
-	ContextBefore string `json:"context_before"`
-	ContextAfter  string `json:"context_after"`
-	MatchPosition int    `json:"match_position"`
 }
 
 func RunKatanaCompanyScan(w http.ResponseWriter, r *http.Request) {
@@ -155,26 +142,9 @@ func ExecuteKatanaCompanyScan(scanID string, domains []string, scopeTargetID str
 		if err != nil {
 			log.Printf("[KATANA-COMPANY] [ERROR] Failed to delete existing cloud assets for domain %s: %v", domain, err)
 		}
-
-		// Delete existing cloud findings for this specific domain
-		_, err = dbPool.Exec(context.Background(),
-			`DELETE FROM katana_company_cloud_findings WHERE scope_target_id = $1 AND root_domain = $2`,
-			scopeTargetID, domain)
-		if err != nil {
-			log.Printf("[KATANA-COMPANY] [ERROR] Failed to delete existing cloud findings for domain %s: %v", domain, err)
-		}
-
-		// Delete existing domain result entry
-		_, err = dbPool.Exec(context.Background(),
-			`DELETE FROM katana_company_domain_results WHERE scope_target_id = $1 AND domain = $2`,
-			scopeTargetID, domain)
-		if err != nil {
-			log.Printf("[KATANA-COMPANY] [ERROR] Failed to delete existing domain result for domain %s: %v", domain, err)
-		}
 	}
 
 	var allCloudAssets []KatanaCloudAsset
-	var allCloudFindings []KatanaCloudFinding
 	var commandsExecuted []string
 
 	for i, domain := range domains {
@@ -220,17 +190,13 @@ func ExecuteKatanaCompanyScan(scanID string, domains []string, scopeTargetID str
 		log.Printf("[KATANA-COMPANY] [INFO] Katana scan completed for domain %s", domain)
 		log.Printf("[KATANA-COMPANY] [DEBUG] Raw output length: %d bytes", len(result))
 
-		// Store domain result in the new domain-centric table
-		InsertKatanaDomainResult(scopeTargetID, domain, scanID, result)
-
 		if result != "" {
-			cloudAssets, cloudFindings := ParseKatanaResultsDomainCentric(scopeTargetID, domain, result)
+			cloudAssets := ParseKatanaResults(scopeTargetID, domain, result)
 			allCloudAssets = append(allCloudAssets, cloudAssets...)
-			allCloudFindings = append(allCloudFindings, cloudFindings...)
 		}
 	}
 
-	log.Printf("[KATANA-COMPANY] [INFO] Found %d cloud assets and %d cloud findings", len(allCloudAssets), len(allCloudFindings))
+	log.Printf("[KATANA-COMPANY] [INFO] Found %d cloud assets", len(allCloudAssets))
 
 	// Deduplicate cloud assets before counting (for scan summary)
 	// Use the actual cloud asset identifier as the unique key to preserve multiple assets from same URL
@@ -252,33 +218,17 @@ func ExecuteKatanaCompanyScan(scanID string, domains []string, scopeTargetID str
 		deduplicatedCloudAssets = append(deduplicatedCloudAssets, cloudAsset)
 	}
 
-	// Deduplicate cloud findings before counting (for scan summary)
-	uniqueCloudFindings := make(map[string]KatanaCloudFinding)
-	for _, cloudFinding := range allCloudFindings {
-		key := fmt.Sprintf("%s_%s_%s", cloudFinding.URL, cloudFinding.Type, cloudFinding.Content)
-		uniqueCloudFindings[key] = cloudFinding
-	}
-
-	// Convert back to slice for counting
-	deduplicatedCloudFindings := make([]KatanaCloudFinding, 0, len(uniqueCloudFindings))
-	for _, cloudFinding := range uniqueCloudFindings {
-		deduplicatedCloudFindings = append(deduplicatedCloudFindings, cloudFinding)
-	}
-
 	log.Printf("[KATANA-COMPANY] [INFO] Deduplicated cloud assets: %d unique assets from %d total discoveries", len(deduplicatedCloudAssets), len(allCloudAssets))
-	log.Printf("[KATANA-COMPANY] [INFO] Deduplicated cloud findings: %d unique findings from %d total discoveries", len(deduplicatedCloudFindings), len(allCloudFindings))
 
 	result := map[string]interface{}{
 		"cloud_assets":    deduplicatedCloudAssets,
-		"cloud_findings":  deduplicatedCloudFindings,
 		"domains_scanned": len(domains),
 		"summary": map[string]int{
-			"total_cloud_assets":   len(deduplicatedCloudAssets),
-			"aws_assets":           countAssetsByService(deduplicatedCloudAssets, "aws"),
-			"gcp_assets":           countAssetsByService(deduplicatedCloudAssets, "gcp"),
-			"azure_assets":         countAssetsByService(deduplicatedCloudAssets, "azure"),
-			"other_assets":         countAssetsByService(deduplicatedCloudAssets, "other"),
-			"total_cloud_findings": len(deduplicatedCloudFindings),
+			"total_cloud_assets": len(deduplicatedCloudAssets),
+			"aws_assets":         countAssetsByService(deduplicatedCloudAssets, "aws"),
+			"gcp_assets":         countAssetsByService(deduplicatedCloudAssets, "gcp"),
+			"azure_assets":       countAssetsByService(deduplicatedCloudAssets, "azure"),
+			"other_assets":       countAssetsByService(deduplicatedCloudAssets, "other"),
 		},
 	}
 
@@ -292,12 +242,11 @@ func ExecuteKatanaCompanyScan(scanID string, domains []string, scopeTargetID str
 	log.Printf("[KATANA-COMPANY] [INFO] Katana Company scan completed (scan ID: %s) in %s", scanID, execTime)
 }
 
-func ParseKatanaCloudResults(domain, result string) ([]KatanaCloudAsset, []KatanaCloudFinding) {
+func ParseKatanaResults(scopeTargetID, domain, result string) []KatanaCloudAsset {
 	log.Printf("[KATANA-COMPANY] [INFO] Starting to parse Katana results for domain %s", domain)
 
 	// Use maps for deduplication
 	uniqueAssets := make(map[string]KatanaCloudAsset)
-	uniqueFindings := make(map[string]KatanaCloudFinding)
 
 	lines := strings.Split(result, "\n")
 	log.Printf("[KATANA-COMPANY] [INFO] Processing %d lines of output", len(lines))
@@ -327,45 +276,53 @@ func ParseKatanaCloudResults(domain, result string) ([]KatanaCloudAsset, []Katan
 		if err := json.Unmarshal([]byte(line), &katanaResult); err != nil {
 			log.Printf("[KATANA-COMPANY] [DEBUG] Failed to parse JSON, treating as plain URL: %v", err)
 			if strings.HasPrefix(line, "http://") || strings.HasPrefix(line, "https://") {
-				assets, findings := analyzeURLForCloudAssets(domain, line, "")
+				assets := analyzeURLForCloudAssets(domain, line, "")
 				addUniqueAssets(uniqueAssets, assets)
-				addUniqueFindings(uniqueFindings, findings)
 			}
 			continue
 		}
 
-		assets, findings := analyzeURLForCloudAssets(domain, katanaResult.Request.Endpoint, katanaResult.Response.Body)
+		assets := analyzeURLForCloudAssets(domain, katanaResult.Request.Endpoint, katanaResult.Response.Body)
 		addUniqueAssets(uniqueAssets, assets)
-		addUniqueFindings(uniqueFindings, findings)
 
 		// Also analyze response headers for cloud assets
 		if katanaResult.Response.Headers != nil {
-			headerAssets, headerFindings := analyzeHeadersForCloudAssets(domain, katanaResult.Request.Endpoint, katanaResult.Response.Headers)
+			headerAssets := analyzeHeadersForCloudAssets(domain, katanaResult.Request.Endpoint, katanaResult.Response.Headers)
 			addUniqueAssets(uniqueAssets, headerAssets)
-			addUniqueFindings(uniqueFindings, headerFindings)
 		}
 
 		if katanaResult.Request.Source != "" && katanaResult.Request.Source != katanaResult.Request.Endpoint {
-			sourceAssets, sourceFindings := analyzeURLForCloudAssets(domain, katanaResult.Request.Source, "")
+			sourceAssets := analyzeURLForCloudAssets(domain, katanaResult.Request.Source, "")
 			addUniqueAssets(uniqueAssets, sourceAssets)
-			addUniqueFindings(uniqueFindings, sourceFindings)
 		}
 	}
 
-	// Convert maps back to slices
+	// Convert maps back to slices and store in database
 	var cloudAssets []KatanaCloudAsset
-	var cloudFindings []KatanaCloudFinding
 
 	for _, asset := range uniqueAssets {
+		// Extract source URL from description
+		sourceURL := ""
+		if sourceMatch := regexp.MustCompile(`\(source: (.+?)\)`).FindStringSubmatch(asset.Description); len(sourceMatch) > 1 {
+			sourceURL = sourceMatch[1]
+		}
+
+		// Insert into domain-centric cloud assets table
+		_, err := dbPool.Exec(context.Background(),
+			`INSERT INTO katana_company_cloud_assets (scope_target_id, root_domain, asset_domain, asset_url, asset_type, service, description, source_url, last_scanned_at) 
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+			 ON CONFLICT (scope_target_id, root_domain, asset_url, asset_type) 
+			 DO UPDATE SET service = $6, description = $7, source_url = $8, last_scanned_at = NOW()`,
+			scopeTargetID, domain, asset.Domain, asset.URL, asset.Type, asset.Service, asset.Description, sourceURL)
+		if err != nil {
+			log.Printf("[KATANA-COMPANY] [ERROR] Failed to insert cloud asset: %v", err)
+		}
+
 		cloudAssets = append(cloudAssets, asset)
 	}
 
-	for _, finding := range uniqueFindings {
-		cloudFindings = append(cloudFindings, finding)
-	}
-
-	log.Printf("[KATANA-COMPANY] [INFO] Completed parsing results for domain %s - found %d unique cloud assets, %d unique cloud findings", domain, len(cloudAssets), len(cloudFindings))
-	return cloudAssets, cloudFindings
+	log.Printf("[KATANA-COMPANY] [INFO] Completed parsing results for domain %s - found %d unique cloud assets", domain, len(cloudAssets))
+	return cloudAssets
 }
 
 func addUniqueAssets(uniqueAssets map[string]KatanaCloudAsset, assets []KatanaCloudAsset) {
@@ -377,17 +334,8 @@ func addUniqueAssets(uniqueAssets map[string]KatanaCloudAsset, assets []KatanaCl
 	}
 }
 
-func addUniqueFindings(uniqueFindings map[string]KatanaCloudFinding, findings []KatanaCloudFinding) {
-	for _, finding := range findings {
-		// Create unique key based on cloud service, type, and content
-		key := fmt.Sprintf("%s:%s:%s", finding.CloudService, finding.Type, finding.Content)
-		uniqueFindings[key] = finding
-	}
-}
-
-func analyzeURLForCloudAssets(domain, url, body string) ([]KatanaCloudAsset, []KatanaCloudFinding) {
+func analyzeURLForCloudAssets(domain, url, body string) []KatanaCloudAsset {
 	var assets []KatanaCloudAsset
-	var findings []KatanaCloudFinding
 
 	// Use a map to track unique assets within this URL
 	uniqueURLAssets := make(map[string]bool)
@@ -549,263 +497,11 @@ func analyzeURLForCloudAssets(domain, url, body string) ([]KatanaCloudAsset, []K
 		}
 	}
 
-	if body != "" {
-		bodyFindings := analyzeBodyForCloudFindings(domain, url, body)
-		findings = append(findings, bodyFindings...)
-	}
-
-	return assets, findings
+	return assets
 }
 
-// calculateEntropy calculates the Shannon entropy of a string to determine randomness
-func calculateEntropy(s string) float64 {
-	if len(s) == 0 {
-		return 0
-	}
-
-	// Count character frequencies
-	freq := make(map[rune]int)
-	for _, char := range s {
-		freq[char]++
-	}
-
-	// Calculate entropy
-	var entropy float64
-	length := float64(len(s))
-	for _, count := range freq {
-		p := float64(count) / length
-		if p > 0 {
-			entropy -= p * math.Log2(p)
-		}
-	}
-
-	return entropy
-}
-
-// isLikelyAWSSecret checks if a 40-char string is likely an AWS secret key
-func isLikelyAWSSecret(candidate, context string) bool {
-	// Must be exactly 40 characters
-	if len(candidate) != 40 {
-		return false
-	}
-
-	// Calculate entropy - AWS secrets should have high randomness
-	entropy := calculateEntropy(candidate)
-	if entropy < 4.5 { // Threshold for randomness
-		return false
-	}
-
-	// Check if this appears to be part of a larger high-entropy token
-	// Look for long alphanumeric strings surrounding the candidate
-	candidateIndex := strings.Index(context, candidate)
-	if candidateIndex != -1 {
-		// Check characters before and after the candidate
-		start := candidateIndex
-		end := candidateIndex + len(candidate)
-
-		// Count high-entropy characters before the candidate
-		beforeCount := 0
-		for i := start - 1; i >= 0 && i >= start-100; i-- {
-			char := context[i]
-			if (char >= 'A' && char <= 'Z') || (char >= 'a' && char <= 'z') ||
-				(char >= '0' && char <= '9') || char == '_' || char == '-' || char == '.' {
-				beforeCount++
-			} else {
-				break
-			}
-		}
-
-		// Count high-entropy characters after the candidate
-		afterCount := 0
-		for i := end; i < len(context) && i < end+100; i++ {
-			char := context[i]
-			if (char >= 'A' && char <= 'Z') || (char >= 'a' && char <= 'z') ||
-				(char >= '0' && char <= '9') || char == '_' || char == '-' || char == '.' {
-				afterCount++
-			} else {
-				break
-			}
-		}
-
-		// If surrounded by long strings of alphanumeric characters,
-		// it's likely part of a JWT or other large token
-		if beforeCount > 20 || afterCount > 20 {
-			return false
-		}
-
-		// If the total continuous alphanumeric sequence is very long, reject it
-		totalLength := beforeCount + len(candidate) + afterCount
-		if totalLength > 100 {
-			return false
-		}
-	}
-
-	// Check for patterns that indicate it's NOT a secret
-	lowerCandidate := strings.ToLower(candidate)
-
-	// Exclude common programming patterns
-	excludePatterns := []string{
-		"internal", "memo", "react", "context", "component",
-		"function", "object", "element", "instance", "prototype",
-		"undefined", "null", "true", "false", "constructor",
-	}
-
-	for _, pattern := range excludePatterns {
-		if strings.Contains(lowerCandidate, pattern) {
-			return false
-		}
-	}
-
-	// Look for positive context indicators
-	lowerContext := strings.ToLower(context)
-	positiveIndicators := []string{
-		"secret", "key", "aws", "access", "credential", "token",
-		"config", "env", "password", "auth", "api",
-	}
-
-	for _, indicator := range positiveIndicators {
-		if strings.Contains(lowerContext, indicator) {
-			return true
-		}
-	}
-
-	// If no positive context but high entropy, be more conservative
-	return entropy > 5.2 // Higher threshold without context
-}
-
-func analyzeBodyForCloudFindings(domain, url, body string) []KatanaCloudFinding {
-	var findings []KatanaCloudFinding
-
-	// Use a map to track unique findings within this body
-	uniqueBodyFindings := make(map[string]bool)
-
-	patterns := map[string]map[string]string{
-		"aws": {
-			"access_key":            `AKIA[0-9A-Z]{16}`,
-			"secret_key":            `\b[A-Za-z0-9/+=]{40}\b`,
-			"s3_bucket":             `s3://[a-zA-Z0-9\-\.]+`,
-			"s3_url":                `https://[a-zA-Z0-9\-\.]+\.s3[\-\.][a-zA-Z0-9\-]*\.amazonaws\.com|https://[a-zA-Z0-9\-\.]+\.s3\.amazonaws\.com`,
-			"lambda_arn":            `arn:aws:lambda:[a-zA-Z0-9\-]+:[0-9]+:function:[a-zA-Z0-9\-_]+`,
-			"iam_role_arn":          `arn:aws:iam::[0-9]+:role\/[a-zA-Z0-9\-_\/]+`,
-			"iam_user_arn":          `arn:aws:iam::[0-9]+:user\/[a-zA-Z0-9\-_\/]+`,
-			"sns_topic_arn":         `arn:aws:sns:[a-zA-Z0-9\-]+:[0-9]+:[a-zA-Z0-9\-_]+`,
-			"sqs_queue_arn":         `arn:aws:sqs:[a-zA-Z0-9\-]+:[0-9]+:[a-zA-Z0-9\-_]+`,
-			"kinesis_stream_arn":    `arn:aws:kinesis:[a-zA-Z0-9\-]+:[0-9]+:stream\/[a-zA-Z0-9\-_]+`,
-			"s3_bucket_arn":         `arn:aws:s3:::[a-zA-Z0-9\-\.]+`,
-			"dynamodb_table_arn":    `arn:aws:dynamodb:[a-zA-Z0-9\-]+:[0-9]+:table\/[a-zA-Z0-9\-_]+`,
-			"secrets_manager_arn":   `arn:aws:secretsmanager:[a-zA-Z0-9\-]+:[0-9]+:secret:[a-zA-Z0-9\-_\/]+`,
-			"parameter_store":       `arn:aws:ssm:[a-zA-Z0-9\-]+:[0-9]+:parameter\/[a-zA-Z0-9\-_\/]+`,
-			"ec2_instance_id":       `i-[0-9a-f]{8,17}`,
-			"vpc_id":                `vpc-[0-9a-f]{8,17}`,
-			"subnet_id":             `subnet-[0-9a-f]{8,17}`,
-			"security_group_id":     `sg-[0-9a-f]{8,17}`,
-			"cognito_user_pool":     `[a-z]{2}-[a-z]+-[0-9]+_[A-Za-z0-9]{9}`,
-			"cognito_identity_pool": `[a-z]{2}-[a-z]+-[0-9]+:[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}`,
-			"api_gateway":           `[a-z0-9]{10}\.execute-api\.[a-z0-9\-]+\.amazonaws\.com`,
-			"cloudfront_dist":       `[a-z0-9]{14}\.cloudfront\.net`,
-			"route53_hosted_zone":   `Z[0-9A-Z]{13}`,
-		},
-		"gcp": {
-			"project_id":       `[a-z][a-z0-9\-]{4,28}[a-z0-9]\.googleapis\.com`,
-			"service_account":  `[a-zA-Z0-9\-]+@[a-zA-Z0-9\-]+\.iam\.gserviceaccount\.com`,
-			"firebase_config":  `"apiKey"\s*:\s*"[A-Za-z0-9_-]+",\s*"authDomain"\s*:\s*"[a-zA-Z0-9\-]+\.firebaseapp\.com",\s*"projectId"\s*:\s*"[a-zA-Z0-9\-]+"`,
-			"storage_bucket":   `gs://[a-zA-Z0-9\-\.]+`,
-			"firebase_api_key": `AIza[0-9A-Za-z_-]{35}`,
-			"gcp_api_key":      `AIza[0-9A-Za-z_-]{35}`,
-			"client_id":        `[0-9]+-[a-zA-Z0-9_-]+\.apps\.googleusercontent\.com`,
-			"client_secret":    `GOCSPX-[a-zA-Z0-9_-]{28}`,
-		},
-		"azure": {
-			"storage_account": `[a-z0-9]{3,24}\.blob\.core\.windows\.net`,
-			"key_vault":       `[a-zA-Z0-9\-]{3,24}\.vault\.azure\.net`,
-			"app_service":     `[a-zA-Z0-9\-]+\.azurewebsites\.net`,
-			"cosmos_db":       `[a-zA-Z0-9\-]+\.documents\.azure\.com`,
-			"tenant_id":       `(?:tenant["\s]*[:=]["\s]*|TenantId["\s]*[:=]["\s]*)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`,
-			"client_id":       `(?:client["\s]*[:=]["\s]*|ClientId["\s]*[:=]["\s]*)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`,
-			"subscription_id": `(?:subscription["\s]*[:=]["\s]*|SubscriptionId["\s]*[:=]["\s]*)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`,
-		},
-	}
-
-	for cloudProvider, detectionPatterns := range patterns {
-		for findingType, pattern := range detectionPatterns {
-			re := regexp.MustCompile(pattern)
-			matches := re.FindAllStringIndex(body, -1)
-			matchStrings := re.FindAllString(body, -1)
-
-			for i, match := range matches {
-				if i >= len(matchStrings) {
-					continue
-				}
-
-				matchText := sanitizeUTF8(matchStrings[i])
-				startPos := match[0]
-				endPos := match[1]
-
-				// Special validation for AWS secret keys to reduce false positives
-				if cloudProvider == "aws" && findingType == "secret_key" {
-					// Extract broader context for validation (500 chars)
-					contextStart := startPos - 500
-					if contextStart < 0 {
-						contextStart = 0
-					}
-					contextEnd := endPos + 500
-					if contextEnd > len(body) {
-						contextEnd = len(body)
-					}
-
-					fullContext := body[contextStart:contextEnd]
-					if !isLikelyAWSSecret(matchText, fullContext) {
-						continue // Skip this match as it's likely a false positive
-					}
-				}
-
-				// Create unique key to avoid duplicates within the same body
-				key := fmt.Sprintf("%s:%s:%s:%d", cloudProvider, findingType, matchText, startPos)
-				if !uniqueBodyFindings[key] {
-					uniqueBodyFindings[key] = true
-
-					// Extract context before and after (250 characters each)
-					contextStart := startPos - 250
-					if contextStart < 0 {
-						contextStart = 0
-					}
-					contextEnd := endPos + 250
-					if contextEnd > len(body) {
-						contextEnd = len(body)
-					}
-
-					contextBefore := ""
-					contextAfter := ""
-
-					if startPos > 0 {
-						contextBefore = sanitizeUTF8(body[contextStart:startPos])
-					}
-					if endPos < len(body) {
-						contextAfter = sanitizeUTF8(body[endPos:contextEnd])
-					}
-
-					findings = append(findings, KatanaCloudFinding{
-						Domain:        domain,
-						URL:           url,
-						Type:          findingType,
-						Content:       matchText,
-						Description:   fmt.Sprintf("Found %s %s in response body", cloudProvider, findingType),
-						CloudService:  cloudProvider,
-						ContextBefore: contextBefore,
-						ContextAfter:  contextAfter,
-						MatchPosition: startPos,
-					})
-				}
-			}
-		}
-	}
-
-	return findings
-}
-
-func analyzeHeadersForCloudAssets(domain, url string, headers map[string]interface{}) ([]KatanaCloudAsset, []KatanaCloudFinding) {
+func analyzeHeadersForCloudAssets(domain, url string, headers map[string]interface{}) []KatanaCloudAsset {
 	var assets []KatanaCloudAsset
-	var findings []KatanaCloudFinding
 
 	// Use a map to track unique assets within headers
 	uniqueHeaderAssets := make(map[string]bool)
@@ -992,7 +688,7 @@ func analyzeHeadersForCloudAssets(domain, url string, headers map[string]interfa
 		}
 	}
 
-	return assets, findings
+	return assets
 }
 
 func countAssetsByService(assets []KatanaCloudAsset, serviceType string) int {
@@ -1121,375 +817,6 @@ func GetKatanaCompanyScansForScopeTarget(w http.ResponseWriter, r *http.Request)
 	json.NewEncoder(w).Encode(scans)
 }
 
-// InsertKatanaDomainResult stores domain scan results in the domain-centric table
-func InsertKatanaDomainResult(scopeTargetID, domain, scanID, rawOutput string) {
-	_, err := dbPool.Exec(context.Background(),
-		`INSERT INTO katana_company_domain_results (scope_target_id, domain, last_scan_id, raw_output, last_scanned_at, updated_at) 
-		 VALUES ($1, $2, $3, $4, NOW(), NOW())
-		 ON CONFLICT (scope_target_id, domain) 
-		 DO UPDATE SET last_scan_id = $3, raw_output = $4, last_scanned_at = NOW(), updated_at = NOW()`,
-		scopeTargetID, domain, scanID, sanitizeUTF8(rawOutput))
-	if err != nil {
-		log.Printf("[KATANA-COMPANY] [ERROR] Failed to insert/update domain result: %v", err)
-	}
-}
-
-// ParseKatanaResultsDomainCentric parses results and stores them in domain-centric tables
-func ParseKatanaResultsDomainCentric(scopeTargetID, domain, result string) ([]KatanaCloudAsset, []KatanaCloudFinding) {
-	log.Printf("[KATANA-COMPANY] [INFO] Starting to parse results for domain %s using domain-centric approach", domain)
-
-	var cloudAssets []KatanaCloudAsset
-	var cloudFindings []KatanaCloudFinding
-
-	// Use maps for deduplication during parsing
-	uniqueAssets := make(map[string]KatanaCloudAsset)
-	uniqueFindings := make(map[string]KatanaCloudFinding)
-
-	lines := strings.Split(result, "\n")
-	log.Printf("[KATANA-COMPANY] [INFO] Processing %d lines of output for domain-centric storage", len(lines))
-
-	for lineNum, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		log.Printf("[KATANA-COMPANY] [DEBUG] Processing line %d: %s", lineNum+1, line)
-
-		var katanaResult struct {
-			Timestamp string `json:"timestamp"`
-			Request   struct {
-				Method   string `json:"method"`
-				Endpoint string `json:"endpoint"`
-				Source   string `json:"source"`
-			} `json:"request"`
-			Response struct {
-				StatusCode int                    `json:"status_code"`
-				Headers    map[string]interface{} `json:"headers"`
-				Body       string                 `json:"body"`
-			} `json:"response"`
-		}
-
-		if err := json.Unmarshal([]byte(line), &katanaResult); err != nil {
-			log.Printf("[KATANA-COMPANY] [DEBUG] Failed to parse JSON, treating as plain URL: %v", err)
-			if strings.HasPrefix(line, "http://") || strings.HasPrefix(line, "https://") {
-				assets, findings := analyzeURLForCloudAssets(domain, line, "")
-				addUniqueAssets(uniqueAssets, assets)
-				addUniqueFindings(uniqueFindings, findings)
-			}
-			continue
-		}
-
-		assets, findings := analyzeURLForCloudAssets(domain, katanaResult.Request.Endpoint, katanaResult.Response.Body)
-		addUniqueAssets(uniqueAssets, assets)
-		addUniqueFindings(uniqueFindings, findings)
-
-		// Also analyze headers
-		headerAssets, headerFindings := analyzeHeadersForCloudAssets(domain, katanaResult.Request.Endpoint, katanaResult.Response.Headers)
-		addUniqueAssets(uniqueAssets, headerAssets)
-		addUniqueFindings(uniqueFindings, headerFindings)
-	}
-
-	// Convert unique maps back to slices and insert into domain-centric tables
-	for _, asset := range uniqueAssets {
-		// Extract source URL from description
-		sourceURL := ""
-		if sourceMatch := regexp.MustCompile(`\(source: (.+?)\)`).FindStringSubmatch(asset.Description); len(sourceMatch) > 1 {
-			sourceURL = sourceMatch[1]
-		}
-
-		// Insert into domain-centric cloud assets table
-		_, err := dbPool.Exec(context.Background(),
-			`INSERT INTO katana_company_cloud_assets (scope_target_id, root_domain, asset_domain, asset_url, asset_type, service, description, source_url, last_scanned_at) 
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
-			 ON CONFLICT (scope_target_id, root_domain, asset_url, asset_type) 
-			 DO UPDATE SET service = $6, description = $7, source_url = $8, last_scanned_at = NOW()`,
-			scopeTargetID, domain, asset.Domain, asset.URL, asset.Type, asset.Service, asset.Description, sourceURL)
-		if err != nil {
-			log.Printf("[KATANA-COMPANY] [ERROR] Failed to insert cloud asset: %v", err)
-		}
-
-		cloudAssets = append(cloudAssets, asset)
-	}
-
-	for _, finding := range uniqueFindings {
-		// Insert into domain-centric cloud findings table
-		_, err := dbPool.Exec(context.Background(),
-			`INSERT INTO katana_company_cloud_findings (scope_target_id, root_domain, finding_domain, finding_url, finding_type, content, description, cloud_service, context_before, context_after, match_position, last_scanned_at) 
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
-			 ON CONFLICT (scope_target_id, root_domain, finding_url, finding_type, content) 
-			 DO UPDATE SET description = $7, cloud_service = $8, context_before = $9, context_after = $10, match_position = $11, last_scanned_at = NOW()`,
-			scopeTargetID, domain, finding.Domain, finding.URL, finding.Type, finding.Content, finding.Description, finding.CloudService, finding.ContextBefore, finding.ContextAfter, finding.MatchPosition)
-		if err != nil {
-			log.Printf("[KATANA-COMPANY] [ERROR] Failed to insert cloud finding: %v", err)
-		}
-
-		cloudFindings = append(cloudFindings, finding)
-	}
-
-	log.Printf("[KATANA-COMPANY] [INFO] Completed parsing results for domain %s - found %d unique cloud assets, %d cloud findings",
-		domain, len(cloudAssets), len(cloudFindings))
-
-	return cloudAssets, cloudFindings
-}
-
-// GetKatanaCompanyCloudAssets retrieves all cloud assets for a scope target (domain-centric approach)
-func GetKatanaCompanyCloudAssets(w http.ResponseWriter, r *http.Request) {
-	scanID := mux.Vars(r)["scan_id"]
-	if scanID == "" {
-		http.Error(w, "Scan ID is required", http.StatusBadRequest)
-		return
-	}
-
-	// Get scope_target_id from scan
-	var scopeTargetID string
-	err := dbPool.QueryRow(context.Background(),
-		`SELECT scope_target_id FROM katana_company_scans WHERE scan_id = $1`,
-		scanID).Scan(&scopeTargetID)
-	if err != nil {
-		log.Printf("[KATANA-COMPANY] [ERROR] Failed to get scope target ID for scan %s: %v", scanID, err)
-		http.Error(w, "Scan not found", http.StatusNotFound)
-		return
-	}
-
-	// Fetch all cloud assets for this scope target (domain-centric approach)
-	rows, err := dbPool.Query(context.Background(),
-		`SELECT id, root_domain, asset_domain, asset_url, asset_type, service, description, source_url, last_scanned_at 
-		 FROM katana_company_cloud_assets 
-		 WHERE scope_target_id = $1 
-		 ORDER BY last_scanned_at DESC, asset_url`,
-		scopeTargetID)
-	if err != nil {
-		log.Printf("[KATANA-COMPANY] [ERROR] Failed to fetch cloud assets: %v", err)
-		http.Error(w, "Failed to fetch cloud assets", http.StatusInternalServerError)
-		return
-	}
-	defer rows.Close()
-
-	var cloudAssets []map[string]interface{}
-	for rows.Next() {
-		var id, rootDomain, assetDomain, assetURL, assetType, service, description string
-		var sourceURL *string
-		var lastScannedAt time.Time
-
-		err := rows.Scan(&id, &rootDomain, &assetDomain, &assetURL, &assetType, &service, &description, &sourceURL, &lastScannedAt)
-		if err != nil {
-			log.Printf("[KATANA-COMPANY] [ERROR] Error scanning cloud asset row: %v", err)
-			continue
-		}
-
-		sourceURLStr := ""
-		if sourceURL != nil {
-			sourceURLStr = *sourceURL
-		}
-
-		cloudAssets = append(cloudAssets, map[string]interface{}{
-			"id":              id,
-			"root_domain":     rootDomain,
-			"domain":          assetDomain,
-			"url":             assetURL,
-			"type":            assetType,
-			"service":         service,
-			"description":     description,
-			"source_url":      sourceURLStr,
-			"created_at":      lastScannedAt,
-			"last_scanned_at": lastScannedAt,
-		})
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(cloudAssets)
-}
-
-// GetKatanaCompanyCloudFindings retrieves all cloud findings for a scope target (domain-centric approach)
-func GetKatanaCompanyCloudFindings(w http.ResponseWriter, r *http.Request) {
-	scanID := mux.Vars(r)["scan_id"]
-	if scanID == "" {
-		http.Error(w, "Scan ID is required", http.StatusBadRequest)
-		return
-	}
-
-	// Get scope_target_id from scan
-	var scopeTargetID string
-	err := dbPool.QueryRow(context.Background(),
-		`SELECT scope_target_id FROM katana_company_scans WHERE scan_id = $1`,
-		scanID).Scan(&scopeTargetID)
-	if err != nil {
-		log.Printf("[KATANA-COMPANY] [ERROR] Failed to get scope target ID for scan %s: %v", scanID, err)
-		http.Error(w, "Scan not found", http.StatusNotFound)
-		return
-	}
-
-	// Fetch all cloud findings for this scope target (domain-centric approach)
-	rows, err := dbPool.Query(context.Background(),
-		`SELECT id, root_domain, finding_domain, finding_url, finding_type, content, description, cloud_service, context_before, context_after, match_position, last_scanned_at 
-		 FROM katana_company_cloud_findings 
-		 WHERE scope_target_id = $1 
-		 ORDER BY last_scanned_at DESC, finding_url`,
-		scopeTargetID)
-	if err != nil {
-		log.Printf("[KATANA-COMPANY] [ERROR] Failed to fetch cloud findings: %v", err)
-		http.Error(w, "Failed to fetch cloud findings", http.StatusInternalServerError)
-		return
-	}
-	defer rows.Close()
-
-	var cloudFindings []map[string]interface{}
-	for rows.Next() {
-		var id, rootDomain, findingDomain, findingURL, findingType, content, description, cloudService, contextBefore, contextAfter string
-		var matchPosition int
-		var lastScannedAt time.Time
-
-		err := rows.Scan(&id, &rootDomain, &findingDomain, &findingURL, &findingType, &content, &description, &cloudService, &contextBefore, &contextAfter, &matchPosition, &lastScannedAt)
-		if err != nil {
-			log.Printf("[KATANA-COMPANY] [ERROR] Error scanning cloud finding row: %v", err)
-			continue
-		}
-
-		cloudFindings = append(cloudFindings, map[string]interface{}{
-			"id":              id,
-			"root_domain":     rootDomain,
-			"domain":          findingDomain,
-			"url":             findingURL,
-			"type":            findingType,
-			"content":         content,
-			"description":     description,
-			"cloud_service":   cloudService,
-			"context_before":  contextBefore,
-			"context_after":   contextAfter,
-			"match_position":  matchPosition,
-			"created_at":      lastScannedAt,
-			"last_scanned_at": lastScannedAt,
-		})
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(cloudFindings)
-}
-
-// GetKatanaCompanyRawResults retrieves raw domain results for a scope target
-func GetKatanaCompanyRawResults(w http.ResponseWriter, r *http.Request) {
-	scanID := mux.Vars(r)["scan_id"]
-	if scanID == "" {
-		http.Error(w, "Scan ID is required", http.StatusBadRequest)
-		return
-	}
-
-	// Get domain parameter from query string (optional)
-	domain := r.URL.Query().Get("domain")
-
-	// Get scope_target_id from scan
-	var scopeTargetID string
-	err := dbPool.QueryRow(context.Background(),
-		`SELECT scope_target_id FROM katana_company_scans WHERE scan_id = $1`,
-		scanID).Scan(&scopeTargetID)
-	if err != nil {
-		log.Printf("[KATANA-COMPANY] [ERROR] Failed to get scope target ID for scan %s: %v", scanID, err)
-		http.Error(w, "Scan not found", http.StatusNotFound)
-		return
-	}
-
-	var query string
-	var args []interface{}
-
-	if domain != "" {
-		// Fetch raw results for specific domain
-		query = `SELECT domain, raw_output, last_scanned_at, last_scan_id 
-		         FROM katana_company_domain_results 
-		         WHERE scope_target_id = $1 AND domain = $2`
-		args = []interface{}{scopeTargetID, domain}
-	} else {
-		// Fetch all domains from scan configuration and join with results to show scan status
-		query = `
-		WITH scan_domains AS (
-			SELECT DISTINCT jsonb_array_elements_text(domains) as domain
-			FROM katana_company_scans 
-			WHERE scan_id = $1
-		)
-		SELECT 
-			sd.domain,
-			'' as raw_output,
-			kcdr.last_scanned_at,
-			kcdr.last_scan_id,
-			CASE WHEN kcdr.domain IS NOT NULL THEN true ELSE false END as has_been_scanned
-		FROM scan_domains sd
-		LEFT JOIN katana_company_domain_results kcdr 
-			ON sd.domain = kcdr.domain AND kcdr.scope_target_id = $2
-		ORDER BY has_been_scanned DESC, sd.domain ASC`
-		args = []interface{}{scanID, scopeTargetID}
-	}
-
-	rows, err := dbPool.Query(context.Background(), query, args...)
-	if err != nil {
-		log.Printf("[KATANA-COMPANY] [ERROR] Failed to fetch raw domain results: %v", err)
-		http.Error(w, "Failed to fetch raw domain results", http.StatusInternalServerError)
-		return
-	}
-	defer rows.Close()
-
-	var rawResults []map[string]interface{}
-	for rows.Next() {
-		var domainName, rawOutput, lastScanID string
-		var lastScannedAt *time.Time
-		var hasBeenScanned bool
-
-		if domain != "" {
-			// For specific domain queries, use the original 4-column format
-			var lastScannedAtNonNull time.Time
-			err := rows.Scan(&domainName, &rawOutput, &lastScannedAtNonNull, &lastScanID)
-			if err != nil {
-				log.Printf("[KATANA-COMPANY] [ERROR] Error scanning raw domain result row: %v", err)
-				continue
-			}
-			lastScannedAt = &lastScannedAtNonNull
-			hasBeenScanned = true
-		} else {
-			// For general domain list queries, use the 5-column format with scan status
-			err := rows.Scan(&domainName, &rawOutput, &lastScannedAt, &lastScanID, &hasBeenScanned)
-			if err != nil {
-				log.Printf("[KATANA-COMPANY] [ERROR] Error scanning raw domain result row: %v", err)
-				continue
-			}
-		}
-
-		result := map[string]interface{}{
-			"domain":           domainName,
-			"raw_output":       rawOutput,
-			"last_scan_id":     lastScanID,
-			"has_been_scanned": hasBeenScanned,
-		}
-
-		if lastScannedAt != nil {
-			result["last_scanned_at"] = *lastScannedAt
-		} else {
-			result["last_scanned_at"] = nil
-		}
-
-		rawResults = append(rawResults, result)
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(rawResults)
-}
-
-func sanitizeUTF8(s string) string {
-	if utf8.ValidString(s) {
-		return s
-	}
-
-	v := make([]rune, 0, len(s))
-	for i, r := range s {
-		if r == utf8.RuneError {
-			_, size := utf8.DecodeRuneInString(s[i:])
-			if size == 1 {
-				continue
-			}
-		}
-		v = append(v, r)
-	}
-	return string(v)
-}
-
 // GetKatanaCompanyCloudAssetsByTarget retrieves all cloud assets for a scope target (all scans)
 func GetKatanaCompanyCloudAssetsByTarget(w http.ResponseWriter, r *http.Request) {
 	scopeTargetID := mux.Vars(r)["scope_target_id"]
@@ -1547,136 +874,20 @@ func GetKatanaCompanyCloudAssetsByTarget(w http.ResponseWriter, r *http.Request)
 	json.NewEncoder(w).Encode(cloudAssets)
 }
 
-// GetKatanaCompanyCloudFindingsByTarget retrieves all cloud findings for a scope target (all scans)
-func GetKatanaCompanyCloudFindingsByTarget(w http.ResponseWriter, r *http.Request) {
-	scopeTargetID := mux.Vars(r)["scope_target_id"]
-	if scopeTargetID == "" {
-		http.Error(w, "Scope target ID is required", http.StatusBadRequest)
-		return
+func sanitizeUTF8(s string) string {
+	if utf8.ValidString(s) {
+		return s
 	}
 
-	// Fetch all cloud findings for this scope target (across all scans)
-	rows, err := dbPool.Query(context.Background(),
-		`SELECT id, root_domain, finding_domain, finding_url, finding_type, content, description, cloud_service, context_before, context_after, match_position, last_scanned_at 
-		 FROM katana_company_cloud_findings 
-		 WHERE scope_target_id = $1 
-		 ORDER BY last_scanned_at DESC, finding_url`,
-		scopeTargetID)
-	if err != nil {
-		log.Printf("[KATANA-COMPANY] [ERROR] Failed to fetch cloud findings: %v", err)
-		http.Error(w, "Failed to fetch cloud findings", http.StatusInternalServerError)
-		return
-	}
-	defer rows.Close()
-
-	var cloudFindings []map[string]interface{}
-	for rows.Next() {
-		var id, rootDomain, findingDomain, findingURL, findingType, content, description, cloudService, contextBefore, contextAfter string
-		var matchPosition int
-		var lastScannedAt time.Time
-
-		err := rows.Scan(&id, &rootDomain, &findingDomain, &findingURL, &findingType, &content, &description, &cloudService, &contextBefore, &contextAfter, &matchPosition, &lastScannedAt)
-		if err != nil {
-			log.Printf("[KATANA-COMPANY] [ERROR] Error scanning cloud finding row: %v", err)
-			continue
-		}
-
-		cloudFindings = append(cloudFindings, map[string]interface{}{
-			"id":              id,
-			"root_domain":     rootDomain,
-			"domain":          findingDomain,
-			"url":             findingURL,
-			"type":            findingType,
-			"content":         content,
-			"description":     description,
-			"cloud_service":   cloudService,
-			"context_before":  contextBefore,
-			"context_after":   contextAfter,
-			"match_position":  matchPosition,
-			"created_at":      lastScannedAt,
-			"last_scanned_at": lastScannedAt,
-		})
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(cloudFindings)
-}
-
-// GetKatanaCompanyRawResultsByTarget retrieves all raw domain results for a scope target (all scans)
-func GetKatanaCompanyRawResultsByTarget(w http.ResponseWriter, r *http.Request) {
-	scopeTargetID := mux.Vars(r)["scope_target_id"]
-	if scopeTargetID == "" {
-		http.Error(w, "Scope target ID is required", http.StatusBadRequest)
-		return
-	}
-
-	// Get domain parameter from query string (optional)
-	domain := r.URL.Query().Get("domain")
-
-	var query string
-	var args []interface{}
-
-	if domain != "" {
-		// Fetch raw results for specific domain
-		query = `SELECT domain, raw_output, last_scanned_at, last_scan_id 
-		         FROM katana_company_domain_results 
-		         WHERE scope_target_id = $1 AND domain = $2`
-		args = []interface{}{scopeTargetID, domain}
-	} else {
-		// Fetch all domains that have ever been scanned for this scope target
-		query = `SELECT domain, '' as raw_output, last_scanned_at, last_scan_id, true as has_been_scanned
-		         FROM katana_company_domain_results 
-		         WHERE scope_target_id = $1
-		         ORDER BY last_scanned_at DESC, domain ASC`
-		args = []interface{}{scopeTargetID}
-	}
-
-	rows, err := dbPool.Query(context.Background(), query, args...)
-	if err != nil {
-		log.Printf("[KATANA-COMPANY] [ERROR] Failed to fetch raw results: %v", err)
-		http.Error(w, "Failed to fetch raw results", http.StatusInternalServerError)
-		return
-	}
-	defer rows.Close()
-
-	var rawResults []map[string]interface{}
-	for rows.Next() {
-		var domainName, rawOutput string
-		var lastScannedAt time.Time
-		var lastScanID *string
-		var hasBeenScanned bool
-
-		if domain != "" {
-			// Single domain query
-			err := rows.Scan(&domainName, &rawOutput, &lastScannedAt, &lastScanID)
-			if err != nil {
-				log.Printf("[KATANA-COMPANY] [ERROR] Error scanning raw result row: %v", err)
-				continue
-			}
-			hasBeenScanned = true
-		} else {
-			// All domains query
-			err := rows.Scan(&domainName, &rawOutput, &lastScannedAt, &lastScanID, &hasBeenScanned)
-			if err != nil {
-				log.Printf("[KATANA-COMPANY] [ERROR] Error scanning raw result row: %v", err)
+	v := make([]rune, 0, len(s))
+	for i, r := range s {
+		if r == utf8.RuneError {
+			_, size := utf8.DecodeRuneInString(s[i:])
+			if size == 1 {
 				continue
 			}
 		}
-
-		lastScanIDStr := ""
-		if lastScanID != nil {
-			lastScanIDStr = *lastScanID
-		}
-
-		rawResults = append(rawResults, map[string]interface{}{
-			"domain":           domainName,
-			"raw_output":       rawOutput,
-			"last_scanned_at":  lastScannedAt,
-			"last_scan_id":     lastScanIDStr,
-			"has_been_scanned": hasBeenScanned,
-		})
+		v = append(v, r)
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(rawResults)
+	return string(v)
 }

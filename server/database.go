@@ -941,18 +941,6 @@ func createTables() {
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		);`,
 
-		`CREATE TABLE IF NOT EXISTS katana_company_domain_results (
-			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-			scope_target_id UUID NOT NULL REFERENCES scope_targets(id) ON DELETE CASCADE,
-			domain TEXT NOT NULL,
-			last_scanned_at TIMESTAMP DEFAULT NOW(),
-			last_scan_id UUID,
-			raw_output TEXT,
-			created_at TIMESTAMP DEFAULT NOW(),
-			updated_at TIMESTAMP DEFAULT NOW(),
-			UNIQUE(scope_target_id, domain)
-		);`,
-
 		`CREATE TABLE IF NOT EXISTS katana_company_cloud_assets (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			scope_target_id UUID NOT NULL REFERENCES scope_targets(id) ON DELETE CASCADE,
@@ -966,27 +954,7 @@ func createTables() {
 			region TEXT,
 			last_scanned_at TIMESTAMP DEFAULT NOW(),
 			created_at TIMESTAMP DEFAULT NOW(),
-			FOREIGN KEY (scope_target_id, root_domain) REFERENCES katana_company_domain_results(scope_target_id, domain) ON DELETE CASCADE,
 			UNIQUE(scope_target_id, root_domain, asset_url, asset_type)
-		);`,
-
-		`CREATE TABLE IF NOT EXISTS katana_company_cloud_findings (
-			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-			scope_target_id UUID NOT NULL REFERENCES scope_targets(id) ON DELETE CASCADE,
-			root_domain TEXT NOT NULL,
-			finding_domain TEXT NOT NULL,
-			finding_url TEXT NOT NULL,
-			finding_type TEXT NOT NULL,
-			content TEXT,
-			description TEXT,
-			cloud_service TEXT,
-			context_before TEXT,
-			context_after TEXT,
-			match_position INTEGER,
-			last_scanned_at TIMESTAMP DEFAULT NOW(),
-			created_at TIMESTAMP DEFAULT NOW(),
-			FOREIGN KEY (scope_target_id, root_domain) REFERENCES katana_company_domain_results(scope_target_id, domain) ON DELETE CASCADE,
-			UNIQUE(scope_target_id, root_domain, finding_url, finding_type, content)
 		);`,
 
 		`CREATE TABLE IF NOT EXISTS nuclei_configs (
@@ -999,6 +967,10 @@ func createTables() {
 			created_at TIMESTAMP DEFAULT NOW(),
 			UNIQUE(scope_target_id)
 		);`,
+
+		// Migration: Drop unused Katana Company tables
+		`DROP TABLE IF EXISTS katana_company_cloud_findings CASCADE;`,
+		`DROP TABLE IF EXISTS katana_company_domain_results CASCADE;`,
 
 		`CREATE TABLE IF NOT EXISTS consolidated_attack_surface_assets (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

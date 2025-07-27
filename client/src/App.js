@@ -155,6 +155,7 @@ import KatanaCompanyConfigModal from './modals/KatanaCompanyConfigModal.js';
 import KatanaCompanyResultsModal from './modals/KatanaCompanyResultsModal.js';
 import { KatanaCompanyHistoryModal } from './modals/KatanaCompanyHistoryModal.js';
 import { initiateKatanaCompanyScan } from './utils/initiateKatanaCompanyScan.js';
+import monitorKatanaCompanyScanStatus from './utils/monitorKatanaCompanyScanStatus.js';
 
 // Add Cloud Enum imports
 import initiateCloudEnumScan from './utils/initiateCloudEnumScan';
@@ -3719,6 +3720,19 @@ function App() {
     }
   }, [activeTarget]);
 
+  useEffect(() => {
+    if (activeTarget) {
+      monitorKatanaCompanyScanStatus(
+        activeTarget,
+        setKatanaCompanyScans,
+        setMostRecentKatanaCompanyScan,
+        setIsKatanaCompanyScanning,
+        setMostRecentKatanaCompanyScanStatus,
+        setKatanaCompanyCloudAssets
+      );
+    }
+  }, [activeTarget]);
+
   const handleDomainsDeleted = async () => {
     if (activeTarget) {
       try {
@@ -3819,7 +3833,7 @@ function App() {
                 // Fetch accumulated cloud assets for the card count
                 try {
                   const assetsResponse = await fetch(
-                    `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/katana-company/${mostRecentScan.scan_id}/cloud-assets`
+                    `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/katana-company/target/${activeTarget.id}/cloud-assets`
                   );
                   if (assetsResponse.ok) {
                     const assets = await assetsResponse.json();

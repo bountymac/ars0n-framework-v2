@@ -334,19 +334,6 @@ var exportTableQueries = map[string]string{
 		FROM katana_company_cloud_assets 
 		WHERE scope_target_id = ANY($1)`,
 
-	"katana_company_cloud_findings": `
-		SELECT id, scope_target_id, root_domain, finding_domain, finding_url, finding_type,
-		       content, description, cloud_service, context_before, context_after,
-		       match_position, last_scanned_at, created_at
-		FROM katana_company_cloud_findings 
-		WHERE scope_target_id = ANY($1)`,
-
-	"katana_company_domain_results": `
-		SELECT id, scope_target_id, domain, last_scanned_at, last_scan_id, raw_output,
-		       created_at, updated_at
-		FROM katana_company_domain_results 
-		WHERE scope_target_id = ANY($1)`,
-
 	"dnsx_company_domain_results": `
 		SELECT id, scope_target_id, domain, last_scanned_at, last_scan_id, raw_output,
 		       created_at, updated_at
@@ -796,7 +783,7 @@ func ensureParentDomainRecords(exportData *ExportData, scopeTargetIDs []string) 
 
 	// Reset and check katana child tables
 	missingParents = make(map[string]map[string]interface{})
-	for _, tableName := range []string{"katana_company_cloud_assets", "katana_company_cloud_findings"} {
+	for _, tableName := range []string{"katana_company_cloud_assets"} {
 		if childRecords, exists := exportData.TableData[tableName]; exists {
 			for _, record := range childRecords {
 				scopeTargetID, _ := record["scope_target_id"].(string)
@@ -1031,10 +1018,10 @@ func importTableData(tx pgx.Tx, tableData map[string][]map[string]interface{}) e
 		"discovered_live_ips", "live_web_servers",
 
 		// Domain-centric result tables
-		"katana_company_domain_results", "dnsx_company_domain_results", "amass_enum_company_domain_results",
+		"dnsx_company_domain_results", "amass_enum_company_domain_results",
 
 		// Child tables of domain result tables
-		"katana_company_cloud_assets", "katana_company_cloud_findings",
+		"katana_company_cloud_assets",
 		"dnsx_company_dns_records", "amass_enum_company_cloud_domains", "amass_enum_company_dns_records",
 
 		// Target URLs and consolidated data
