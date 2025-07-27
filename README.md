@@ -5,7 +5,7 @@ Ars0n Framework v2
 <p align="center">
   <a href="#about">About</a> •
   <a href="#download-and-install">Download & Install</a> •
-  <a href="#how-to-use">How To Use</a> •
+  <a href="#workflows">Workflows</a> •
   <a href="#troubleshooting">Troubleshooting</a> •
   <a href="#frequently-asked-questions">FAQs</a> •
   <a href="https://www.youtube.com/@rs0n_live" target=”_blank”>YouTube</a> •
@@ -20,6 +20,13 @@ Ars0n Framework v2
 
 <p align="center">The goal of this tool is to eliminate the barrier of entry for bug bounty hunting.  My hope is that someone can pick up this tool and start hunting on day one of their AppSec journey 🚀</p>
 
+<h4 align="center">
+🤠 Did you know that over 95% of scientists believe there is a direct correlation between the amount of coffee I drink and how quickly I can build new features?  Crazy, right?!  Well, now you can test their hypothesis and Buy Me a Coffee through this fancy button!!  🤯
+<br>
+<br>
+<a href="https://www.buymeacoffee.com/rs0n.evolv3" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="41" width="174"></a>
+</h4>
+
 ## About
 
 Howdy!  My name is Harrison Richardson, or `rs0n` (arson) when I want to feel cooler than I really am.  The code in this repository started as a small collection of scripts to help automate many of the common Bug Bounty hunting processes I found myself repeating.  Over time, I built these scripts into an open-source framework that helped thousands of people around the world begin their bug bounty hunting journey.  
@@ -31,13 +38,6 @@ However, the first implementation of the framework had a wide range of issues.  
 The results of each tool are stored in a central database and can be used for understanding/visualizing the target company's attack surface.  Each section also includes a "Help Me Learn!" dropdown that includes a lession plan to help the user understand what part of the methodology they are at, what they are trying to acheive, and most importantly the "Why?" behind it.
 
 My hope is that this modular framework will act as a canvas to help share what I've learned over my career to the next generation of Security Engineers!  Trust me, we need all the help we can get!!
-
-<h4 align="center">
-🤠 Did you know that over 95% of scientists believe there is a direct correlation between the amount of coffee I drink and how quickly I can build new features?  Crazy, right?!  Well, now you can test their hypothesis and Buy Me a Coffee through this fancy button!!  🤯
-<br>
-<br>
-<a href="https://www.buymeacoffee.com/rs0n.evolv3" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="41" width="174"></a>
-</h4>
 
 <p align="center"><b>Pre-Alpha Demo Videos</b></p>
 
@@ -103,7 +103,7 @@ Expand-Archive -Path "ars0n-framework-v2.zip" -DestinationPath "."
 
 **Step 3:** Navigate to the framework directory
 ```powershell
-cd ars0n-framework-v2
+cd ars0n-framework-v2-beta-0.0.0
 ```
 
 **Step 4:** Start the framework
@@ -125,7 +125,7 @@ unzip ars0n-framework-v2.zip
 
 **Step 3:** Navigate to the framework directory
 ```bash
-cd ars0n-framework-v2
+cd ars0n-framework-v2-beta-0.0.0
 ```
 
 **Step 4:** Start the framework
@@ -137,7 +137,7 @@ docker-compose up --build
 
 **Step 1:** Download the framework
 ```bash
-wget "https://github.com/R-s0n/ars0n-framework-v2/releases/download/beta-0.0.0/ars0n-framework-v2-beta-0.0.0.zip"
+wget "https://github.com/R-s0n/ars0n-framework-v2/releases/download/beta-test/ars0n-framework-v2-beta-0.0.0.zip"
 ```
 
 **Step 2:** Extract the zip file
@@ -147,7 +147,7 @@ unzip ars0n-framework-v2-beta-0.0.0.zip
 
 **Step 3:** Navigate to the framework directory
 ```bash
-cd ars0n-framework-v2
+cd ars0n-framework-v2-beta-0.0.0
 ```
 
 **Step 4:** Start the framework
@@ -155,13 +155,241 @@ cd ars0n-framework-v2
 docker-compose up --build
 ```
 
-## How To Use
+## Workflows
 
 Coming Soon...
 
 ## Troubleshooting
 
-Coming Soon...
+This section covers common issues you may encounter when setting up and running the Ars0n Framework v2. Most problems are related to Docker configuration or system requirements.
+
+### Docker Not Installed
+
+**Error:** `docker: command not found` or `docker-compose: command not found`
+
+**Solution:**
+- **Windows:** Download and install [Docker Desktop for Windows](https://docs.docker.com/desktop/install/windows-install/)
+- **Mac:** Download and install [Docker Desktop for Mac](https://docs.docker.com/desktop/install/mac-install/)
+- **Linux (Ubuntu/Debian):**
+  ```bash
+  sudo apt update
+  sudo apt install docker.io docker-compose
+  sudo systemctl start docker
+  sudo systemctl enable docker
+  sudo usermod -aG docker $USER
+  ```
+
+### Verify Docker Installation
+
+Before running the Ars0n Framework, test your Docker installation with these simple examples:
+
+**Test Docker:**
+```bash
+docker run hello-world
+```
+
+You should see output like:
+```
+Hello from Docker!
+This message shows that your installation appears to be working correctly.
+```
+
+**Test Docker Compose:**
+
+Create a file named `test-docker-compose.yml`:
+```yaml
+services:
+  hello-world:
+    image: hello-world
+    container_name: test-hello-world
+```
+
+Then run:
+```bash
+docker-compose -f test-docker-compose.yml up
+```
+
+You should see the same hello-world message. If both tests pass, your Docker installation is working correctly and you can proceed with the Ars0n Framework.
+
+### Docker Service Not Running
+
+**Error:** `Cannot connect to the Docker daemon` or `docker daemon is not running`
+
+**Solution:**
+- **Windows:** Start Docker Desktop application
+- **Mac:** Start Docker Desktop application
+- **Linux:**
+  ```bash
+  sudo systemctl start docker
+  sudo systemctl status docker
+  ```
+
+### Permission Denied Errors
+
+**Error:** `permission denied while trying to connect to the Docker daemon socket`
+
+**Solution:**
+- **Linux:** Add your user to the docker group and restart your session:
+  ```bash
+  sudo usermod -aG docker $USER
+  newgrp docker
+  ```
+- **Windows/Mac:** Ensure Docker Desktop is running with appropriate permissions
+
+### Port Conflicts
+
+**Error:** `port is already allocated` or `bind: address already in use`
+
+**Solution:**
+- Check if ports 3000, 8000, 8443, or 5432 are already in use:
+  ```bash
+  # Linux/Mac
+  sudo netstat -tulpn | grep :3000
+  sudo netstat -tulpn | grep :8443
+  
+  # Windows
+  netstat -ano | findstr :3000
+  netstat -ano | findstr :8443
+  ```
+- Stop conflicting services or modify the docker-compose.yml to use different ports
+
+### Insufficient Resources
+
+**Error:** `no space left on device` or `memory allocation failed`
+
+**Solution:**
+- **Windows/Mac:** Increase Docker Desktop memory allocation (8GB+ recommended)
+- **Linux:** Check available disk space and memory:
+  ```bash
+  df -h
+  free -h
+  ```
+- Clean up Docker resources:
+  ```bash
+  docker system prune -a
+  docker volume prune
+  ```
+
+### Corporate/Enterprise Docker Restrictions
+
+**Error:** `authentication required` or `registry access denied`
+
+**Solution:**
+- Configure Docker to use your organization's registry:
+  ```bash
+  docker login your-company-registry.com
+  ```
+- Update docker-compose.yml to use authenticated image sources
+- Contact your IT department for Docker Enterprise configuration
+
+### Docker-in-Docker (DinD) Issues
+
+**Error:** `Cannot connect to the Docker daemon` when running inside containers
+
+**Solution:**
+- Ensure Docker socket is properly mounted in docker-compose.yml
+- For enterprise environments, configure Docker BuildKit:
+  ```bash
+  export DOCKER_BUILDKIT=1
+  docker-compose up --build
+  ```
+
+### Database Connection Issues
+
+**Error:** `connection refused` or `database is starting up`
+
+**Solution:**
+- Wait for the database to fully initialize (health check may take 30+ seconds)
+- Check database container logs:
+  ```bash
+  docker logs ars0n-framework-v2-db-1
+  ```
+- Restart the database service:
+  ```bash
+  docker-compose restart db
+  ```
+
+### Container Build Failures
+
+**Error:** `failed to build` or `build context`
+
+**Solution:**
+- Ensure all required files are present in the project directory
+- Check Dockerfile syntax and dependencies
+- Clear Docker build cache:
+  ```bash
+  docker builder prune
+  docker-compose build --no-cache
+  ```
+
+### Network Connectivity Issues
+
+**Error:** `network unreachable` or `DNS resolution failed`
+
+**Solution:**
+- Check if your firewall is blocking Docker network traffic
+- Configure DNS settings in docker-compose.yml if needed
+- For corporate networks, configure proxy settings:
+  ```bash
+  export HTTP_PROXY=http://proxy.company.com:8080
+  export HTTPS_PROXY=http://proxy.company.com:8080
+  ```
+
+### Windows-Specific Issues
+
+**Error:** `WSL 2 installation is incomplete` or `Hyper-V not enabled`
+
+**Solution:**
+- Enable WSL 2: `wsl --install`
+- Enable Hyper-V: `Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V -All`
+- Restart your computer after making these changes
+
+### Mac-Specific Issues
+
+**Error:** `Docker Desktop is not running` or `resource limits exceeded`
+
+**Solution:**
+- Increase Docker Desktop memory allocation (8GB+ recommended)
+- Ensure Docker Desktop has necessary permissions
+- Check macOS security settings for Docker
+
+### Linux-Specific Issues
+
+**Error:** `cgroup memory limit exceeded` or `seccomp not supported`
+
+**Solution:**
+- Update your kernel to a recent version
+- Install required packages:
+  ```bash
+  sudo apt install linux-modules-extra-$(uname -r)
+  ```
+- Configure cgroup limits in /etc/docker/daemon.json
+
+### Getting Help
+
+If you're still experiencing issues:
+
+1. Check the container logs for specific error messages:
+   ```bash
+   docker-compose logs [service-name]
+   ```
+
+2. Verify your system meets the minimum requirements:
+   - Docker 20.10+
+   - Docker Compose 2.0+
+   - 8GB RAM minimum (16GB recommended)
+   - 20GB free disk space
+
+3. Try running with verbose output:
+   ```bash
+   docker-compose up --build --verbose
+   ```
+
+4. Create an issue on the GitHub repository with:
+   - Your operating system and version
+   - Docker and Docker Compose versions
+   - Complete error messages and logs
+   - Steps to reproduce the issue
 
 ## Frequently Asked Questions
 
