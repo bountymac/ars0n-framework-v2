@@ -5,6 +5,7 @@ Ars0n Framework v2
 <p align="center">
   <a href="#about">About</a> •
   <a href="#download-and-install">Download & Install</a> •
+  <a href="#getting-started">Getting Started</a> •
   <a href="#workflows">Workflows</a> •
   <a href="#troubleshooting">Troubleshooting</a> •
   <a href="#frequently-asked-questions">FAQs</a> •
@@ -154,6 +155,58 @@ cd ars0n-framework-v2-beta-0.0.0
 ```bash
 docker-compose up --build
 ```
+
+## Getting Started
+
+Once you have the Ars0n Framework v2 running, you'll be presented with a welcome screen that offers several options to begin your bug bounty hunting journey. Here's how to get started:
+
+### Option 1: Create a New Scope Target
+
+**Best for:** Starting fresh reconnaissance on a new target
+
+1. **Choose Target Type:**
+   - **Company**: Any asset owned by an organization (e.g., "Google")
+   - **Wildcard**: Any subdomain under the root domain (e.g., "*.google.com")
+   - **URL**: Specific attack vector targeting a single domain (e.g., "https://hackme.google.com")
+
+2. **Enter Target Information:**
+   - For Company targets: Enter the company name
+   - For Wildcard targets: Enter the wildcard domain pattern
+   - For URL targets: Enter the specific URL
+
+3. **Begin Reconnaissance:**
+   - The framework will automatically start gathering intelligence about your target
+   - You can then run individual tools or use the Auto Scan feature
+
+### Option 2: Import Existing Scan Data
+
+**Best for:** Learning from pre-scanned data or resuming previous sessions
+
+#### Import from File:
+1. Download a `.rs0n` file (like those available in the [scan data repository](https://github.com/R-s0n/ars0n-framework-v2-scan-data))
+2. Click "Import Scan Data" in the welcome screen
+3. Select "Upload File" and choose your `.rs0n` file
+4. The framework will import all scope targets and associated scan results
+
+#### Import from URL:
+1. Click "Import Scan Data" in the welcome screen
+2. Select "Import from URL"
+3. Enter the raw GitHub URL of a `.rs0n` file:
+   ```
+   https://github.com/R-s0n/ars0n-framework-v2-scan-data/raw/refs/heads/main/Grammarly/rs0n-export-2025-07-27T18-19-17.rs0n
+   ```
+4. The framework will download and import the data automatically
+
+### Option 3: Use Pre-Scanned Data for Learning
+
+**Best for:** Understanding the bug bounty hunting process without running scans
+
+The [Ars0n Framework v2 Scan Data Repository](https://github.com/R-s0n/ars0n-framework-v2-scan-data) contains real-world scan data that you can import to learn:
+
+- **Subdomain Discovery**: How various tools find subdomains and assets
+- **Vulnerability Assessment**: Common security issues and how they're identified
+- **Attack Surface Mapping**: Understanding an organization's digital footprint
+- **Reconnaissance Methodology**: The systematic approach to bug bounty hunting
 
 ## Workflows
 
