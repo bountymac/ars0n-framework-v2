@@ -367,29 +367,101 @@ You should see the same hello-world message. If both tests pass, your Docker ins
 
 ### Getting Help
 
-If you're still experiencing issues:
+**⚠️ IMPORTANT:** Before asking for help, please ensure you've provided all the information requested below. Without these details, it becomes very difficult for rs0n to assist you effectively, and will significantly delay response times.
 
-1. Check the container logs for specific error messages:
-   ```bash
-   docker-compose logs [service-name]
-   ```
+#### When to Use Discussions vs Issues
 
-2. Verify your system meets the minimum requirements:
-   - Docker 20.10+
-   - Docker Compose 2.0+
-   - 8GB RAM minimum (16GB recommended)
-   - 20GB free disk space
+**Use Discussions** for:
+- Installation and setup problems
+- Docker configuration issues
+- Environment-specific problems
+- Questions about getting the tool running
 
-3. Try running with verbose output:
-   ```bash
-   docker-compose up --build --verbose
-   ```
+**Use Issues** for:
+- Bugs in the tool itself (after it's successfully running)
+- Feature requests
+- Security vulnerabilities
+- Problems with tool functionality
 
-4. Create an issue on the GitHub repository with:
-   - Your operating system and version
-   - Docker and Docker Compose versions
-   - Complete error messages and logs
-   - Steps to reproduce the issue
+#### Discussion Template (Installation/Setup Issues)
+
+If you're having trouble getting the Ars0n Framework to run, create a **Discussion** and copy/paste this template:
+
+```markdown
+## System Information
+- Operating System: [Windows 11 / macOS 14.1 / Ubuntu 22.04 / etc.]
+- Docker Version: [Output of `docker --version`]
+- Docker Compose Version: [Output of `docker-compose --version`]
+- Available RAM: [How much RAM your system has]
+- Available Disk Space: [How much free disk space]
+
+## Error Details
+- Complete error message(s):
+- Step where the error occurred:
+- What you were trying to do when the error happened:
+
+## Troubleshooting Steps Taken
+- [ ] Verified Docker installation with `docker run hello-world`
+- [ ] Verified Docker Compose with test manifest
+- [ ] Checked container logs: `docker-compose logs [service-name]`
+- [ ] Verified system meets minimum requirements
+- [ ] Tried running with verbose output: `docker-compose up --build --verbose`
+
+## Container Logs
+    [Paste the output of: docker-compose logs [relevant-service-name]]
+
+## Additional Context
+- Are you running this in a corporate/enterprise environment?
+- Do you have any security software that might interfere with Docker?
+- Have you successfully run other Docker containers on this system?
+```
+
+#### Issue Template (Tool Functionality Problems)
+
+If the Ars0n Framework is running but you're experiencing issues with the tool itself, create an **Issue** and copy/paste this template:
+
+```markdown
+## Environment
+- Operating System: [Windows 11 / macOS 14.1 / Ubuntu 22.04 / etc.]
+- Docker Version: [Output of `docker --version`]
+- Docker Compose Version: [Output of `docker-compose --version`]
+- Ars0n Framework Version: [Current version you're running]
+
+## Bug Description
+- What were you trying to do?
+- What happened instead?
+- What did you expect to happen?
+
+## Steps to Reproduce
+1. [Step 1]
+2. [Step 2]
+3. [Step 3]
+4. [Continue as needed]
+
+## Error Messages
+    [Paste any error messages, stack traces, or console output]
+
+## Browser Console Logs
+    [If applicable, paste browser console errors]
+
+## Screenshots
+[If applicable, include screenshots of the issue]
+
+## Additional Information
+- Does this happen with all targets or specific ones?
+- Does this happen consistently or intermittently?
+- Any recent changes to your environment?
+```
+
+#### Before Submitting
+
+1. **Search existing Discussions/Issues** - Your problem may already be solved
+2. **Test with the hello-world container** - Ensure Docker is working correctly
+3. **Check the troubleshooting section above** - Many common issues are already covered
+4. **Provide complete logs** - Partial information makes debugging much harder
+5. **Be specific** - "It doesn't work" doesn't help; describe exactly what happens
+
+**Remember:** The more complete information you provide, the faster rs0n can help you resolve your issue!
 
 ## Frequently Asked Questions
 
