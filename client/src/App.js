@@ -5762,35 +5762,7 @@ function App() {
                   ))}
                 </Row>
                 <h4 className="text-secondary mb-3 fs-5">Consolidate Subdomains & Discover Live Web Servers - Round 1</h4>
-                <Accordion data-bs-theme="dark" className="mb-3">
-                  <Accordion.Item eventKey="0">
-                    <Accordion.Header className="fs-5">Help Me Learn!</Accordion.Header>
-                    <Accordion.Body className="bg-dark">
-                      <ListGroup as="ul" variant="flush">
-                        <ListGroup.Item as="li" className="bg-dark text-white">
-                          Major learning topic one{' '}
-                          <a href="https://example.com/topic1" className="text-danger text-decoration-none">
-                            Learn More
-                          </a>
-                          <ListGroup as="ul" variant="flush" className="mt-2">
-                            <ListGroup.Item as="li" className="bg-dark text-white fst-italic">
-                              Minor Topic one{' '}
-                              <a href="#" className="text-danger text-decoration-none">
-                                Learn More
-                              </a>
-                            </ListGroup.Item>
-                          </ListGroup>
-                        </ListGroup.Item>
-                        <ListGroup.Item as="li" className="bg-dark text-white">
-                          Major learning topic two{' '}
-                          <a href="https://example.com/topic2" className="text-danger text-decoration-none">
-                            Learn More
-                          </a>
-                        </ListGroup.Item>
-                      </ListGroup>
-                    </Accordion.Body>
-                  </Accordion.Item>
-                </Accordion>
+                <HelpMeLearn section="consolidationRound1" />
                 <Row className="mb-4">
                   <Col>
                     <Card className="shadow-sm h-100 text-center" style={{ minHeight: '200px' }}>
@@ -5923,35 +5895,7 @@ function App() {
                   ))}
                 </Row>
                 <h4 className="text-secondary mb-3 fs-5">Consolidate Subdomains & Discover Live Web Servers - Round 2</h4>
-                <Accordion data-bs-theme="dark" className="mb-3">
-                  <Accordion.Item eventKey="0">
-                    <Accordion.Header className="fs-5">Help Me Learn!</Accordion.Header>
-                    <Accordion.Body className="bg-dark">
-                      <ListGroup as="ul" variant="flush">
-                        <ListGroup.Item as="li" className="bg-dark text-white">
-                          Major learning topic one{' '}
-                          <a href="https://example.com/topic1" className="text-danger text-decoration-none">
-                            Learn More
-                          </a>
-                          <ListGroup as="ul" variant="flush" className="mt-2">
-                            <ListGroup.Item as="li" className="bg-dark text-white fst-italic">
-                              Minor Topic one{' '}
-                              <a href="#" className="text-danger text-decoration-none">
-                                Learn More
-                              </a>
-                            </ListGroup.Item>
-                          </ListGroup>
-                        </ListGroup.Item>
-                        <ListGroup.Item as="li" className="bg-dark text-white">
-                          Major learning topic two{' '}
-                          <a href="https://example.com/topic2" className="text-danger text-decoration-none">
-                            Learn More
-                          </a>
-                        </ListGroup.Item>
-                      </ListGroup>
-                    </Accordion.Body>
-                  </Accordion.Item>
-                </Accordion>
+                <HelpMeLearn section="consolidationRound2" />
                 <Row className="mb-4">
                   <Col>
                     <Card className="shadow-sm h-100 text-center" style={{ minHeight: '200px' }}>
@@ -6082,35 +6026,7 @@ function App() {
                   ))}
                 </Row>
                 <h4 className="text-secondary mb-3 fs-5">Consolidate Subdomains & Discover Live Web Servers - Round 3</h4>
-                <Accordion data-bs-theme="dark" className="mb-3">
-                  <Accordion.Item eventKey="0">
-                    <Accordion.Header className="fs-5">Help Me Learn!</Accordion.Header>
-                    <Accordion.Body className="bg-dark">
-                      <ListGroup as="ul" variant="flush">
-                        <ListGroup.Item as="li" className="bg-dark text-white">
-                          Major learning topic one{' '}
-                          <a href="https://example.com/topic1" className="text-danger text-decoration-none">
-                            Learn More
-                          </a>
-                          <ListGroup as="ul" variant="flush" className="mt-2">
-                            <ListGroup.Item as="li" className="bg-dark text-white fst-italic">
-                              Minor Topic one{' '}
-                              <a href="#" className="text-danger text-decoration-none">
-                                Learn More
-                              </a>
-                            </ListGroup.Item>
-                          </ListGroup>
-                        </ListGroup.Item>
-                        <ListGroup.Item as="li" className="bg-dark text-white">
-                          Major learning topic two{' '}
-                          <a href="https://example.com/topic2" className="text-danger text-decoration-none">
-                            Learn More
-                          </a>
-                        </ListGroup.Item>
-                      </ListGroup>
-                    </Accordion.Body>
-                  </Accordion.Item>
-                </Accordion>
+                <HelpMeLearn section="consolidationRound3" />
                 <Row className="mb-4">
                   <Col>
                     <Card className="shadow-sm h-100 text-center" style={{ minHeight: '200px' }}>
