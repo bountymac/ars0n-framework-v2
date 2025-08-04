@@ -28,7 +28,8 @@ const ScreenshotResultsModal = ({
           throw new Error('Failed to fetch target URLs');
         }
         const data = await response.json();
-        const sortedData = data.sort((a, b) => {
+        const safeData = data || [];
+        const sortedData = safeData.sort((a, b) => {
           if (!a.status_code && !b.status_code) return 0;
           if (!a.status_code) return 1;
           if (!b.status_code) return -1;

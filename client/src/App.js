@@ -19,19 +19,18 @@ import Ars0nFrameworkHeader from './components/ars0nFrameworkHeader.js';
 import ManageScopeTargets from './components/manageScopeTargets.js';
 import fetchAmassScans from './utils/fetchAmassScans.js';
 import {
-    Container,
-    Fade,
-    Card,
-    Row,
-    Col,
-    Button,
-    ListGroup,
-    Accordion,
-    Modal,
-    Table,
-    Toast,
-    ToastContainer,
-    Spinner,
+  Container,
+  Fade,
+  Card,
+  Row,
+  Col,
+  Button,
+  ListGroup,
+  Modal,
+  Table,
+  Toast,
+  ToastContainer,
+  Spinner,
 } from 'react-bootstrap';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'bootstrap-icons/font/bootstrap-icons.css';
@@ -39,14 +38,14 @@ import initiateAmassScan from './utils/initiateAmassScan';
 import monitorScanStatus from './utils/monitorScanStatus';
 import validateInput from './utils/validateInput.js';
 import {
-    getTypeIcon,
-    getLastScanDate,
-    getLatestScanStatus,
-    getLatestScanTime,
-    getLatestScanId,
-    getExecutionTime,
-    getResultLength,
-    copyToClipboard,
+  getTypeIcon,
+  getLastScanDate,
+  getLatestScanStatus,
+  getLatestScanTime,
+  getLatestScanId,
+  getExecutionTime,
+  getResultLength,
+  copyToClipboard,
 } from './utils/miscUtils.js';
 import { MdCopyAll, MdCheckCircle } from 'react-icons/md';
 import initiateHttpxScan from './utils/initiateHttpxScan';
@@ -94,9 +93,9 @@ import fetchHttpxScans from './utils/fetchHttpxScans';
 import ROIReport from './components/ROIReport';
 import HelpMeLearn from './components/HelpMeLearn';
 import {
-    AUTO_SCAN_STEPS,
-    resumeAutoScan as resumeAutoScanUtil,
-    startAutoScan as startAutoScanUtil
+  AUTO_SCAN_STEPS,
+  resumeAutoScan as resumeAutoScanUtil,
+  startAutoScan as startAutoScanUtil
 } from './utils/wildcardAutoScan';
 import getAutoScanSteps from './utils/autoScanSteps';
 import fetchAmassIntelScans from './utils/fetchAmassIntelScans';
@@ -2847,7 +2846,8 @@ function App() {
         throw new Error('Failed to fetch target URLs');
       }
       const data = await response.json();
-      setTargetURLs(data);
+      const safeData = data || [];
+      setTargetURLs(safeData);
       setShowMetaDataModal(true);
     } catch (error) {
       console.error('Error fetching target URLs:', error);
@@ -2864,9 +2864,10 @@ function App() {
         throw new Error('Failed to fetch target URLs');
       }
       const data = await response.json();
+      const safeData = data || [];
 
       // Calculate and update ROI scores for each target
-      const updatePromises = data.map(async (target) => {
+      const updatePromises = safeData.map(async (target) => {
         const score = calculateROIScore(target);
         const updateResponse = await fetch(
           `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/target-urls/${target.id}/roi-score`,
@@ -2894,7 +2895,8 @@ function App() {
         throw new Error('Failed to fetch updated target URLs');
       }
       const updatedData = await updatedResponse.json();
-      setTargetURLs(updatedData);
+      const safeUpdatedData = updatedData || [];
+      setTargetURLs(safeUpdatedData);
       setShowROIReport(true);
     } catch (error) {
       console.error('Error preparing ROI report:', error);

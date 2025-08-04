@@ -957,11 +957,11 @@ func GetTargetURLsForScopeTarget(w http.ResponseWriter, r *http.Request) {
 			id                  string
 			url                 string
 			scopeTargetID       string
-			statusCode          int
+			statusCode          sql.NullInt32
 			title               sql.NullString
 			webServer           sql.NullString
 			technologies        []string
-			contentLength       int
+			contentLength       sql.NullInt32
 			findingsJSON        sql.NullString
 			katanaResults       sql.NullString
 			ffufResults         sql.NullString
@@ -1027,11 +1027,11 @@ func GetTargetURLsForScopeTarget(w http.ResponseWriter, r *http.Request) {
 			"id":                     id,
 			"url":                    url,
 			"scope_target_id":        scopeTargetID,
-			"status_code":            statusCode,
+			"status_code":            nullIntToInt(statusCode),
 			"title":                  nullStringToString(title),
 			"web_server":             nullStringToString(webServer),
 			"technologies":           technologies,
-			"content_length":         contentLength,
+			"content_length":         nullIntToInt(contentLength),
 			"findings_json":          nullStringToString(findingsJSON),
 			"katana_results":         nullStringToString(katanaResults),
 			"ffuf_results":           nullStringToString(ffufResults),
@@ -1060,6 +1060,9 @@ func GetTargetURLsForScopeTarget(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	if targetURLs == nil {
+		targetURLs = make([]map[string]interface{}, 0)
+	}
 	json.NewEncoder(w).Encode(targetURLs)
 }
 

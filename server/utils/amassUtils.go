@@ -31,6 +31,13 @@ func nullStringToString(ns sql.NullString) string {
 	return ""
 }
 
+func nullIntToInt(ni sql.NullInt32) int {
+	if ni.Valid {
+		return int(ni.Int32)
+	}
+	return 0
+}
+
 type ServiceProviderResponse struct {
 	Provider string `json:"provider"`
 	RawData  string `json:"raw_data"`
