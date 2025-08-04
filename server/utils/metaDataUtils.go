@@ -481,6 +481,12 @@ func ExecuteAndParseMetaDataScan(scanID, domain string) {
 		// Convert matched-at (host:port) to URL
 		url := "https://" + strings.TrimSuffix(matchedURL, ":443")
 
+		// Skip URLs with encoded characters that are nuclei test paths
+		if strings.Contains(url, "%") {
+			log.Printf("[DEBUG] Skipping nuclei test URL with encoded characters: %s", url)
+			continue
+		}
+
 		// Update the target_urls table based on the template
 		var updateField string
 		switch templateID {
@@ -733,6 +739,12 @@ func ExecuteAndParseNucleiTechScan(urls []string, scopeTargetID string) error {
 		} else {
 			// Just a hostname
 			matchedURL = NormalizeURL("https://" + matchedURL)
+		}
+
+		// Skip URLs with encoded characters that are nuclei test paths
+		if strings.Contains(matchedURL, "%") {
+			log.Printf("[DEBUG] Skipping nuclei test URL with encoded characters: %s", matchedURL)
+			continue
 		}
 
 		// Add finding to the URL's findings array

@@ -239,6 +239,13 @@ func ExecuteAndParseNucleiScreenshotScan(scanID, domain string) {
 
 		// Normalize the URL
 		url = NormalizeURL(url)
+
+		// Skip URLs with encoded characters that are nuclei test paths
+		if strings.Contains(url, "%") {
+			log.Printf("[DEBUG] Skipping nuclei test URL with encoded characters: %s", url)
+			continue
+		}
+
 		log.Printf("[DEBUG] Processing screenshot for URL: %s", url)
 
 		// Update target URL with screenshot
