@@ -104,6 +104,11 @@ func RunMetaDataScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !IsValidUUID(payload.ScopeTargetID) {
+		http.Error(w, "Invalid scope_target_id", http.StatusBadRequest)
+		return
+	}
+
 	// Get domain from scope target
 	var domain string
 	err := dbPool.QueryRow(context.Background(),
@@ -1058,7 +1063,11 @@ func GanitizeResponse(input []byte) string {
 }
 
 func ExecuteFfufScan(url string, scopeTargetID string) error {
-	log.Printf("[INFO] Starting ffuf scan for URL: %s", url)
+	sanitizedURL, err := SanitizeURL(url)
+	if err != nil {
+		return fmt.Errorf("invalid URL: %v", err)
+	}
+	log.Printf("[INFO] Starting ffuf scan for URL: %s", sanitizedURL)
 	startTime := time.Now()
 
 	// Create a temporary directory for output
@@ -1100,7 +1109,7 @@ func ExecuteFfufScan(url string, scopeTargetID string) error {
 	}
 
 	// Run ffuf scan only on the base target URL
-	fuzzyURL := fmt.Sprintf("%s/FUZZ", url)
+	fuzzyURL := fmt.Sprintf("%s/FUZZ", sanitizedURL)
 	cmd := exec.Command(
 		"docker", "exec",
 		"ars0n-framework-v2-ffuf-1",
@@ -1122,10 +1131,10 @@ func ExecuteFfufScan(url string, scopeTargetID string) error {
 	log.Printf("[DEBUG] Running ffuf command: %s", cmd.String())
 	if err := cmd.Run(); err != nil {
 		log.Printf("[ERROR] ffuf scan failed for URL %s: %v\nStderr: %s",
-			url, err, stderr.String())
+			sanitizedURL, err, stderr.String())
 		return fmt.Errorf("ffuf scan failed: %v", err)
 	}
-	log.Printf("[INFO] Completed ffuf scan for URL: %s", url)
+	log.Printf("[INFO] Completed ffuf scan for URL: %s", sanitizedURL)
 
 	// Read and parse results
 	outputCmd := exec.Command(
@@ -1177,13 +1186,13 @@ func ExecuteFfufScan(url string, scopeTargetID string) error {
 		`UPDATE target_urls 
 		 SET ffuf_results = $1::jsonb 
 		 WHERE url = $2 AND scope_target_id = $3`,
-		string(ffufResultsJSON), url, scopeTargetID)
+		string(ffufResultsJSON), sanitizedURL, scopeTargetID)
 	if err != nil {
 		log.Printf("[ERROR] Failed to store ffuf results in database: %v", err)
 		return fmt.Errorf("failed to store ffuf results: %v", err)
 	}
 	log.Printf("[INFO] Successfully stored ffuf results in database for URL %s. Scan completed in %s. Found %d endpoints.",
-		url, time.Since(startTime), len(endpoints))
+		sanitizedURL, time.Since(startTime), len(endpoints))
 
 	return nil
 }

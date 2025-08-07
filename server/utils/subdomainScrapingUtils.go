@@ -106,7 +106,11 @@ func RunSublist3rScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	domain := requestData.FQDN
+	domain, err := SanitizeDomain(requestData.FQDN)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	wildcardDomain := "*." + domain
 	log.Printf("[INFO] Processing Sublist3r scan request for domain: %s", domain)
 
@@ -371,7 +375,11 @@ func RunAssetfinderScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	domain := payload.FQDN
+	domain, err := SanitizeDomain(payload.FQDN)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	wildcardDomain := fmt.Sprintf("*.%s", domain)
 
 	query := `SELECT id FROM scope_targets WHERE type = 'Wildcard' AND scope_target = $1`
@@ -573,7 +581,11 @@ func RunGauScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	domain := payload.FQDN
+	domain, err := SanitizeDomain(payload.FQDN)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	wildcardDomain := fmt.Sprintf("*.%s", domain)
 
 	// Get the scope target ID
@@ -1040,7 +1052,11 @@ func RunSubfinderScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	domain := payload.FQDN
+	domain, err := SanitizeDomain(payload.FQDN)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	wildcardDomain := fmt.Sprintf("*.%s", domain)
 
 	query := `SELECT id FROM scope_targets WHERE type = 'Wildcard' AND scope_target = $1`

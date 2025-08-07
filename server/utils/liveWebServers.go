@@ -124,7 +124,11 @@ func RunHttpxScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	domain := payload.FQDN
+	domain, err := SanitizeDomain(payload.FQDN)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	wildcardDomain := fmt.Sprintf("*.%s", domain)
 	log.Printf("[DEBUG] Processing httpx scan for domain: %s (wildcard: %s)", domain, wildcardDomain)
 

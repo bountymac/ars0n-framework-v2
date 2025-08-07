@@ -59,7 +59,11 @@ func RunGoSpiderScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	domain := payload.FQDN
+	domain, err := SanitizeDomain(payload.FQDN)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	wildcardDomain := fmt.Sprintf("*.%s", domain)
 
 	query := `SELECT id FROM scope_targets WHERE type = 'Wildcard' AND scope_target = $1`
@@ -133,14 +137,20 @@ func executeAndParseGoSpiderScan(scanID, domain string) {
 			continue
 		}
 
-		log.Printf("[INFO] Running GoSpider against URL: %s", httpxResult.URL)
+		sanitizedURL, err := SanitizeURL(httpxResult.URL)
+		if err != nil {
+			log.Printf("[WARN] Invalid URL found: %v", err)
+			continue
+		}
+
+		log.Printf("[INFO] Running GoSpider against URL: %s", sanitizedURL)
 		scanStartTime := time.Now()
 
 		cmd := exec.Command(
 			"docker", "exec",
 			"ars0n-framework-v2-gospider-1",
 			"gospider",
-			"-s", httpxResult.URL,
+			"-s", sanitizedURL,
 			"-c", "20",
 			"-d", "3",
 			"-t", "5",
@@ -432,7 +442,11 @@ func RunSubdomainizerScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	domain := payload.FQDN
+	domain, err := SanitizeDomain(payload.FQDN)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	wildcardDomain := fmt.Sprintf("*.%s", domain)
 
 	query := `SELECT id FROM scope_targets WHERE type = 'Wildcard' AND scope_target = $1`
@@ -526,13 +540,19 @@ func executeAndParseSubdomainizerScan(scanID, domain string) {
 			continue
 		}
 
-		log.Printf("[INFO] Running Subdomainizer against URL: %s", httpxResult.URL)
+		sanitizedURL, err := SanitizeURL(httpxResult.URL)
+		if err != nil {
+			log.Printf("[WARN] Invalid URL found: %v", err)
+			continue
+		}
+
+		log.Printf("[INFO] Running Subdomainizer against URL: %s", sanitizedURL)
 
 		cmd := exec.Command(
 			"docker", "exec",
 			"ars0n-framework-v2-subdomainizer-1",
 			"python3", "SubDomainizer.py",
-			"-u", httpxResult.URL,
+			"-u", sanitizedURL,
 			"-k",
 			"-o", "/tmp/subdomainizer-mounts/output.txt",
 			"-sop", "/tmp/subdomainizer-mounts/secrets.txt",

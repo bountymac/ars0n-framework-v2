@@ -44,6 +44,11 @@ func RunNucleiScreenshotScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !IsValidUUID(scopeTargetID) {
+		http.Error(w, "Invalid scope_target_id", http.StatusBadRequest)
+		return
+	}
+
 	log.Printf("[INFO] Starting Nuclei screenshot scan for scope target ID: %s", scopeTargetID)
 
 	// Generate a unique scan ID
@@ -125,7 +130,12 @@ func ExecuteAndParseNucleiScreenshotScan(scanID, domain string) {
 			continue
 		}
 		if result.URL != "" {
-			urls = append(urls, result.URL)
+			sanitizedURL, err := SanitizeURL(result.URL)
+			if err != nil {
+				log.Printf("[WARN] Invalid URL found: %v", err)
+				continue
+			}
+			urls = append(urls, sanitizedURL)
 		}
 	}
 

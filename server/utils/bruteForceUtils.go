@@ -59,7 +59,11 @@ func RunShuffleDNSScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	domain := payload.FQDN
+	domain, err := SanitizeDomain(payload.FQDN)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	wildcardDomain := fmt.Sprintf("*.%s", domain)
 
 	query := `SELECT id FROM scope_targets WHERE type = 'Wildcard' AND scope_target = $1`
@@ -405,7 +409,11 @@ func RunCeWLScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	domain := payload.FQDN
+	domain, err := SanitizeDomain(payload.FQDN)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	wildcardDomain := fmt.Sprintf("*.%s", domain)
 
 	// Get the scope target ID
