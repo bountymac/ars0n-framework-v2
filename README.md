@@ -162,6 +162,50 @@ docker-compose up --build
 
 Once you have the Ars0n Framework v2 running, you'll be presented with a welcome screen that offers several options to begin your bug bounty hunting journey. Here's how to get started:
 
+## Authentication
+
+The Ars0n Framework v2 requires authentication for all API endpoints. To get started, you need to register a new user and get an API key.
+
+### Register a new user
+
+To register a new user, send a POST request to the `/register` endpoint with a JSON body containing your desired username.
+
+```bash
+curl -X POST http://localhost:8443/register -d '{"username": "myuser"}'
+```
+
+The response will contain your API key.
+
+```json
+{
+  "api_key": "YOUR_API_KEY"
+}
+```
+
+### Login
+
+To login and get a session token, send a POST request to the `/login` endpoint with a JSON body containing your API key.
+
+```bash
+curl -X POST http://localhost:8443/login -d '{"api_key": "YOUR_API_KEY"}'
+```
+
+The response will contain your session token.
+
+```json
+{
+  "token": "YOUR_SESSION_TOKEN"
+}
+```
+
+### Authenticate
+
+To authenticate with the application, include your session token in the `Authorization` header of your requests.
+
+```bash
+curl -X GET http://localhost:8443/api/scopetarget/read -H "Authorization: Bearer YOUR_SESSION_TOKEN"
+```
+
 ### Option 1: Create a New Scope Target
 
 **Best for:** Starting fresh reconnaissance on a new target

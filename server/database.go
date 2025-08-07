@@ -61,6 +61,20 @@ func createTables() {
 		SELECT gen_random_uuid()
 		WHERE NOT EXISTS (SELECT 1 FROM user_settings LIMIT 1);`,
 
+		`CREATE TABLE IF NOT EXISTS users (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			username TEXT NOT NULL UNIQUE,
+			api_key_hash TEXT NOT NULL,
+			created_at TIMESTAMP DEFAULT NOW()
+		);`,
+
+		`CREATE TABLE IF NOT EXISTS sessions (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			token TEXT NOT NULL UNIQUE,
+			created_at TIMESTAMP DEFAULT NOW()
+		);`,
+
 		`CREATE TABLE IF NOT EXISTS api_keys (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			tool_name VARCHAR(100) NOT NULL,
