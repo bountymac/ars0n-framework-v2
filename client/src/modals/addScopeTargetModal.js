@@ -1,8 +1,9 @@
 import { Modal, Button, Form, Card, Row, Col } from 'react-bootstrap';
 import { useEffect } from 'react';
+import { FaArrowLeft } from 'react-icons/fa';
 import 'bootstrap-icons/font/bootstrap-icons.css';
 
-function AddScopeTargetModal({ show, handleClose, selections, handleSelect, handleFormSubmit, errorMessage }) {
+function AddScopeTargetModal({ show, handleClose, selections, handleSelect, handleFormSubmit, errorMessage, showBackButton, onBackClick }) {
   useEffect(() => {
     if (show) {
       const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
@@ -124,8 +125,17 @@ function AddScopeTargetModal({ show, handleClose, selections, handleSelect, hand
           }}
         />
       </Modal.Body>
-      <Modal.Footer>
-        <Button variant="danger" onClick={handleSubmit}>
+      <Modal.Footer className="d-flex justify-content-between">
+        {showBackButton && (
+          <Button
+            variant="outline-danger"
+            onClick={onBackClick}
+          >
+            <FaArrowLeft className="me-1" />
+            Back
+          </Button>
+        )}
+        <Button variant="danger" onClick={handleSubmit} className={showBackButton ? '' : 'ms-auto'}>
           Let's Hack!
         </Button>
       </Modal.Footer>

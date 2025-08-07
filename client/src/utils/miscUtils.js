@@ -66,4 +66,25 @@ const copyToClipboard = async (text) => {
   }
 };
 
+export const getHttpxResultsCount = (scan) => {
+  if (!scan) {
+    return 0;
+  }
+  
+  if (!scan.result) {
+    return 0;
+  }
+  
+  if (!scan.result.String) {
+    if (typeof scan.result === 'string') {
+      const count = scan.result.split('\n').filter(line => line.trim()).length;
+      return count;
+    }
+    return 0;
+  }
+  
+  const count = scan.result.String.split('\n').filter(line => line.trim()).length;
+  return count;
+};
+
 export { getTypeIcon, getLastScanDate, getLatestScanStatus, getLatestScanTime, getLatestScanId, getExecutionTime, getResultLength, copyToClipboard };

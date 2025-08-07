@@ -21,38 +21,41 @@ import (
 )
 
 type ShuffleDNSScanStatus struct {
-	ID            string         `json:"id"`
-	ScanID        string         `json:"scan_id"`
-	Domain        string         `json:"domain"`
-	Status        string         `json:"status"`
-	Result        sql.NullString `json:"result,omitempty"`
-	Error         sql.NullString `json:"error,omitempty"`
-	StdOut        sql.NullString `json:"stdout,omitempty"`
-	StdErr        sql.NullString `json:"stderr,omitempty"`
-	Command       sql.NullString `json:"command,omitempty"`
-	ExecTime      sql.NullString `json:"execution_time,omitempty"`
-	CreatedAt     time.Time      `json:"created_at"`
-	ScopeTargetID string         `json:"scope_target_id"`
+	ID                string         `json:"id"`
+	ScanID            string         `json:"scan_id"`
+	Domain            string         `json:"domain"`
+	Status            string         `json:"status"`
+	Result            sql.NullString `json:"result,omitempty"`
+	Error             sql.NullString `json:"error,omitempty"`
+	StdOut            sql.NullString `json:"stdout,omitempty"`
+	StdErr            sql.NullString `json:"stderr,omitempty"`
+	Command           sql.NullString `json:"command,omitempty"`
+	ExecTime          sql.NullString `json:"execution_time,omitempty"`
+	CreatedAt         time.Time      `json:"created_at"`
+	ScopeTargetID     string         `json:"scope_target_id"`
+	AutoScanSessionID sql.NullString `json:"auto_scan_session_id"`
 }
 
 type CeWLScanStatus struct {
-	ID            string         `json:"id"`
-	ScanID        string         `json:"scan_id"`
-	URL           string         `json:"url"`
-	Status        string         `json:"status"`
-	Result        sql.NullString `json:"result,omitempty"`
-	Error         sql.NullString `json:"error,omitempty"`
-	StdOut        sql.NullString `json:"stdout,omitempty"`
-	StdErr        sql.NullString `json:"stderr,omitempty"`
-	Command       sql.NullString `json:"command,omitempty"`
-	ExecTime      sql.NullString `json:"execution_time,omitempty"`
-	CreatedAt     time.Time      `json:"created_at"`
-	ScopeTargetID string         `json:"scope_target_id"`
+	ID                string         `json:"id"`
+	ScanID            string         `json:"scan_id"`
+	URL               string         `json:"url"`
+	Status            string         `json:"status"`
+	Result            sql.NullString `json:"result,omitempty"`
+	Error             sql.NullString `json:"error,omitempty"`
+	StdOut            sql.NullString `json:"stdout,omitempty"`
+	StdErr            sql.NullString `json:"stderr,omitempty"`
+	Command           sql.NullString `json:"command,omitempty"`
+	ExecTime          sql.NullString `json:"execution_time,omitempty"`
+	CreatedAt         time.Time      `json:"created_at"`
+	ScopeTargetID     string         `json:"scope_target_id"`
+	AutoScanSessionID sql.NullString `json:"auto_scan_session_id"`
 }
 
 func RunShuffleDNSScan(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
-		FQDN string `json:"fqdn" binding:"required"`
+		FQDN              string  `json:"fqdn" binding:"required"`
+		AutoScanSessionID *string `json:"auto_scan_session_id,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || payload.FQDN == "" {
 		http.Error(w, "Invalid request body. `fqdn` is required.", http.StatusBadRequest)
@@ -72,8 +75,16 @@ func RunShuffleDNSScan(w http.ResponseWriter, r *http.Request) {
 	}
 
 	scanID := uuid.New().String()
-	insertQuery := `INSERT INTO shuffledns_scans (scan_id, domain, status, scope_target_id) VALUES ($1, $2, $3, $4)`
-	_, err = dbPool.Exec(context.Background(), insertQuery, scanID, domain, "pending", scopeTargetID)
+	var insertQuery string
+	var args []interface{}
+	if payload.AutoScanSessionID != nil && *payload.AutoScanSessionID != "" {
+		insertQuery = `INSERT INTO shuffledns_scans (scan_id, domain, status, scope_target_id, auto_scan_session_id) VALUES ($1, $2, $3, $4, $5)`
+		args = []interface{}{scanID, domain, "pending", scopeTargetID, *payload.AutoScanSessionID}
+	} else {
+		insertQuery = `INSERT INTO shuffledns_scans (scan_id, domain, status, scope_target_id) VALUES ($1, $2, $3, $4)`
+		args = []interface{}{scanID, domain, "pending", scopeTargetID}
+	}
+	_, err = dbPool.Exec(context.Background(), insertQuery, args...)
 	if err != nil {
 		log.Printf("[ERROR] Failed to create scan record: %v", err)
 		http.Error(w, "Failed to create scan record.", http.StatusInternalServerError)
@@ -138,6 +149,10 @@ func ExecuteAndParseShuffleDNSWithWordlist(scanID, wordlist string) {
 	log.Printf("[INFO] Starting ShuffleDNS scan with wordlist (scan ID: %s)", scanID)
 	startTime := time.Now()
 
+	// Get the rate limit from settings
+	rateLimit := GetShuffleDNSRateLimit()
+	log.Printf("[INFO] Using ShuffleDNS rate limit: %d", rateLimit)
+
 	// Create temporary directory for wordlist and resolvers
 	tempDir := "/tmp/shuffledns-temp"
 	if err := os.MkdirAll(tempDir, 0755); err != nil {
@@ -164,6 +179,7 @@ func ExecuteAndParseShuffleDNSWithWordlist(scanID, wordlist string) {
 		"-r", "/app/wordlists/resolvers.txt",
 		"-silent",
 		"-massdns", "/usr/local/bin/massdns",
+		"-t", fmt.Sprintf("%d", rateLimit),
 		"-mode", "bruteforce",
 	)
 
@@ -214,6 +230,10 @@ func ExecuteAndParseShuffleDNSScan(scanID, domain string) {
 	log.Printf("[INFO] Starting ShuffleDNS scan for domain %s (scan ID: %s)", domain, scanID)
 	startTime := time.Now()
 
+	// Get the rate limit from settings
+	rateLimit := GetShuffleDNSRateLimit()
+	log.Printf("[INFO] Using ShuffleDNS rate limit: %d", rateLimit)
+
 	// Create temporary directory for wordlist and resolvers
 	tempDir := "/tmp/shuffledns-temp"
 	if err := os.MkdirAll(tempDir, 0755); err != nil {
@@ -240,6 +260,7 @@ func ExecuteAndParseShuffleDNSScan(scanID, domain string) {
 		"-r", "/app/wordlists/resolvers.txt",
 		"-silent",
 		"-massdns", "/usr/local/bin/massdns",
+		"-t", fmt.Sprintf("%d", rateLimit),
 		"-mode", "bruteforce",
 	)
 
@@ -304,6 +325,7 @@ func GetShuffleDNSScanStatus(w http.ResponseWriter, r *http.Request) {
 		&scan.ExecTime,
 		&scan.CreatedAt,
 		&scan.ScopeTargetID,
+		&scan.AutoScanSessionID,
 	)
 
 	if err != nil {
@@ -317,18 +339,19 @@ func GetShuffleDNSScanStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := map[string]interface{}{
-		"id":              scan.ID,
-		"scan_id":         scan.ScanID,
-		"domain":          scan.Domain,
-		"status":          scan.Status,
-		"result":          nullStringToString(scan.Result),
-		"error":           nullStringToString(scan.Error),
-		"stdout":          nullStringToString(scan.StdOut),
-		"stderr":          nullStringToString(scan.StdErr),
-		"command":         nullStringToString(scan.Command),
-		"execution_time":  nullStringToString(scan.ExecTime),
-		"created_at":      scan.CreatedAt.Format(time.RFC3339),
-		"scope_target_id": scan.ScopeTargetID,
+		"id":                   scan.ID,
+		"scan_id":              scan.ScanID,
+		"domain":               scan.Domain,
+		"status":               scan.Status,
+		"result":               nullStringToString(scan.Result),
+		"error":                nullStringToString(scan.Error),
+		"stdout":               nullStringToString(scan.StdOut),
+		"stderr":               nullStringToString(scan.StdErr),
+		"command":              nullStringToString(scan.Command),
+		"execution_time":       nullStringToString(scan.ExecTime),
+		"created_at":           scan.CreatedAt.Format(time.RFC3339),
+		"scope_target_id":      scan.ScopeTargetID,
+		"auto_scan_session_id": nullStringToString(scan.AutoScanSessionID),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -370,6 +393,7 @@ func GetShuffleDNSScansForScopeTarget(w http.ResponseWriter, r *http.Request) {
 			&scan.ExecTime,
 			&scan.CreatedAt,
 			&scan.ScopeTargetID,
+			&scan.AutoScanSessionID,
 		)
 		if err != nil {
 			log.Printf("[ERROR] Failed to scan row: %v", err)
@@ -377,18 +401,19 @@ func GetShuffleDNSScansForScopeTarget(w http.ResponseWriter, r *http.Request) {
 		}
 
 		scans = append(scans, map[string]interface{}{
-			"id":              scan.ID,
-			"scan_id":         scan.ScanID,
-			"domain":          scan.Domain,
-			"status":          scan.Status,
-			"result":          nullStringToString(scan.Result),
-			"error":           nullStringToString(scan.Error),
-			"stdout":          nullStringToString(scan.StdOut),
-			"stderr":          nullStringToString(scan.StdErr),
-			"command":         nullStringToString(scan.Command),
-			"execution_time":  nullStringToString(scan.ExecTime),
-			"created_at":      scan.CreatedAt.Format(time.RFC3339),
-			"scope_target_id": scan.ScopeTargetID,
+			"id":                   scan.ID,
+			"scan_id":              scan.ScanID,
+			"domain":               scan.Domain,
+			"status":               scan.Status,
+			"result":               nullStringToString(scan.Result),
+			"error":                nullStringToString(scan.Error),
+			"stdout":               nullStringToString(scan.StdOut),
+			"stderr":               nullStringToString(scan.StdErr),
+			"command":              nullStringToString(scan.Command),
+			"execution_time":       nullStringToString(scan.ExecTime),
+			"created_at":           scan.CreatedAt.Format(time.RFC3339),
+			"scope_target_id":      scan.ScopeTargetID,
+			"auto_scan_session_id": nullStringToString(scan.AutoScanSessionID),
 		})
 	}
 
@@ -398,7 +423,8 @@ func GetShuffleDNSScansForScopeTarget(w http.ResponseWriter, r *http.Request) {
 
 func RunCeWLScan(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
-		FQDN string `json:"fqdn" binding:"required"`
+		FQDN              string  `json:"fqdn" binding:"required"`
+		AutoScanSessionID *string `json:"auto_scan_session_id,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || payload.FQDN == "" {
 		http.Error(w, "Invalid request body. `fqdn` is required.", http.StatusBadRequest)
@@ -419,8 +445,16 @@ func RunCeWLScan(w http.ResponseWriter, r *http.Request) {
 	}
 
 	scanID := uuid.New().String()
-	insertQuery := `INSERT INTO cewl_scans (scan_id, url, status, scope_target_id) VALUES ($1, $2, $3, $4)`
-	_, err = dbPool.Exec(context.Background(), insertQuery, scanID, domain, "pending", scopeTargetID)
+	var insertQuery string
+	var args []interface{}
+	if payload.AutoScanSessionID != nil && *payload.AutoScanSessionID != "" {
+		insertQuery = `INSERT INTO cewl_scans (scan_id, url, status, scope_target_id, auto_scan_session_id) VALUES ($1, $2, $3, $4, $5)`
+		args = []interface{}{scanID, domain, "pending", scopeTargetID, *payload.AutoScanSessionID}
+	} else {
+		insertQuery = `INSERT INTO cewl_scans (scan_id, url, status, scope_target_id) VALUES ($1, $2, $3, $4)`
+		args = []interface{}{scanID, domain, "pending", scopeTargetID}
+	}
+	_, err = dbPool.Exec(context.Background(), insertQuery, args...)
 	if err != nil {
 		log.Printf("[ERROR] Failed to create scan record: %v", err)
 		http.Error(w, "Failed to create scan record.", http.StatusInternalServerError)
@@ -437,6 +471,10 @@ func ExecuteAndParseCeWLScan(scanID, domain string) {
 	log.Printf("[DEBUG] ====== Starting CeWL + ShuffleDNS Process ======")
 	log.Printf("[DEBUG] ScanID: %s, Domain: %s", scanID, domain)
 	startTime := time.Now()
+
+	// Get custom HTTP settings
+	customUserAgent, _ := GetCustomHTTPSettings() // CeWL only supports user agent
+	log.Printf("[DEBUG] Custom User Agent: %s", customUserAgent)
 
 	// First, get all live web servers from the latest httpx scan
 	var httpxResults string
@@ -495,17 +533,25 @@ func ExecuteAndParseCeWLScan(scanID, domain string) {
 		// Remove www. from URL if present
 		cleanURL := strings.Replace(result.URL, "www.", "", 1)
 
-		// Run CeWL directly on the URL
-		cmd := exec.Command(
+		// Build CeWL command
+		cmdArgs := []string{
 			"docker", "exec",
 			"ars0n-framework-v2-cewl-1",
+			"timeout", "600",
 			"ruby", "/app/cewl.rb",
 			cleanURL,
 			"-d", "2",
 			"-m", "5",
 			"-c",
 			"--with-numbers",
-		)
+		}
+
+		// Add custom user agent if specified
+		if customUserAgent != "" {
+			cmdArgs = append(cmdArgs, "--ua", customUserAgent)
+		}
+
+		cmd := exec.Command(cmdArgs[0], cmdArgs[1:]...)
 
 		var stdout, stderr bytes.Buffer
 		cmd.Stdout = &stdout
@@ -727,6 +773,7 @@ func GetCeWLScanStatus(w http.ResponseWriter, r *http.Request) {
 		&scan.ExecTime,
 		&scan.CreatedAt,
 		&scan.ScopeTargetID,
+		&scan.AutoScanSessionID,
 	)
 
 	if err != nil {
@@ -740,18 +787,19 @@ func GetCeWLScanStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := map[string]interface{}{
-		"id":              scan.ID,
-		"scan_id":         scan.ScanID,
-		"url":             scan.URL,
-		"status":          scan.Status,
-		"result":          nullStringToString(scan.Result),
-		"error":           nullStringToString(scan.Error),
-		"stdout":          nullStringToString(scan.StdOut),
-		"stderr":          nullStringToString(scan.StdErr),
-		"command":         nullStringToString(scan.Command),
-		"execution_time":  nullStringToString(scan.ExecTime),
-		"created_at":      scan.CreatedAt.Format(time.RFC3339),
-		"scope_target_id": scan.ScopeTargetID,
+		"id":                   scan.ID,
+		"scan_id":              scan.ScanID,
+		"url":                  scan.URL,
+		"status":               scan.Status,
+		"result":               nullStringToString(scan.Result),
+		"error":                nullStringToString(scan.Error),
+		"stdout":               nullStringToString(scan.StdOut),
+		"stderr":               nullStringToString(scan.StdErr),
+		"command":              nullStringToString(scan.Command),
+		"execution_time":       nullStringToString(scan.ExecTime),
+		"created_at":           scan.CreatedAt.Format(time.RFC3339),
+		"scope_target_id":      scan.ScopeTargetID,
+		"auto_scan_session_id": nullStringToString(scan.AutoScanSessionID),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -793,6 +841,7 @@ func GetCeWLScansForScopeTarget(w http.ResponseWriter, r *http.Request) {
 			&scan.ExecTime,
 			&scan.CreatedAt,
 			&scan.ScopeTargetID,
+			&scan.AutoScanSessionID,
 		)
 		if err != nil {
 			log.Printf("[ERROR] Failed to scan row: %v", err)
@@ -800,18 +849,19 @@ func GetCeWLScansForScopeTarget(w http.ResponseWriter, r *http.Request) {
 		}
 
 		scans = append(scans, map[string]interface{}{
-			"id":              scan.ID,
-			"scan_id":         scan.ScanID,
-			"url":             scan.URL,
-			"status":          scan.Status,
-			"result":          nullStringToString(scan.Result),
-			"error":           nullStringToString(scan.Error),
-			"stdout":          nullStringToString(scan.StdOut),
-			"stderr":          nullStringToString(scan.StdErr),
-			"command":         nullStringToString(scan.Command),
-			"execution_time":  nullStringToString(scan.ExecTime),
-			"created_at":      scan.CreatedAt.Format(time.RFC3339),
-			"scope_target_id": scan.ScopeTargetID,
+			"id":                   scan.ID,
+			"scan_id":              scan.ScanID,
+			"url":                  scan.URL,
+			"status":               scan.Status,
+			"result":               nullStringToString(scan.Result),
+			"error":                nullStringToString(scan.Error),
+			"stdout":               nullStringToString(scan.StdOut),
+			"stderr":               nullStringToString(scan.StdErr),
+			"command":              nullStringToString(scan.Command),
+			"execution_time":       nullStringToString(scan.ExecTime),
+			"created_at":           scan.CreatedAt.Format(time.RFC3339),
+			"scope_target_id":      scan.ScopeTargetID,
+			"auto_scan_session_id": nullStringToString(scan.AutoScanSessionID),
 		})
 	}
 
@@ -865,6 +915,7 @@ func GetShuffleDNSCustomScansForScopeTarget(w http.ResponseWriter, r *http.Reque
 			&scan.ExecTime,
 			&scan.CreatedAt,
 			&scan.ScopeTargetID,
+			&scan.AutoScanSessionID,
 		)
 		if err != nil {
 			log.Printf("[ERROR] Failed to scan row: %v", err)
@@ -872,18 +923,19 @@ func GetShuffleDNSCustomScansForScopeTarget(w http.ResponseWriter, r *http.Reque
 		}
 
 		scans = append(scans, map[string]interface{}{
-			"id":              scan.ID,
-			"scan_id":         scan.ScanID,
-			"domain":          scan.Domain,
-			"status":          scan.Status,
-			"result":          nullStringToString(scan.Result),
-			"error":           nullStringToString(scan.Error),
-			"stdout":          nullStringToString(scan.StdOut),
-			"stderr":          nullStringToString(scan.StdErr),
-			"command":         nullStringToString(scan.Command),
-			"execution_time":  nullStringToString(scan.ExecTime),
-			"created_at":      scan.CreatedAt.Format(time.RFC3339),
-			"scope_target_id": scan.ScopeTargetID,
+			"id":                   scan.ID,
+			"scan_id":              scan.ScanID,
+			"domain":               scan.Domain,
+			"status":               scan.Status,
+			"result":               nullStringToString(scan.Result),
+			"error":                nullStringToString(scan.Error),
+			"stdout":               nullStringToString(scan.StdOut),
+			"stderr":               nullStringToString(scan.StdErr),
+			"command":              nullStringToString(scan.Command),
+			"execution_time":       nullStringToString(scan.ExecTime),
+			"created_at":           scan.CreatedAt.Format(time.RFC3339),
+			"scope_target_id":      scan.ScopeTargetID,
+			"auto_scan_session_id": nullStringToString(scan.AutoScanSessionID),
 		})
 	}
 

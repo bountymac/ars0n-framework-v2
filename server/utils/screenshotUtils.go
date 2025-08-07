@@ -20,18 +20,19 @@ import (
 
 // NucleiScreenshotStatus represents the status of a Nuclei screenshot scan
 type NucleiScreenshotStatus struct {
-	ID            string         `json:"id"`
-	ScanID        string         `json:"scan_id"`
-	Domain        string         `json:"domain"`
-	Status        string         `json:"status"`
-	Result        sql.NullString `json:"result"`
-	Error         sql.NullString `json:"error"`
-	StdOut        sql.NullString `json:"stdout"`
-	StdErr        sql.NullString `json:"stderr"`
-	Command       sql.NullString `json:"command"`
-	ExecTime      sql.NullString `json:"execution_time"`
-	CreatedAt     time.Time      `json:"created_at"`
-	ScopeTargetID string         `json:"scope_target_id"`
+	ID                string         `json:"id"`
+	ScanID            string         `json:"scan_id"`
+	Domain            string         `json:"domain"`
+	Status            string         `json:"status"`
+	Result            sql.NullString `json:"result"`
+	Error             sql.NullString `json:"error"`
+	StdOut            sql.NullString `json:"stdout"`
+	StdErr            sql.NullString `json:"stderr"`
+	Command           sql.NullString `json:"command"`
+	ExecTime          sql.NullString `json:"execution_time"`
+	CreatedAt         time.Time      `json:"created_at"`
+	ScopeTargetID     string         `json:"scope_target_id"`
+	AutoScanSessionID sql.NullString `json:"auto_scan_session_id"`
 }
 
 // RunNucleiScreenshotScan handles the HTTP request to start a new Nuclei screenshot scan
@@ -44,13 +45,16 @@ func RunNucleiScreenshotScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var payload struct {
+		AutoScanSessionID *string `json:"auto_scan_session_id,omitempty"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&payload)
+
 	log.Printf("[INFO] Starting Nuclei screenshot scan for scope target ID: %s", scopeTargetID)
 
-	// Generate a unique scan ID
 	scanID := uuid.New().String()
 	log.Printf("[INFO] Generated scan ID: %s", scanID)
 
-	// Get domain from scope target
 	var domain string
 	err := dbPool.QueryRow(context.Background(),
 		`SELECT TRIM(LEADING '*.' FROM scope_target) FROM scope_targets WHERE id = $1`,
@@ -61,9 +65,16 @@ func RunNucleiScreenshotScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Insert initial scan record
-	insertQuery := `INSERT INTO nuclei_screenshots (scan_id, domain, status, scope_target_id) VALUES ($1, $2, $3, $4)`
-	_, err = dbPool.Exec(context.Background(), insertQuery, scanID, domain, "pending", scopeTargetID)
+	var insertQuery string
+	var args []interface{}
+	if payload.AutoScanSessionID != nil && *payload.AutoScanSessionID != "" {
+		insertQuery = `INSERT INTO nuclei_screenshots (scan_id, domain, status, scope_target_id, auto_scan_session_id) VALUES ($1, $2, $3, $4, $5)`
+		args = []interface{}{scanID, domain, "pending", scopeTargetID, *payload.AutoScanSessionID}
+	} else {
+		insertQuery = `INSERT INTO nuclei_screenshots (scan_id, domain, status, scope_target_id) VALUES ($1, $2, $3, $4)`
+		args = []interface{}{scanID, domain, "pending", scopeTargetID}
+	}
+	_, err = dbPool.Exec(context.Background(), insertQuery, args...)
 	if err != nil {
 		log.Printf("[ERROR] Failed to insert scan record for scope target %s: %v", scopeTargetID, err)
 		http.Error(w, fmt.Sprintf("Failed to insert scan record: %v", err), http.StatusInternalServerError)
@@ -71,10 +82,8 @@ func RunNucleiScreenshotScan(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Printf("[INFO] Successfully inserted initial scan record for scan ID: %s", scanID)
 
-	// Start the scan in a goroutine
 	go ExecuteAndParseNucleiScreenshotScan(scanID, domain)
 
-	// Return the scan ID to the client
 	json.NewEncoder(w).Encode(map[string]string{
 		"scan_id": scanID,
 	})
@@ -84,6 +93,11 @@ func RunNucleiScreenshotScan(w http.ResponseWriter, r *http.Request) {
 func ExecuteAndParseNucleiScreenshotScan(scanID, domain string) {
 	log.Printf("[INFO] Starting Nuclei screenshot scan execution for scan ID: %s", scanID)
 	startTime := time.Now()
+
+	// Get custom HTTP settings
+	customUserAgent, customHeader := GetCustomHTTPSettings()
+	log.Printf("[DEBUG] Custom User Agent: %s", customUserAgent)
+	log.Printf("[DEBUG] Custom Header: %s", customHeader)
 
 	// Get scope target ID and latest httpx results
 	var scopeTargetID string
@@ -137,12 +151,26 @@ func ExecuteAndParseNucleiScreenshotScan(scanID, domain string) {
 		return
 	}
 
-	// Prepare docker command
-	cmd := exec.Command(
+	// Build base command
+	cmdArgs := []string{
 		"docker", "exec", "ars0n-framework-v2-nuclei-1",
 		"bash", "-c",
-		fmt.Sprintf("echo '%s' > /urls.txt && nuclei -t /root/nuclei-templates/headless/screenshot.yaml -list /urls.txt -headless", strings.Join(urls, "\n")),
-	)
+	}
+
+	nucleiCmd := fmt.Sprintf("echo '%s' > /urls.txt && nuclei -t /root/nuclei-templates/headless/screenshot.yaml -list /urls.txt -headless", strings.Join(urls, "\n"))
+
+	// Add custom headers if specified
+	if customHeader != "" {
+		nucleiCmd += fmt.Sprintf(" -H '%s'", customHeader)
+	}
+
+	// Add custom user agent via header if specified
+	if customUserAgent != "" {
+		nucleiCmd += fmt.Sprintf(" -H 'User-Agent: %s'", customUserAgent)
+	}
+
+	cmdArgs = append(cmdArgs, nucleiCmd)
+	cmd := exec.Command(cmdArgs[0], cmdArgs[1:]...)
 	log.Printf("[INFO] Prepared Nuclei command for scan ID %s: %s", scanID, cmd.String())
 
 	var stdout, stderr bytes.Buffer
@@ -211,6 +239,13 @@ func ExecuteAndParseNucleiScreenshotScan(scanID, domain string) {
 
 		// Normalize the URL
 		url = NormalizeURL(url)
+
+		// Skip URLs with encoded characters that are nuclei test paths
+		if strings.Contains(url, "%") {
+			log.Printf("[DEBUG] Skipping nuclei test URL with encoded characters: %s", url)
+			continue
+		}
+
 		log.Printf("[DEBUG] Processing screenshot for URL: %s", url)
 
 		// Update target URL with screenshot
@@ -286,6 +321,7 @@ func GetNucleiScreenshotScanStatus(w http.ResponseWriter, r *http.Request) {
 		&scan.ExecTime,
 		&scan.CreatedAt,
 		&scan.ScopeTargetID,
+		&scan.AutoScanSessionID,
 	)
 
 	if err != nil {
@@ -299,18 +335,19 @@ func GetNucleiScreenshotScanStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := map[string]interface{}{
-		"id":              scan.ID,
-		"scan_id":         scan.ScanID,
-		"domain":          scan.Domain,
-		"status":          scan.Status,
-		"result":          nullStringToString(scan.Result),
-		"error":           nullStringToString(scan.Error),
-		"stdout":          nullStringToString(scan.StdOut),
-		"stderr":          nullStringToString(scan.StdErr),
-		"command":         nullStringToString(scan.Command),
-		"execution_time":  nullStringToString(scan.ExecTime),
-		"created_at":      scan.CreatedAt.Format(time.RFC3339),
-		"scope_target_id": scan.ScopeTargetID,
+		"id":                   scan.ID,
+		"scan_id":              scan.ScanID,
+		"domain":               scan.Domain,
+		"status":               scan.Status,
+		"result":               nullStringToString(scan.Result),
+		"error":                nullStringToString(scan.Error),
+		"stdout":               nullStringToString(scan.StdOut),
+		"stderr":               nullStringToString(scan.StdErr),
+		"command":              nullStringToString(scan.Command),
+		"execution_time":       nullStringToString(scan.ExecTime),
+		"created_at":           scan.CreatedAt.Format(time.RFC3339),
+		"scope_target_id":      scan.ScopeTargetID,
+		"auto_scan_session_id": nullStringToString(scan.AutoScanSessionID),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -347,6 +384,7 @@ func GetNucleiScreenshotScansForScopeTarget(w http.ResponseWriter, r *http.Reque
 			&scan.ExecTime,
 			&scan.CreatedAt,
 			&scan.ScopeTargetID,
+			&scan.AutoScanSessionID,
 		)
 		if err != nil {
 			log.Printf("[ERROR] Failed to scan row: %v", err)
@@ -354,18 +392,19 @@ func GetNucleiScreenshotScansForScopeTarget(w http.ResponseWriter, r *http.Reque
 		}
 
 		scans = append(scans, map[string]interface{}{
-			"id":              scan.ID,
-			"scan_id":         scan.ScanID,
-			"domain":          scan.Domain,
-			"status":          scan.Status,
-			"result":          nullStringToString(scan.Result),
-			"error":           nullStringToString(scan.Error),
-			"stdout":          nullStringToString(scan.StdOut),
-			"stderr":          nullStringToString(scan.StdErr),
-			"command":         nullStringToString(scan.Command),
-			"execution_time":  nullStringToString(scan.ExecTime),
-			"created_at":      scan.CreatedAt.Format(time.RFC3339),
-			"scope_target_id": scan.ScopeTargetID,
+			"id":                   scan.ID,
+			"scan_id":              scan.ScanID,
+			"domain":               scan.Domain,
+			"status":               scan.Status,
+			"result":               nullStringToString(scan.Result),
+			"error":                nullStringToString(scan.Error),
+			"stdout":               nullStringToString(scan.StdOut),
+			"stderr":               nullStringToString(scan.StdErr),
+			"command":              nullStringToString(scan.Command),
+			"execution_time":       nullStringToString(scan.ExecTime),
+			"created_at":           scan.CreatedAt.Format(time.RFC3339),
+			"scope_target_id":      scan.ScopeTargetID,
+			"auto_scan_session_id": nullStringToString(scan.AutoScanSessionID),
 		})
 	}
 

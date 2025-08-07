@@ -21,38 +21,41 @@ import (
 )
 
 type GoSpiderScanStatus struct {
-	ID            string         `json:"id"`
-	ScanID        string         `json:"scan_id"`
-	Domain        string         `json:"domain"`
-	Status        string         `json:"status"`
-	Result        sql.NullString `json:"result,omitempty"`
-	Error         sql.NullString `json:"error,omitempty"`
-	StdOut        sql.NullString `json:"stdout,omitempty"`
-	StdErr        sql.NullString `json:"stderr,omitempty"`
-	Command       sql.NullString `json:"command,omitempty"`
-	ExecTime      sql.NullString `json:"execution_time,omitempty"`
-	CreatedAt     time.Time      `json:"created_at"`
-	ScopeTargetID string         `json:"scope_target_id"`
+	ID                string         `json:"id"`
+	ScanID            string         `json:"scan_id"`
+	Domain            string         `json:"domain"`
+	Status            string         `json:"status"`
+	Result            sql.NullString `json:"result,omitempty"`
+	Error             sql.NullString `json:"error,omitempty"`
+	StdOut            sql.NullString `json:"stdout,omitempty"`
+	StdErr            sql.NullString `json:"stderr,omitempty"`
+	Command           sql.NullString `json:"command,omitempty"`
+	ExecTime          sql.NullString `json:"execution_time,omitempty"`
+	CreatedAt         time.Time      `json:"created_at"`
+	ScopeTargetID     string         `json:"scope_target_id"`
+	AutoScanSessionID sql.NullString `json:"auto_scan_session_id"`
 }
 
 type SubdomainizerScanStatus struct {
-	ID            string         `json:"id"`
-	ScanID        string         `json:"scan_id"`
-	Domain        string         `json:"domain"`
-	Status        string         `json:"status"`
-	Result        sql.NullString `json:"result,omitempty"`
-	Error         sql.NullString `json:"error,omitempty"`
-	StdOut        sql.NullString `json:"stdout,omitempty"`
-	StdErr        sql.NullString `json:"stderr,omitempty"`
-	Command       sql.NullString `json:"command,omitempty"`
-	ExecTime      sql.NullString `json:"execution_time,omitempty"`
-	CreatedAt     time.Time      `json:"created_at"`
-	ScopeTargetID string         `json:"scope_target_id"`
+	ID                string         `json:"id"`
+	ScanID            string         `json:"scan_id"`
+	Domain            string         `json:"domain"`
+	Status            string         `json:"status"`
+	Result            sql.NullString `json:"result,omitempty"`
+	Error             sql.NullString `json:"error,omitempty"`
+	StdOut            sql.NullString `json:"stdout,omitempty"`
+	StdErr            sql.NullString `json:"stderr,omitempty"`
+	Command           sql.NullString `json:"command,omitempty"`
+	ExecTime          sql.NullString `json:"execution_time,omitempty"`
+	CreatedAt         time.Time      `json:"created_at"`
+	ScopeTargetID     string         `json:"scope_target_id"`
+	AutoScanSessionID sql.NullString `json:"auto_scan_session_id"`
 }
 
 func RunGoSpiderScan(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
-		FQDN string `json:"fqdn" binding:"required"`
+		FQDN              string  `json:"fqdn" binding:"required"`
+		AutoScanSessionID *string `json:"auto_scan_session_id,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || payload.FQDN == "" {
 		http.Error(w, "Invalid request body. `fqdn` is required.", http.StatusBadRequest)
@@ -72,8 +75,16 @@ func RunGoSpiderScan(w http.ResponseWriter, r *http.Request) {
 	}
 
 	scanID := uuid.New().String()
-	insertQuery := `INSERT INTO gospider_scans (scan_id, domain, status, scope_target_id) VALUES ($1, $2, $3, $4)`
-	_, err = dbPool.Exec(context.Background(), insertQuery, scanID, domain, "pending", scopeTargetID)
+	var insertQuery string
+	var args []interface{}
+	if payload.AutoScanSessionID != nil && *payload.AutoScanSessionID != "" {
+		insertQuery = `INSERT INTO gospider_scans (scan_id, domain, status, scope_target_id, auto_scan_session_id) VALUES ($1, $2, $3, $4, $5)`
+		args = []interface{}{scanID, domain, "pending", scopeTargetID, *payload.AutoScanSessionID}
+	} else {
+		insertQuery = `INSERT INTO gospider_scans (scan_id, domain, status, scope_target_id) VALUES ($1, $2, $3, $4)`
+		args = []interface{}{scanID, domain, "pending", scopeTargetID}
+	}
+	_, err = dbPool.Exec(context.Background(), insertQuery, args...)
 	if err != nil {
 		log.Printf("[ERROR] Failed to create scan record: %v", err)
 		http.Error(w, "Failed to create scan record.", http.StatusInternalServerError)
@@ -89,6 +100,11 @@ func RunGoSpiderScan(w http.ResponseWriter, r *http.Request) {
 func executeAndParseGoSpiderScan(scanID, domain string) {
 	log.Printf("[INFO] Starting GoSpider scan for domain %s (scan ID: %s)", domain, scanID)
 	startTime := time.Now()
+
+	// Get custom HTTP settings
+	customUserAgent, customHeader := GetCustomHTTPSettings()
+	log.Printf("[DEBUG] Custom User Agent: %s", customUserAgent)
+	log.Printf("[DEBUG] Custom Header: %s", customHeader)
 
 	var httpxResults string
 	err := dbPool.QueryRow(context.Background(), `
@@ -139,11 +155,12 @@ func executeAndParseGoSpiderScan(scanID, domain string) {
 		cmd := exec.Command(
 			"docker", "exec",
 			"ars0n-framework-v2-gospider-1",
+			"timeout", "300",
 			"gospider",
 			"-s", httpxResult.URL,
-			"-c", "20",
+			"-c", "10",
 			"-d", "3",
-			"-t", "5",
+			"-t", "3",
 			"-k", "1",
 			"-K", "2",
 			"-m", "30",
@@ -158,6 +175,16 @@ func executeAndParseGoSpiderScan(scanID, domain string) {
 			"--json",
 			"-v",
 		)
+
+		// Add custom user agent if specified
+		if customUserAgent != "" {
+			cmd.Args = append(cmd.Args, "--user-agent", customUserAgent)
+		}
+
+		// Add custom header if specified
+		if customHeader != "" {
+			cmd.Args = append(cmd.Args, "--header", customHeader)
+		}
 
 		commands = append(commands, cmd.String())
 		log.Printf("[DEBUG] Executing command: %s", cmd.String())
@@ -331,6 +358,7 @@ func GetGoSpiderScanStatus(w http.ResponseWriter, r *http.Request) {
 		&scan.ExecTime,
 		&scan.CreatedAt,
 		&scan.ScopeTargetID,
+		&scan.AutoScanSessionID,
 	)
 
 	if err != nil {
@@ -344,18 +372,19 @@ func GetGoSpiderScanStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := map[string]interface{}{
-		"id":              scan.ID,
-		"scan_id":         scan.ScanID,
-		"domain":          scan.Domain,
-		"status":          scan.Status,
-		"result":          nullStringToString(scan.Result),
-		"error":           nullStringToString(scan.Error),
-		"stdout":          nullStringToString(scan.StdOut),
-		"stderr":          nullStringToString(scan.StdErr),
-		"command":         nullStringToString(scan.Command),
-		"execution_time":  nullStringToString(scan.ExecTime),
-		"created_at":      scan.CreatedAt.Format(time.RFC3339),
-		"scope_target_id": scan.ScopeTargetID,
+		"id":                   scan.ID,
+		"scan_id":              scan.ScanID,
+		"domain":               scan.Domain,
+		"status":               scan.Status,
+		"result":               nullStringToString(scan.Result),
+		"error":                nullStringToString(scan.Error),
+		"stdout":               nullStringToString(scan.StdOut),
+		"stderr":               nullStringToString(scan.StdErr),
+		"command":              nullStringToString(scan.Command),
+		"execution_time":       nullStringToString(scan.ExecTime),
+		"created_at":           scan.CreatedAt.Format(time.RFC3339),
+		"scope_target_id":      scan.ScopeTargetID,
+		"auto_scan_session_id": nullStringToString(scan.AutoScanSessionID),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -397,6 +426,7 @@ func GetGoSpiderScansForScopeTarget(w http.ResponseWriter, r *http.Request) {
 			&scan.ExecTime,
 			&scan.CreatedAt,
 			&scan.ScopeTargetID,
+			&scan.AutoScanSessionID,
 		)
 		if err != nil {
 			log.Printf("[ERROR] Failed to scan row: %v", err)
@@ -404,18 +434,19 @@ func GetGoSpiderScansForScopeTarget(w http.ResponseWriter, r *http.Request) {
 		}
 
 		scans = append(scans, map[string]interface{}{
-			"id":              scan.ID,
-			"scan_id":         scan.ScanID,
-			"domain":          scan.Domain,
-			"status":          scan.Status,
-			"result":          nullStringToString(scan.Result),
-			"error":           nullStringToString(scan.Error),
-			"stdout":          nullStringToString(scan.StdOut),
-			"stderr":          nullStringToString(scan.StdErr),
-			"command":         nullStringToString(scan.Command),
-			"execution_time":  nullStringToString(scan.ExecTime),
-			"created_at":      scan.CreatedAt.Format(time.RFC3339),
-			"scope_target_id": scan.ScopeTargetID,
+			"id":                   scan.ID,
+			"scan_id":              scan.ScanID,
+			"domain":               scan.Domain,
+			"status":               scan.Status,
+			"result":               nullStringToString(scan.Result),
+			"error":                nullStringToString(scan.Error),
+			"stdout":               nullStringToString(scan.StdOut),
+			"stderr":               nullStringToString(scan.StdErr),
+			"command":              nullStringToString(scan.Command),
+			"execution_time":       nullStringToString(scan.ExecTime),
+			"created_at":           scan.CreatedAt.Format(time.RFC3339),
+			"scope_target_id":      scan.ScopeTargetID,
+			"auto_scan_session_id": nullStringToString(scan.AutoScanSessionID),
 		})
 	}
 
@@ -425,7 +456,8 @@ func GetGoSpiderScansForScopeTarget(w http.ResponseWriter, r *http.Request) {
 
 func RunSubdomainizerScan(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
-		FQDN string `json:"fqdn" binding:"required"`
+		FQDN              string  `json:"fqdn" binding:"required"`
+		AutoScanSessionID *string `json:"auto_scan_session_id,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || payload.FQDN == "" {
 		http.Error(w, "Invalid request body. `fqdn` is required.", http.StatusBadRequest)
@@ -445,8 +477,16 @@ func RunSubdomainizerScan(w http.ResponseWriter, r *http.Request) {
 	}
 
 	scanID := uuid.New().String()
-	insertQuery := `INSERT INTO subdomainizer_scans (scan_id, domain, status, scope_target_id) VALUES ($1, $2, $3, $4)`
-	_, err = dbPool.Exec(context.Background(), insertQuery, scanID, domain, "pending", scopeTargetID)
+	var insertQuery string
+	var args []interface{}
+	if payload.AutoScanSessionID != nil && *payload.AutoScanSessionID != "" {
+		insertQuery = `INSERT INTO subdomainizer_scans (scan_id, domain, status, scope_target_id, auto_scan_session_id) VALUES ($1, $2, $3, $4, $5)`
+		args = []interface{}{scanID, domain, "pending", scopeTargetID, *payload.AutoScanSessionID}
+	} else {
+		insertQuery = `INSERT INTO subdomainizer_scans (scan_id, domain, status, scope_target_id) VALUES ($1, $2, $3, $4)`
+		args = []interface{}{scanID, domain, "pending", scopeTargetID}
+	}
+	_, err = dbPool.Exec(context.Background(), insertQuery, args...)
 	if err != nil {
 		log.Printf("[ERROR] Failed to create scan record: %v", err)
 		http.Error(w, "Failed to create scan record.", http.StatusInternalServerError)
@@ -531,6 +571,7 @@ func executeAndParseSubdomainizerScan(scanID, domain string) {
 		cmd := exec.Command(
 			"docker", "exec",
 			"ars0n-framework-v2-subdomainizer-1",
+			"timeout", "300",
 			"python3", "SubDomainizer.py",
 			"-u", httpxResult.URL,
 			"-k",
@@ -636,6 +677,7 @@ func GetSubdomainizerScanStatus(w http.ResponseWriter, r *http.Request) {
 		&scan.ExecTime,
 		&scan.CreatedAt,
 		&scan.ScopeTargetID,
+		&scan.AutoScanSessionID,
 	)
 
 	if err != nil {
@@ -649,18 +691,19 @@ func GetSubdomainizerScanStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := map[string]interface{}{
-		"id":              scan.ID,
-		"scan_id":         scan.ScanID,
-		"domain":          scan.Domain,
-		"status":          scan.Status,
-		"result":          nullStringToString(scan.Result),
-		"error":           nullStringToString(scan.Error),
-		"stdout":          nullStringToString(scan.StdOut),
-		"stderr":          nullStringToString(scan.StdErr),
-		"command":         nullStringToString(scan.Command),
-		"execution_time":  nullStringToString(scan.ExecTime),
-		"created_at":      scan.CreatedAt.Format(time.RFC3339),
-		"scope_target_id": scan.ScopeTargetID,
+		"id":                   scan.ID,
+		"scan_id":              scan.ScanID,
+		"domain":               scan.Domain,
+		"status":               scan.Status,
+		"result":               nullStringToString(scan.Result),
+		"error":                nullStringToString(scan.Error),
+		"stdout":               nullStringToString(scan.StdOut),
+		"stderr":               nullStringToString(scan.StdErr),
+		"command":              nullStringToString(scan.Command),
+		"execution_time":       nullStringToString(scan.ExecTime),
+		"created_at":           scan.CreatedAt.Format(time.RFC3339),
+		"scope_target_id":      scan.ScopeTargetID,
+		"auto_scan_session_id": nullStringToString(scan.AutoScanSessionID),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -702,6 +745,7 @@ func GetSubdomainizerScansForScopeTarget(w http.ResponseWriter, r *http.Request)
 			&scan.ExecTime,
 			&scan.CreatedAt,
 			&scan.ScopeTargetID,
+			&scan.AutoScanSessionID,
 		)
 		if err != nil {
 			log.Printf("[ERROR] Failed to scan row: %v", err)
@@ -709,18 +753,19 @@ func GetSubdomainizerScansForScopeTarget(w http.ResponseWriter, r *http.Request)
 		}
 
 		scans = append(scans, map[string]interface{}{
-			"id":              scan.ID,
-			"scan_id":         scan.ScanID,
-			"domain":          scan.Domain,
-			"status":          scan.Status,
-			"result":          nullStringToString(scan.Result),
-			"error":           nullStringToString(scan.Error),
-			"stdout":          nullStringToString(scan.StdOut),
-			"stderr":          nullStringToString(scan.StdErr),
-			"command":         nullStringToString(scan.Command),
-			"execution_time":  nullStringToString(scan.ExecTime),
-			"created_at":      scan.CreatedAt.Format(time.RFC3339),
-			"scope_target_id": scan.ScopeTargetID,
+			"id":                   scan.ID,
+			"scan_id":              scan.ScanID,
+			"domain":               scan.Domain,
+			"status":               scan.Status,
+			"result":               nullStringToString(scan.Result),
+			"error":                nullStringToString(scan.Error),
+			"stdout":               nullStringToString(scan.StdOut),
+			"stderr":               nullStringToString(scan.StdErr),
+			"command":              nullStringToString(scan.Command),
+			"execution_time":       nullStringToString(scan.ExecTime),
+			"created_at":           scan.CreatedAt.Format(time.RFC3339),
+			"scope_target_id":      scan.ScopeTargetID,
+			"auto_scan_session_id": nullStringToString(scan.AutoScanSessionID),
 		})
 	}
 

@@ -31,6 +31,13 @@ func nullStringToString(ns sql.NullString) string {
 	return ""
 }
 
+func nullIntToInt(ni sql.NullInt32) int {
+	if ni.Valid {
+		return int(ni.Int32)
+	}
+	return 0
+}
+
 type ServiceProviderResponse struct {
 	Provider string `json:"provider"`
 	RawData  string `json:"raw_data"`
@@ -47,17 +54,18 @@ type ASNResponse struct {
 }
 
 type AmassScanStatus struct {
-	ID        string         `json:"id"`
-	ScanID    string         `json:"scan_id"`
-	Domain    string         `json:"domain"`
-	Status    string         `json:"status"`
-	Result    sql.NullString `json:"result,omitempty"`
-	Error     sql.NullString `json:"error,omitempty"`
-	StdOut    sql.NullString `json:"stdout,omitempty"`
-	StdErr    sql.NullString `json:"stderr,omitempty"`
-	Command   sql.NullString `json:"command,omitempty"`
-	ExecTime  sql.NullString `json:"execution_time,omitempty"`
-	CreatedAt time.Time      `json:"created_at"`
+	ID                string         `json:"id"`
+	ScanID            string         `json:"scan_id"`
+	Domain            string         `json:"domain"`
+	Status            string         `json:"status"`
+	Result            sql.NullString `json:"result,omitempty"`
+	Error             sql.NullString `json:"error,omitempty"`
+	StdOut            sql.NullString `json:"stdout,omitempty"`
+	StdErr            sql.NullString `json:"stderr,omitempty"`
+	Command           sql.NullString `json:"command,omitempty"`
+	ExecTime          sql.NullString `json:"execution_time,omitempty"`
+	CreatedAt         time.Time      `json:"created_at"`
+	AutoScanSessionID sql.NullString `json:"auto_scan_session_id"`
 }
 
 type DNSRecord struct {
@@ -172,7 +180,7 @@ func GetAmassScansForScopeTarget(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := `SELECT id, scan_id, domain, status, result, error, stdout, stderr, command, execution_time, created_at 
+	query := `SELECT id, scan_id, domain, status, result, error, stdout, stderr, command, execution_time, created_at, auto_scan_session_id 
               FROM amass_scans WHERE scope_target_id = $1`
 	rows, err := dbPool.Query(context.Background(), query, scopeTargetID)
 	if err != nil {
@@ -197,6 +205,7 @@ func GetAmassScansForScopeTarget(w http.ResponseWriter, r *http.Request) {
 			&scan.Command,
 			&scan.ExecTime,
 			&scan.CreatedAt,
+			&scan.AutoScanSessionID,
 		)
 		if err != nil {
 			log.Printf("[ERROR] Failed to scan row: %v", err)
@@ -205,17 +214,18 @@ func GetAmassScansForScopeTarget(w http.ResponseWriter, r *http.Request) {
 		}
 
 		scans = append(scans, map[string]interface{}{
-			"id":             scan.ID,
-			"scan_id":        scan.ScanID,
-			"domain":         scan.Domain,
-			"status":         scan.Status,
-			"result":         nullStringToString(scan.Result),
-			"error":          nullStringToString(scan.Error),
-			"stdout":         nullStringToString(scan.StdOut),
-			"stderr":         nullStringToString(scan.StdErr),
-			"command":        nullStringToString(scan.Command),
-			"execution_time": nullStringToString(scan.ExecTime),
-			"created_at":     scan.CreatedAt.Format(time.RFC3339),
+			"id":                   scan.ID,
+			"scan_id":              scan.ScanID,
+			"domain":               scan.Domain,
+			"status":               scan.Status,
+			"result":               nullStringToString(scan.Result),
+			"error":                nullStringToString(scan.Error),
+			"stdout":               nullStringToString(scan.StdOut),
+			"stderr":               nullStringToString(scan.StdErr),
+			"command":              nullStringToString(scan.Command),
+			"execution_time":       nullStringToString(scan.ExecTime),
+			"created_at":           scan.CreatedAt.Format(time.RFC3339),
+			"auto_scan_session_id": nullStringToString(scan.AutoScanSessionID),
 		})
 	}
 
@@ -499,7 +509,7 @@ func GetAmassScanStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var scan AmassScanStatus
-	query := `SELECT id, scan_id, domain, status, result, error, stdout, stderr, command, execution_time, created_at FROM amass_scans WHERE scan_id = $1`
+	query := `SELECT id, scan_id, domain, status, result, error, stdout, stderr, command, execution_time, created_at, auto_scan_session_id FROM amass_scans WHERE scan_id = $1`
 	err := dbPool.QueryRow(context.Background(), query, scanID).Scan(
 		&scan.ID,
 		&scan.ScanID,
@@ -512,6 +522,7 @@ func GetAmassScanStatus(w http.ResponseWriter, r *http.Request) {
 		&scan.Command,
 		&scan.ExecTime,
 		&scan.CreatedAt,
+		&scan.AutoScanSessionID,
 	)
 	if err != nil {
 		log.Printf("[ERROR] Failed to fetch scan status: %v", err)
@@ -520,17 +531,18 @@ func GetAmassScanStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := map[string]interface{}{
-		"id":             scan.ID,
-		"scan_id":        scan.ScanID,
-		"domain":         scan.Domain,
-		"status":         scan.Status,
-		"result":         nullStringToString(scan.Result),
-		"error":          nullStringToString(scan.Error),
-		"stdout":         nullStringToString(scan.StdOut),
-		"stderr":         nullStringToString(scan.StdErr),
-		"command":        nullStringToString(scan.Command),
-		"execution_time": nullStringToString(scan.ExecTime),
-		"created_at":     scan.CreatedAt.Format(time.RFC3339),
+		"id":                   scan.ID,
+		"scan_id":              scan.ScanID,
+		"domain":               scan.Domain,
+		"status":               scan.Status,
+		"result":               nullStringToString(scan.Result),
+		"error":                nullStringToString(scan.Error),
+		"stdout":               nullStringToString(scan.StdOut),
+		"stderr":               nullStringToString(scan.StdErr),
+		"command":              nullStringToString(scan.Command),
+		"execution_time":       nullStringToString(scan.ExecTime),
+		"created_at":           scan.CreatedAt.Format(time.RFC3339),
+		"auto_scan_session_id": nullStringToString(scan.AutoScanSessionID),
 	}
 
 	w.WriteHeader(http.StatusOK)
@@ -539,7 +551,8 @@ func GetAmassScanStatus(w http.ResponseWriter, r *http.Request) {
 
 func RunAmassScan(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
-		FQDN string `json:"fqdn" binding:"required"`
+		FQDN              string  `json:"fqdn" binding:"required"`
+		AutoScanSessionID *string `json:"auto_scan_session_id,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || payload.FQDN == "" {
 		http.Error(w, "Invalid request body. `fqdn` is required.", http.StatusBadRequest)
@@ -559,8 +572,16 @@ func RunAmassScan(w http.ResponseWriter, r *http.Request) {
 	}
 
 	scanID := uuid.New().String()
-	insertQuery := `INSERT INTO amass_scans (scan_id, domain, status, scope_target_id) VALUES ($1, $2, $3, $4)`
-	_, err = dbPool.Exec(context.Background(), insertQuery, scanID, domain, "pending", requestID)
+	var insertQuery string
+	var args []interface{}
+	if payload.AutoScanSessionID != nil && *payload.AutoScanSessionID != "" {
+		insertQuery = `INSERT INTO amass_scans (scan_id, domain, status, scope_target_id, auto_scan_session_id) VALUES ($1, $2, $3, $4, $5)`
+		args = []interface{}{scanID, domain, "pending", requestID, *payload.AutoScanSessionID}
+	} else {
+		insertQuery = `INSERT INTO amass_scans (scan_id, domain, status, scope_target_id) VALUES ($1, $2, $3, $4)`
+		args = []interface{}{scanID, domain, "pending", requestID}
+	}
+	_, err = dbPool.Exec(context.Background(), insertQuery, args...)
 	if err != nil {
 		log.Printf("[ERROR] Failed to create scan record: %v", err)
 		http.Error(w, "Failed to create scan record.", http.StatusInternalServerError)
@@ -577,17 +598,37 @@ func ExecuteAndParseAmassScan(scanID, domain string) {
 	log.Printf("[INFO] Starting Amass scan for domain %s (scan ID: %s)", domain, scanID)
 	startTime := time.Now()
 
+	// Get the rate limit from settings
+	rateLimit := GetAmassRateLimit()
+	log.Printf("[INFO] Using rate limit of %d for Amass scan", rateLimit)
+
 	cmd := exec.Command(
 		"docker", "run", "--rm",
 		"caffix/amass",
 		"enum", "-active", "-alts", "-brute", "-nocolor",
 		"-min-for-recursive", "2", "-timeout", "60",
 		"-d", domain,
-		"-r", "8.8.8.8", "1.1.1.1", "9.9.9.9", "64.6.64.6",
-		"208.67.222.222", "208.67.220.220", "8.26.56.26", "8.20.247.20",
-		"185.228.168.9", "185.228.169.9", "76.76.19.19", "76.223.122.150",
-		"198.101.242.72", "176.103.130.130", "176.103.130.131",
-		"94.140.14.14", "94.140.15.15", "1.0.0.1", "77.88.8.8", "77.88.8.1",
+		"-r", "8.8.8.8",
+		"-r", "1.1.1.1",
+		"-r", "9.9.9.9",
+		"-r", "64.6.64.6",
+		"-r", "208.67.222.222",
+		"-r", "208.67.220.220",
+		"-r", "8.26.56.26",
+		"-r", "8.20.247.20",
+		"-r", "185.228.168.9",
+		"-r", "185.228.169.9",
+		"-r", "76.76.19.19",
+		"-r", "76.223.122.150",
+		"-r", "198.101.242.72",
+		"-r", "176.103.130.130",
+		"-r", "176.103.130.131",
+		"-r", "94.140.14.14",
+		"-r", "94.140.15.15",
+		"-r", "1.0.0.1",
+		"-r", "77.88.8.8",
+		"-r", "77.88.8.1",
+		"-rqps", fmt.Sprintf("%d", rateLimit),
 	)
 
 	log.Printf("[INFO] Executing command: %s", cmd.String())

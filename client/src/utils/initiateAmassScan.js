@@ -1,4 +1,4 @@
-export const initiateAmassScan = async (activeTarget, monitorScanStatus, setIsScanning, setAmassScans, setMostRecentAmassScanStatus, setDnsRecords, setSubdomains, setCloudDomains, setMostRecentAmassScan) => {
+export const initiateAmassScan = async (activeTarget, monitorScanStatus, setIsScanning, setAmassScans, setMostRecentAmassScanStatus, setDnsRecords, setSubdomains, setCloudDomains, setMostRecentAmassScan, autoScanSessionId) => {
     if (!activeTarget) return;
     let fqdn = activeTarget.scope_target;
     if (activeTarget.type === 'Wildcard') {
@@ -6,10 +6,12 @@ export const initiateAmassScan = async (activeTarget, monitorScanStatus, setIsSc
     }
   
     try {
+      const body = { fqdn };
+      if (autoScanSessionId) body.auto_scan_session_id = autoScanSessionId;
       const response = await fetch(`${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/amass/run`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fqdn }),
+        body: JSON.stringify(body),
       });
   
       if (!response.ok) {
@@ -17,7 +19,7 @@ export const initiateAmassScan = async (activeTarget, monitorScanStatus, setIsSc
       }
   
       setIsScanning(true);
-      monitorScanStatus(activeTarget, setAmassScans, setMostRecentAmassScan, setIsScanning, setMostRecentAmassScanStatus, setDnsRecords, setSubdomains, setCloudDomains);
+      monitorScanStatus && monitorScanStatus(activeTarget, setAmassScans, setMostRecentAmassScan, setIsScanning, setMostRecentAmassScanStatus, setDnsRecords, setSubdomains, setCloudDomains);
     } catch (error) {
       console.error('Error initiating Amass scan:', error);
     }

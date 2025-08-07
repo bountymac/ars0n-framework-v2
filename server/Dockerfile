@@ -1,4 +1,4 @@
-FROM golang:1.21-alpine
+FROM golang:1.24-alpine
 
 # Install required packages
 RUN apk add --no-cache git gcc musl-dev docker
@@ -18,6 +18,6 @@ RUN chmod -R 777 /app/temp
 
 RUN go build -o main .
 
-EXPOSE 8080
+EXPOSE 8443
 
 CMD ["./main"]

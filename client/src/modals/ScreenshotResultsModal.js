@@ -28,13 +28,8 @@ const ScreenshotResultsModal = ({
           throw new Error('Failed to fetch target URLs');
         }
         const data = await response.json();
-        console.log('[DEBUG] Received target URLs:', data);
-        console.log('[DEBUG] First URL screenshot present:', data[0]?.screenshot ? 'yes' : 'no');
-        if (data[0]?.screenshot) {
-          console.log('[DEBUG] First URL screenshot type:', typeof data[0].screenshot);
-          console.log('[DEBUG] First URL screenshot value:', data[0].screenshot);
-        }
-        const sortedData = data.sort((a, b) => {
+        const safeData = data || [];
+        const sortedData = safeData.sort((a, b) => {
           if (!a.status_code && !b.status_code) return 0;
           if (!a.status_code) return 1;
           if (!b.status_code) return -1;
